@@ -1,0 +1,23 @@
+{
+  "name": "gestaonf",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "web:dev": "corepack pnpm --filter @gestaonf/web dev",
+    "web:typecheck": "corepack pnpm --filter @gestaonf/web typecheck",
+    "web:build": "corepack pnpm --filter @gestaonf/web build",
+    "web:test:e2e": "corepack pnpm --filter @gestaonf/web test:e2e",
+    "api:dev": "corepack pnpm --filter @gestaonf/api dev",
+    "api:typecheck": "corepack pnpm --filter @gestaonf/api typecheck",
+    "api:test": "corepack pnpm --filter @gestaonf/api test",
+    "api:test:e2e": "corepack pnpm --filter @gestaonf/api test:e2e",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "corepack pnpm --filter @gestaonf/database db:generate",
+    "db:migrate": "corepack pnpm --filter @gestaonf/database db:migrate",
+    "db:check": "corepack pnpm --filter @gestaonf/database db:check",
+    "db:typecheck": "corepack pnpm --filter @gestaonf/database typecheck",
+    "db:test": "corepack pnpm --filter @gestaonf/database test"
+  }
+}
