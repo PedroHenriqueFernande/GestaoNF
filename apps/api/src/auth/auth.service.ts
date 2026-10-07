@@ -1,5 +1,5 @@
 import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { authSessions, companies, companyUsers, userCredentials, users } from '@gestaonf/database/schema';
+import { authSessions, userCredentials, users } from '@gestaonf/database/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
@@ -33,9 +33,7 @@ export class AuthService {
       const result = await this.database.db.transaction(async (tx) => {
         const [user] = await tx.insert(users).values({ name: input.name, email: input.email }).returning();
         await tx.insert(userCredentials).values({ userId: user.id, passwordHash });
-        const [company] = await tx.insert(companies).values({ name: input.companyName }).returning();
-        await tx.insert(companyUsers).values({ companyId: company.id, userId: user.id, role: 'OWNER' });
-        return { user: { id: user.id, name: user.name, email: user.email }, company: { id: company.id, name: company.name, role: 'OWNER' } };
+        return { user: { id: user.id, name: user.name, email: user.email } };
       });
       return { ...result, ...(await this.issueTokens(result.user.id)) };
     } catch (error) {

@@ -9,7 +9,6 @@ import { Brand } from '../../components/Brand';
 
 const schema = z.object({
   name: z.string(),
-  companyName: z.string(),
   email: z.email('Informe um e-mail válido.'),
   password: z.string().min(12, 'A senha deve ter pelo menos 12 caracteres.'),
 });
@@ -18,12 +17,15 @@ type Values = z.infer<typeof schema>;
 export function AuthScreen() {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { name: '', companyName: '', email: '', password: '' } });
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { name: '', email: '', password: '' } });
   const mutation = useMutation({
     mutationFn: (values: Values) => mode === 'login'
       ? api.login(values.email, values.password)
-      : api.register(values.name.trim(), values.email, values.password, values.companyName.trim()),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['me'] }); },
+      : api.register(values.name.trim(), values.email, values.password),
+    onSuccess: async () => {
+      for (const key of ['companies', 'company', 'customers', 'services']) queryClient.removeQueries({ queryKey: [key] });
+      await queryClient.invalidateQueries({ queryKey: ['me'] });
+    },
   });
 
   function changeMode(next: 'login' | 'register') {
@@ -35,7 +37,6 @@ export function AuthScreen() {
   async function submit(values: Values) {
     if (mode === 'register') {
       if (!values.name.trim()) { form.setError('name', { message: 'Informe seu nome.' }); return; }
-      if (!values.companyName.trim()) { form.setError('companyName', { message: 'Informe o nome da empresa.' }); return; }
     }
     await mutation.mutateAsync(values).catch(() => undefined);
   }
@@ -57,11 +58,10 @@ export function AuthScreen() {
           <div className="auth-card__icon"><LockKeyhole size={22} /></div>
           <p className="eyebrow">ACESSO AO SISTEMA</p>
           <h2>{mode === 'login' ? 'Bem-vindo de volta' : 'Criar sua conta'}</h2>
-          <p className="auth-card__hint">{mode === 'login' ? 'Entre para acessar o cadastro de clientes.' : 'Comece informando seus dados e o nome da sua empresa.'}</p>
+          <p className="auth-card__hint">{mode === 'login' ? 'Entre para acessar o sistema.' : 'Crie sua conta. Em seguida, cadastre sua empresa para acessar o sistema.'}</p>
           <form onSubmit={form.handleSubmit(submit)} noValidate>
             {mode === 'register' && <>
               <label className="field"><span>Seu nome <b>*</b></span><input autoComplete="name" placeholder="Nome completo" {...form.register('name')} aria-invalid={!!form.formState.errors.name} />{form.formState.errors.name && <small className="field-error">{form.formState.errors.name.message}</small>}</label>
-              <label className="field"><span>Nome da empresa <b>*</b></span><input autoComplete="organization" placeholder="Como sua empresa é conhecida" {...form.register('companyName')} aria-invalid={!!form.formState.errors.companyName} />{form.formState.errors.companyName && <small className="field-error">{form.formState.errors.companyName.message}</small>}</label>
             </>}
             <label className="field"><span>E-mail <b>*</b></span><input type="email" autoComplete="email" placeholder="voce@empresa.com.br" {...form.register('email')} aria-invalid={!!form.formState.errors.email} />{form.formState.errors.email && <small className="field-error">{form.formState.errors.email.message}</small>}</label>
             <label className="field"><span>Senha <b>*</b></span><input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="Mínimo de 12 caracteres" {...form.register('password')} aria-invalid={!!form.formState.errors.password} />{form.formState.errors.password && <small className="field-error">{form.formState.errors.password.message}</small>}</label>

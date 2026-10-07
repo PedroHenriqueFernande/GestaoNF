@@ -14,7 +14,7 @@ export class AuthController {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Cria usuário, empresa e vínculo OWNER' })
+  @ApiOperation({ summary: 'Cria a conta do usuário; a empresa é cadastrada depois' })
   @ApiBody({ schema: z.toJSONSchema(registerSchema, { io: 'input' }) as Record<string, unknown> })
   async register(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const input = parseInput(registerSchema, body);

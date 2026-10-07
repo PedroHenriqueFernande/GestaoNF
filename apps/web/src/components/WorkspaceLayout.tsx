@@ -13,13 +13,14 @@ const navigation = [
   { id: 'company', label: 'Empresa', path: '/empresa', icon: Building2 },
 ] as const;
 
-export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, className = '', children }: {
+export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, onboarding = false, className = '', children }: {
   user: User;
   companies?: Company[];
   companyId: string;
   onCompanyChange: (id: string) => void;
   onLogout: () => void;
   loggingOut: boolean;
+  onboarding?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -92,15 +93,19 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
     {mobileOpen && <button type="button" className="workspace-menu-backdrop" aria-label="Fechar menu de navegação" onClick={() => setMobileOpen(false)} />}
     <aside id="workspace-sidebar" ref={sidebarRef} className="workspace-sidebar" role={mobile && mobileOpen ? 'dialog' : undefined} aria-modal={mobile && mobileOpen ? true : undefined} aria-label="Menu principal" aria-hidden={mobile && !mobileOpen ? true : undefined} inert={mobile && !mobileOpen}>
       <div className="workspace-sidebar__brand">
-        <Link to="/Clientes" className="workspace-sidebar__brand-link" aria-label="GestãoNF — Clientes" onClick={() => setMobileOpen(false)}><img src="/gestaonf-logo-dark.svg" alt="GestãoNF" width="196" height="41" /></Link>
+        <Link to={onboarding ? '/empresa' : '/Clientes'} className="workspace-sidebar__brand-link" aria-label="GestãoNF" onClick={() => setMobileOpen(false)}><img src="/gestaonf-logo-dark.svg" alt="GestãoNF" width="196" height="41" /></Link>
         <button type="button" className="workspace-sidebar__close" aria-label="Fechar menu" onClick={() => setMobileOpen(false)}><X size={20} /></button>
       </div>
       <div className="workspace-sidebar__navigation">
         <p className="workspace-sidebar__label">Cadastros</p>
         <nav aria-label="Cadastros">
-          {navigation.map(({ id, label, path, icon: Icon }) => <Link key={id} to={path} className={`workspace-nav-link${section === id ? ' is-active' : ''}`} aria-current={section === id ? 'page' : undefined} aria-label={label} onClick={() => setMobileOpen(false)}>
-            <Icon size={19} strokeWidth={1.8} aria-hidden="true" /><span>{label}</span><ChevronRight className="workspace-nav-link__arrow" size={15} aria-hidden="true" />
-          </Link>)}
+          {(onboarding ? [navigation[2], navigation[0], navigation[1]] : navigation).map(({ id, label, path, icon: Icon }) => onboarding && id !== 'company'
+            ? <button key={id} type="button" className="workspace-nav-link workspace-nav-link--disabled" disabled title="Cadastre uma empresa para liberar esta opção">
+                <Icon size={19} strokeWidth={1.8} aria-hidden="true" /><span>{label}</span><ChevronRight className="workspace-nav-link__arrow" size={15} aria-hidden="true" />
+              </button>
+            : <Link key={id} to={path} className={`workspace-nav-link${section === id ? ' is-active' : ''}`} aria-current={section === id ? 'page' : undefined} aria-label={label} onClick={() => setMobileOpen(false)}>
+                <Icon size={19} strokeWidth={1.8} aria-hidden="true" /><span>{label}</span><ChevronRight className="workspace-nav-link__arrow" size={15} aria-hidden="true" />
+              </Link>)}
         </nav>
       </div>
     </aside>
@@ -113,7 +118,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
           <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={onCompanyChange} />
           <div className="topbar__divider" />
           <span className="user-badge" title={user.email}>{initials(user.name)}</span>
-          <div className="user-info"><strong>{user.name}</strong><span>{company?.role === 'OWNER' ? 'Proprietário' : company?.role ?? 'Usuário'}</span></div>
+          <div className="user-info"><strong>{user.name}</strong><span>{onboarding ? 'Cadastro pendente' : company?.role === 'OWNER' ? 'Proprietário' : company?.role ?? 'Usuário'}</span></div>
           <div ref={profileRef} className="topbar__profile-menu">
             <button ref={profileButtonRef} type="button" className="icon-button topbar__profile-toggle" title="Opções do perfil" aria-label="Opções do perfil" aria-controls={profileOpen ? 'workspace-profile-options' : undefined} aria-expanded={profileOpen} onClick={() => setProfileOpen((value) => !value)}><ChevronDown size={18} strokeWidth={2.2} /></button>
             {profileOpen && <div id="workspace-profile-options" className="topbar__profile-options"><button type="button" onClick={() => { setProfileOpen(false); onLogout(); }} disabled={loggingOut}><LogOut size={16} aria-hidden="true" />Sair</button></div>}

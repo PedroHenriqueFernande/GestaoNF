@@ -18,9 +18,13 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false,
 function SessionGate({ page }: { page: 'customers' | 'services' | 'company' }) {
   useEffect(() => { document.title = `GestãoNF · ${page === 'services' ? 'Serviços' : page === 'company' ? 'Empresa' : 'Clientes'}`; }, [page]);
   const session = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies, enabled: session.isSuccess });
   if (session.isPending) return <div className="startup"><Brand /><div className="loading-line" /><p>Carregando sua área de trabalho...</p></div>;
   if (session.error instanceof ApiError && session.error.status === 401) return <AuthScreen />;
   if (session.isError) return <div className="startup"><Brand /><p>{session.error instanceof Error ? session.error.message : 'Não foi possível carregar o sistema.'}</p><button className="button button--primary" onClick={() => session.refetch()}><RefreshCw size={16} /> Tentar novamente</button></div>;
+  if (companies.isPending) return <div className="startup"><Brand /><div className="loading-line" /><p>Carregando suas empresas...</p></div>;
+  if (companies.isError) return <div className="startup"><Brand /><p>Não foi possível carregar suas empresas.</p><button className="button button--primary" onClick={() => companies.refetch()}><RefreshCw size={16} /> Tentar novamente</button></div>;
+  if (page !== 'company' && companies.data.length === 0) return <Navigate to="/empresa" replace />;
   return page === 'services' ? <ServicesPage user={session.data} /> : page === 'company' ? <CompanyPage user={session.data} /> : <CustomersPage user={session.data} />;
 }
 

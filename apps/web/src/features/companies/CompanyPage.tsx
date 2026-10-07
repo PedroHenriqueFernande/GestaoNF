@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Building2, ChevronRight, FileCheck2, MapPin, Plus, Save, UserRound, X } from 'lucide-react';
-import { api, type CompanyInput, type CompanyProfile, type User } from '../../api/client';
+import { api, type Company, type CompanyInput, type CompanyProfile, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 
 type FormState = Record<keyof CompanyInput, string>;
@@ -50,7 +50,7 @@ export function CompanyPage({ user }: { user: User }) {
   useEffect(() => {
     if (companies.data && !companies.data.some((company) => company.id === companyId)) setCompanyId(companies.data[0]?.id ?? '');
   }, [companies.data, companyId]);
-  useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
+  useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); else sessionStorage.removeItem('gestaonf.companyId'); }, [companyId]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(''), 5000);
@@ -85,6 +85,12 @@ export function CompanyPage({ user }: { user: User }) {
     mutationFn: ({ input, target }: { input: CompanyInput; target: Exclude<Modal, null> }) => target.mode === 'create' ? api.createCompany(input) : api.updateCompany(target.companyId, input),
     onSuccess: async (result, { target }) => {
       queryClient.setQueryData(['company', result.id], result);
+      queryClient.setQueryData<Company[]>(['companies'], (previous) => {
+        const summary = { id: result.id, name: result.name, role: result.role };
+        return previous?.some((item) => item.id === result.id)
+          ? previous.map((item) => item.id === result.id ? summary : item)
+          : [...(previous ?? []), summary];
+      });
       await queryClient.invalidateQueries({ queryKey: ['companies'] });
       if (target.mode === 'create') setCompanyId(result.id);
       setModal(null);
@@ -122,7 +128,7 @@ export function CompanyPage({ user }: { user: User }) {
   function openCompany(id: string, opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'edit', companyId: id }); setForm(emptyForm); save.reset(); setToast(''); }
   function closeModal() { if (!save.isPending) { setModal(null); save.reset(); } }
 
-  return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onCompanyChange={(id) => { setCompanyId(id); setToast(''); }} onLogout={() => logout.mutate()} loggingOut={logout.isPending}>
+  return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onboarding={companies.data?.length === 0} onCompanyChange={(id) => { setCompanyId(id); setToast(''); }} onLogout={() => logout.mutate()} loggingOut={logout.isPending}>
     <main id="workspace-main" className="client-workspace__main company-main" tabIndex={-1}>
       <section className="client-panel company-list-panel" aria-labelledby="company-panel-title">
         <div className="client-panel__title"><h1 id="company-panel-title">Empresas</h1></div>
@@ -132,7 +138,7 @@ export function CompanyPage({ user }: { user: User }) {
           <div className="client-results__heading"><h2>Empresas cadastradas</h2><span>{companies.data?.length ?? 0} {(companies.data?.length ?? 0) === 1 ? 'empresa' : 'empresas'}</span></div>
           {companies.isPending && <div className="table-loading" aria-label="Carregando empresas"><div /><div /><div /></div>}
           {companies.isError && <div className="company-list__message" role="alert"><AlertCircle size={18} /> Não foi possível carregar as empresas. <button type="button" onClick={() => companies.refetch()}>Tentar novamente</button></div>}
-          {companies.isSuccess && companies.data.length === 0 && <div className="client-results__empty"><Building2 size={23} /><p>Nenhuma empresa cadastrada.</p><span>Use o botão Novo para adicionar sua primeira empresa.</span></div>}
+          {companies.isSuccess && companies.data.length === 0 && <div className="client-results__empty company-onboarding"><Building2 size={25} /><p>Cadastre sua primeira empresa</p><span>Esse cadastro é necessário para acessar Clientes, Serviços e as demais funcionalidades.</span><button type="button" className="button button--primary" onClick={(event) => newCompany(event.currentTarget)}><Plus size={15} /> Criar empresa</button></div>}
           {companies.isSuccess && companies.data.length > 0 && <>
             <div className="company-list__head"><span>EMPRESA</span><span>SEU ACESSO</span><span>AÇÃO</span></div>
             {companies.data.map((item) => <button key={item.id} type="button" className={`company-list__item${item.id === companyId ? ' is-current' : ''}`} onClick={(event) => openCompany(item.id, event.currentTarget)} aria-label={`Abrir cadastro de ${item.name}`}>

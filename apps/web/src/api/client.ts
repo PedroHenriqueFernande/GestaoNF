@@ -119,7 +119,7 @@ const json = (value: unknown) => JSON.stringify(value);
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) => request('/auth/login', { method: 'POST', body: json({ email, password, client: 'web' }) }, { retryAuth: false }),
-  register: (name: string, email: string, password: string, companyName: string) => request('/auth/register', { method: 'POST', body: json({ name, email, password, companyName, client: 'web' }) }, { retryAuth: false }),
+  register: (name: string, email: string, password: string) => request('/auth/register', { method: 'POST', body: json({ name, email, password, client: 'web' }) }, { retryAuth: false }),
   logout: () => request<void>('/auth/logout', { method: 'POST', body: '{}' }, { retryAuth: false }),
   companies: () => request<Company[]>('/companies'),
   company: (companyId: string) => request<CompanyProfile>('/companies/current', {}, { companyId }),
