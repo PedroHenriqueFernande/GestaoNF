@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Building2, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, LogOut, Pencil, Plus, Search, XCircle } from 'lucide-react';
+import { AlertCircle, Building2, ChevronLeft, ChevronRight, CircleCheck, Pencil, Plus, Search, XCircle } from 'lucide-react';
 import { api, ApiError, type Service, type ServiceInput, type ServiceList, type User } from '../../api/client';
-import { Brand } from '../../components/Brand';
-import { initials } from '../../utils/format';
+import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { ServiceForm } from './ServiceForm';
 
 type DrawerState = { mode: 'create' } | { mode: 'edit'; service: Service } | null;
@@ -61,7 +60,6 @@ export function ServicesPage({ user }: { user: User }) {
   }, [companies.data, companyId]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
 
-  const company = companies.data?.find((item) => item.id === companyId);
   const listKey = ['services', companyId, searchRequest?.status, searchRequest?.term, searchRequest?.page, searchRequest?.serial] as const;
   const list = useQuery({
     queryKey: listKey,
@@ -146,16 +144,8 @@ export function ServicesPage({ user }: { user: User }) {
     setToast(null);
   }
 
-  return <div className="app-shell client-workspace service-workspace">
-    <header className="topbar"><div className="topbar__inner"><Brand compact /><div className="topbar__right">
-      <div className="company-picker"><Building2 size={16} /><select aria-label="Empresa ativa" value={companyId} onChange={(event) => changeCompany(event.target.value)} disabled={!companies.data?.length}>{companies.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={15} /></div>
-      <div className="topbar__divider" />
-      <span className="user-badge" title={user.email}>{initials(user.name)}</span>
-      <div className="user-info"><strong>{user.name}</strong><span>{company?.role === 'OWNER' ? 'Proprietário' : company?.role ?? 'Usuário'}</span></div>
-      <button type="button" className="icon-button topbar__logout" title="Sair" aria-label="Sair" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut size={18} /></button>
-    </div></div></header>
-
-    <main className="client-workspace__main">
+  return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onCompanyChange={changeCompany} onLogout={() => logout.mutate()} loggingOut={logout.isPending} className="service-workspace">
+    <main id="workspace-main" className="client-workspace__main" tabIndex={-1}>
       {companies.isError && <div className="notice notice--error" role="alert"><AlertCircle size={18} /> Não foi possível carregar as empresas. <button onClick={() => companies.refetch()}>Tentar novamente</button></div>}
       {companies.data?.length === 0 && <div className="empty-panel"><Building2 size={28} /><h2>Nenhuma empresa disponível</h2><p>Seu usuário ainda não possui vínculo ativo com uma empresa.</p></div>}
       {!!companyId && <section className="client-panel" aria-labelledby="service-panel-title">
@@ -190,5 +180,5 @@ export function ServicesPage({ user }: { user: User }) {
 
     {confirmService && <div className="modal-backdrop"><div className="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="service-confirm-title" aria-describedby="service-confirm-description"><div className="confirm-card__icon"><XCircle size={24} /></div><h2 id="service-confirm-title">Inativar serviço?</h2><p id="service-confirm-description"><strong>{confirmService.name}</strong> ficará marcado como inativo. O cadastro e o histórico serão preservados.</p>{inactivateMutation.isError && <div className="inline-error" role="alert">{inactivateMutation.error instanceof Error ? inactivateMutation.error.message : 'Não foi possível inativar.'}</div>}<div className="confirm-card__actions"><button className="button button--secondary" onClick={() => setConfirmService(null)} disabled={inactivateMutation.isPending}>Cancelar</button><button className="button button--danger" onClick={() => inactivateMutation.mutate(confirmService)} disabled={inactivateMutation.isPending}>{inactivateMutation.isPending ? 'Inativando...' : 'Inativar serviço'}</button></div></div></div>}
     {toast && <div key={toast.id} className={`action-toast action-toast--${toast.tone}`} role={toast.tone === 'error' ? 'alert' : 'status'}><div className="action-toast__body"><strong>{toast.title}</strong><span>{toast.description}</span></div></div>}
-  </div>;
+  </WorkspaceLayout>;
 }

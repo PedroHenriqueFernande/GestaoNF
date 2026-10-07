@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Building2, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, LogOut, Pencil, Plus, Search, UserRoundX } from 'lucide-react';
+import { AlertCircle, Building2, ChevronLeft, ChevronRight, CircleCheck, Pencil, Plus, Search, UserRoundX } from 'lucide-react';
 import { api, ApiError, type Customer, type CustomerInput, type CustomerList, type User } from '../../api/client';
-import { Brand } from '../../components/Brand';
-import { formatPhone, formatTaxId, initials } from '../../utils/format';
+import { WorkspaceLayout } from '../../components/WorkspaceLayout';
+import { formatPhone, formatTaxId } from '../../utils/format';
 import { CustomerForm } from './CustomerForm';
 
 type DrawerState = { mode: 'create' } | { mode: 'edit'; customer: Customer } | null;
@@ -56,7 +56,6 @@ export function CustomersPage({ user }: { user: User }) {
   }, [companies.data, companyId]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
 
-  const company = companies.data?.find((item) => item.id === companyId);
   const listKey = ['customers', companyId, searchRequest?.status, searchRequest?.term, searchRequest?.page, searchRequest?.serial] as const;
   const list = useQuery({
     queryKey: listKey,
@@ -137,16 +136,8 @@ export function CustomersPage({ user }: { user: User }) {
     setToast(null);
   }
 
-  return <div className="app-shell client-workspace">
-    <header className="topbar"><div className="topbar__inner"><Brand compact /><div className="topbar__right">
-      <div className="company-picker"><Building2 size={16} /><select aria-label="Empresa ativa" value={companyId} onChange={(event) => changeCompany(event.target.value)} disabled={!companies.data?.length}>{companies.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={15} /></div>
-      <div className="topbar__divider" />
-      <span className="user-badge" title={user.email}>{initials(user.name)}</span>
-      <div className="user-info"><strong>{user.name}</strong><span>{company?.role === 'OWNER' ? 'Proprietário' : company?.role ?? 'Usuário'}</span></div>
-      <button type="button" className="icon-button topbar__logout" title="Sair" aria-label="Sair" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut size={18} /></button>
-    </div></div></header>
-
-    <main className="client-workspace__main">
+  return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onCompanyChange={changeCompany} onLogout={() => logout.mutate()} loggingOut={logout.isPending}>
+    <main id="workspace-main" className="client-workspace__main" tabIndex={-1}>
       {companies.isError && <div className="notice notice--error" role="alert"><AlertCircle size={18} /> Não foi possível carregar as empresas. <button onClick={() => companies.refetch()}>Tentar novamente</button></div>}
       {companies.data?.length === 0 && <div className="empty-panel"><Building2 size={28} /><h2>Nenhuma empresa disponível</h2><p>Seu usuário ainda não possui vínculo ativo com uma empresa.</p></div>}
 
@@ -184,5 +175,5 @@ export function CustomersPage({ user }: { user: User }) {
     {toast && <div key={toast.id} className={`action-toast action-toast--${toast.tone}`} role={toast.tone === 'error' ? 'alert' : 'status'}>
       <div className="action-toast__body"><strong>{toast.title}</strong><span>{toast.description}</span></div>
     </div>}
-  </div>;
+  </WorkspaceLayout>;
 }
