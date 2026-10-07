@@ -112,6 +112,7 @@
 .workspace-sidebar__close{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:none;width:32px;height:32px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--sidebar-text);place-items:center}
 .workspace-sidebar__close:hover{background:var(--sidebar-hover)}
 .workspace-sidebar__navigation{padding:27px 12px 20px}
+.workspace-nav-group+.workspace-nav-group{margin-top:25px}
 .workspace-sidebar__label{height:15px;margin:0 12px 12px;color:var(--sidebar-muted);font-size:9px;font-weight:650;letter-spacing:1.3px;text-transform:uppercase;white-space:nowrap}
 .workspace-sidebar nav{display:grid;gap:5px}
 .workspace-nav-link{position:relative;display:flex;align-items:center;gap:12px;min-height:43px;padding:0 12px;border:1px solid transparent;border-radius:5px;color:var(--sidebar-text);text-decoration:none;font-size:12px;font-weight:500;white-space:nowrap;transition:background .16s,color .16s}

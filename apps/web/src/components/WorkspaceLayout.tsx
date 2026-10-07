@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { Building2, ChevronDown, ChevronRight, ClipboardList, LogOut, Menu, UsersRound, X } from 'lucide-react';
+import { Building2, ChevronDown, ChevronRight, ClipboardList, LogOut, Menu, ReceiptText, UsersRound, X } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { initials } from '../utils/format';
 import { CompanyPicker } from './CompanyPicker';
@@ -11,6 +11,7 @@ const navigation = [
   { id: 'customers', label: 'Clientes', path: '/Clientes', icon: UsersRound },
   { id: 'services', label: 'Serviços', path: '/serviço', icon: ClipboardList },
   { id: 'company', label: 'Empresa', path: '/empresa', icon: Building2 },
+  { id: 'sales', label: 'Portal de Serviços', path: '/portal-de-servicos', icon: ReceiptText },
 ] as const;
 
 export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, onboarding = false, className = '', children }: {
@@ -33,7 +34,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : 'customers';
+  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : 'customers';
   const company = companies?.find((item) => item.id === companyId);
 
   useEffect(() => {
@@ -97,9 +98,13 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
         <button type="button" className="workspace-sidebar__close" aria-label="Fechar menu" onClick={() => setMobileOpen(false)}><X size={20} /></button>
       </div>
       <div className="workspace-sidebar__navigation">
-        <p className="workspace-sidebar__label">Cadastros</p>
-        <nav aria-label="Cadastros">
-          {(onboarding ? [navigation[2], navigation[0], navigation[1]] : navigation).map(({ id, label, path, icon: Icon }) => onboarding && id !== 'company'
+        {([
+          { label: 'Gestão', items: [navigation[3]] },
+          { label: 'Cadastros', items: onboarding ? [navigation[2], navigation[0], navigation[1]] : [navigation[0], navigation[1], navigation[2]] },
+        ] as const).map((group) => <div className="workspace-nav-group" key={group.label}>
+        <p className="workspace-sidebar__label">{group.label}</p>
+        <nav aria-label={group.label}>
+          {group.items.map(({ id, label, path, icon: Icon }) => onboarding && id !== 'company'
             ? <button key={id} type="button" className="workspace-nav-link workspace-nav-link--disabled" disabled title="Cadastre uma empresa para liberar esta opção">
                 <Icon size={19} strokeWidth={1.8} aria-hidden="true" /><span>{label}</span><ChevronRight className="workspace-nav-link__arrow" size={15} aria-hidden="true" />
               </button>
@@ -107,6 +112,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
                 <Icon size={19} strokeWidth={1.8} aria-hidden="true" /><span>{label}</span><ChevronRight className="workspace-nav-link__arrow" size={15} aria-hidden="true" />
               </Link>)}
         </nav>
+        </div>)}
       </div>
     </aside>
     <div className="workspace-content" inert={mobile && mobileOpen}>

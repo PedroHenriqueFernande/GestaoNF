@@ -1,0 +1,1 @@
+ALTER TABLE "receivables" ALTER COLUMN "due_on" DROP NOT NULL;

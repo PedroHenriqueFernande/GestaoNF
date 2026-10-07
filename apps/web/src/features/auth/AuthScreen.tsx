@@ -23,7 +23,7 @@ export function AuthScreen() {
       ? api.login(values.email, values.password)
       : api.register(values.name.trim(), values.email, values.password),
     onSuccess: async () => {
-      for (const key of ['companies', 'company', 'customers', 'services']) queryClient.removeQueries({ queryKey: [key] });
+      for (const key of ['companies', 'company', 'customers', 'services', 'sales', 'sale']) queryClient.removeQueries({ queryKey: [key] });
       await queryClient.invalidateQueries({ queryKey: ['me'] });
     },
   });

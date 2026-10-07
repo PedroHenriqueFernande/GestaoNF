@@ -1,0 +1,3 @@
+ALTER TABLE "sale_installments" ALTER COLUMN "due_on" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "sale_installments" ADD COLUMN "initial_received_on" date;--> statement-breakpoint
+ALTER TABLE "sale_installments" ADD CONSTRAINT "sale_installments_payment_date_chk" CHECK (("sale_installments"."due_on" IS NOT NULL AND "sale_installments"."initial_received_on" IS NULL) OR ("sale_installments"."due_on" IS NULL AND "sale_installments"."initial_received_on" IS NOT NULL));

@@ -62,6 +62,25 @@ export type MunicipalTaxCode = {
   createdAt: string;
   updatedAt: string;
 };
+export type PaymentMethod = 'PIX' | 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'BOLETO' | 'TRANSFER' | 'OTHER';
+export type SaleStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELED';
+export type SaleItemInput = { serviceId: string; quantity: string; unitPrice: string; discountAmount: string; description?: string | null; performedOn?: string | null };
+export type SaleInstallmentInput = { paymentMethod: PaymentMethod; amount: string } & ({ dueOn: string; receivedOn?: never } | { receivedOn: string; dueOn?: never });
+export type SaleInput = { customerId: string; soldOn: string; workOrderNumber?: string | null; notes?: string | null; items: SaleItemInput[]; installments: SaleInstallmentInput[] };
+export type Sale = {
+  id: string; companyId: string; orderCode: string; workOrderNumber: string | null; customerId: string;
+  customerNameSnapshot: string; customerKindSnapshot: 'PF' | 'PJ'; customerTaxIdSnapshot: string | null;
+  status: SaleStatus; soldOn: string | null; subtotalAmount: string; discountAmount: string; totalAmount: string;
+  notes: string | null; version: number; createdAt: string; confirmedAt: string | null;
+};
+export type SaleMovement = { id: string; kind: 'RECEIPT' | 'REVERSAL'; amount: string; effectiveOn: string; paymentMethod: PaymentMethod | null; reference: string | null; reversesMovementId: string | null; recordedAt: string };
+export type SaleInstallment = { id: string; number: number; controlCode: string | null; paymentMethod: PaymentMethod;
+  amount: string; dueOn: string | null; initialReceivedOn: string | null; receivableId: string | null; paidAmount: string; remainingAmount: string;
+  paymentStatus: 'DRAFT' | 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE'; movements: SaleMovement[] };
+export type SaleItem = { id: string; serviceId: string; position: number; serviceNameSnapshot: string; descriptionSnapshot: string | null;
+  quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string };
+export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[] };
+export type SaleList = { items: Sale[]; total: number; limit: number; offset: number };
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
@@ -147,4 +166,23 @@ export const api = {
     request<MunicipalTaxCode>(`/services/${serviceId}/municipal-tax-codes/${municipalityIbgeCode}`, { method: 'PUT', body: json({ municipalTaxCode }) }, { companyId }),
   removeMunicipalTaxCode: (companyId: string, serviceId: string, municipalityIbgeCode: string) =>
     request<void>(`/services/${serviceId}/municipal-tax-codes/${municipalityIbgeCode}`, { method: 'DELETE' }, { companyId }),
+  sales: (companyId: string, params: { search: string; status: SaleStatus | 'ALL'; page: number; limit: number }) => {
+    const query = new URLSearchParams({ status: params.status, offset: String(params.page * params.limit), limit: String(params.limit) });
+    if (params.search) query.set('search', params.search);
+    return request<SaleList>(`/sales?${query}`, {}, { companyId });
+  },
+  sale: (companyId: string, id: string) => request<SaleDetail>(`/sales/${id}`, {}, { companyId }),
+  createSale: (companyId: string, input: SaleInput, key: string) => request<SaleDetail>('/sales', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  updateSale: (companyId: string, id: string, expectedVersion: number, input: SaleInput) =>
+    request<SaleDetail>(`/sales/${id}`, { method: 'PATCH', body: json({ ...input, expectedVersion }) }, { companyId }),
+  confirmSale: (companyId: string, id: string, expectedVersion: number, initialReceipts: { installmentId: string; amount: string; paymentMethod: PaymentMethod; receivedOn: string }[]) =>
+    request<SaleDetail>(`/sales/${id}/confirm`, { method: 'POST', body: json({ expectedVersion, initialReceipts }) }, { companyId }),
+  updateSaleWorkOrder: (companyId: string, id: string, expectedVersion: number, workOrderNumber: string | null) =>
+    request<SaleDetail>(`/sales/${id}/work-order-number`, { method: 'PATCH', body: json({ expectedVersion, workOrderNumber }) }, { companyId }),
+  cancelSale: (companyId: string, id: string, expectedVersion: number, reason: string) =>
+    request<SaleDetail>(`/sales/${id}/cancel`, { method: 'POST', body: json({ expectedVersion, reason }) }, { companyId }),
+  receiveSaleInstallment: (companyId: string, saleId: string, installmentId: string, input: { amount: string; paymentMethod: PaymentMethod; receivedOn: string; reference?: string | null }, key: string) =>
+    request<SaleDetail>(`/sales/${saleId}/installments/${installmentId}/receipts`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  reverseSaleReceipt: (companyId: string, saleId: string, movementId: string, reason: string, key: string) =>
+    request<SaleDetail>(`/sales/${saleId}/receipts/${movementId}/reverse`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ reason }) }, { companyId }),
 };

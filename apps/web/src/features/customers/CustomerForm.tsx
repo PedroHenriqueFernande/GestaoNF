@@ -69,8 +69,8 @@ function payload(values: Values): CustomerInput {
   };
 }
 
-function Field({ label, required, error, hint, children }: { label: string; required?: boolean; error?: string; hint?: string; children: ReactNode }) {
-  return <label className="field"><span>{label}{required && <b> *</b>}</span>{children}{hint && <small className="field-hint">{hint}</small>}{error && <small className="field-error">{error}</small>}</label>;
+function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {
+  return <label className="field"><span>{label}</span>{children}{hint && <small className="field-hint">{hint}</small>}{error && <small className="field-error">{error}</small>}</label>;
 }
 
 export function CustomerForm({ customer, onClose, onSave, saving, saveError }: {
@@ -127,7 +127,7 @@ export function CustomerForm({ customer, onClose, onSave, saving, saveError }: {
             <button type="button" className={kind === 'PJ' ? 'is-selected' : ''} onClick={() => form.setValue('kind', 'PJ', { shouldValidate: true })}><Building2 size={17} /> Pessoa jurídica</button>
           </div>
           <div className="form-grid">
-            <Field label={kind === 'PF' ? 'Nome completo' : 'Razão social'} required error={errors.name?.message}><Controller name="name" control={form.control} render={({ field }) => <input {...field} ref={(element) => { field.ref(element); nameRef.current = element; }} placeholder={kind === 'PF' ? 'Ex.: Ana Oliveira' : 'Ex.: Empresa Exemplo Ltda.'} aria-invalid={!!errors.name} />} /></Field>
+            <Field label={kind === 'PF' ? 'Nome completo' : 'Razão social'} error={errors.name?.message}><Controller name="name" control={form.control} render={({ field }) => <input {...field} ref={(element) => { field.ref(element); nameRef.current = element; }} placeholder={kind === 'PF' ? 'Ex.: Ana Oliveira' : 'Ex.: Empresa Exemplo Ltda.'} aria-invalid={!!errors.name} />} /></Field>
             {kind === 'PJ' && <Field label="Nome fantasia" error={errors.tradeName?.message}><input placeholder="Nome conhecido comercialmente" {...form.register('tradeName')} /></Field>}
             <Field label={kind === 'PF' ? 'CPF' : 'CNPJ'} error={errors.taxId?.message} hint="Opcional no cadastro; exigido quando a operação fiscal pedir."><Controller name="taxId" control={form.control} render={({ field }) => <input value={field.value} onChange={(event) => field.onChange(formatTaxId(event.target.value, kind))} onBlur={field.onBlur} placeholder={kind === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'} inputMode={kind === 'PF' ? 'numeric' : 'text'} aria-invalid={!!errors.taxId} />} /></Field>
           </div>
