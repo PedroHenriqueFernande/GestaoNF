@@ -77,3 +77,29 @@
 .client-results .pagination{padding-left:8px;padding-right:8px}
 .client-panel .notice{margin:10px 6px 0}
 @media(max-width:740px){.client-workspace .topbar__inner{padding:0 16px}.client-workspace__main{padding:16px 12px 42px}.client-panel{padding:8px 8px 10px}.client-panel__title{padding-left:12px}.client-search{margin:12px 4px 8px;padding:6px}.client-search input{text-align:left}.client-panel__actions{padding:0 5px}.client-results{margin:16px 4px 0}.client-results__heading{padding:15px 5px 10px}.client-results .mobile-customer{padding-left:5px;padding-right:5px}.client-panel .notice{margin:10px 4px 0}}
+
+.service-workspace .services-table{min-width:880px}
+.service-workspace .services-table td:nth-child(3){white-space:nowrap;font-variant-numeric:tabular-nums}
+.service-workspace .services-table .customer-cell{max-width:250px}
+.service-tax-code{color:var(--primary-dark);font-weight:650;white-space:nowrap}
+.service-classification-pending{color:var(--muted);font-weight:550}
+.service-drawer .form-section-heading{margin-top:24px}
+.service-fiscal-note{display:flex;align-items:flex-start;gap:10px;margin:0 0 18px;padding:5px 0 5px 12px;border-left:3px solid var(--primary);color:var(--muted);font-size:11px;line-height:1.5}
+.service-fiscal-note svg{flex:none;color:var(--primary)}
+.service-municipal-pending{display:flex;align-items:flex-start;gap:9px;margin:22px 0 3px;padding-top:17px;border-top:1px solid var(--border);color:var(--muted);font-size:11px;line-height:1.5}
+.service-municipal-pending svg{flex:none;color:var(--primary)}
+.municipal-codes .form-section-heading{margin-top:24px}
+.municipal-codes__empty{margin:0 0 12px;color:var(--muted);font-size:11px}
+.municipal-codes__list{display:grid;gap:1px;margin-bottom:13px;border:1px solid var(--border);border-radius:5px;overflow:hidden}
+.municipal-codes__row{display:grid;grid-template-columns:1fr 1fr 29px 29px;align-items:center;gap:7px;padding:7px 9px;background:var(--surface);font-size:10.5px;color:var(--muted)}
+.municipal-codes__row+.municipal-codes__row{border-top:1px solid var(--border)}
+.municipal-codes__row strong{color:var(--text);font-variant-numeric:tabular-nums}
+.municipal-codes__row button{width:27px;height:27px;display:grid;place-items:center;border:0;border-radius:4px;background:transparent;color:var(--primary)}
+.municipal-codes__row button:hover{background:var(--primary-light)}
+.municipal-codes__row button:last-child{color:var(--danger)}
+.municipal-codes__form{display:grid;grid-template-columns:1fr 1fr auto;align-items:end;gap:9px}
+.municipal-codes__form .button{height:39px;min-height:39px;font-size:11px;padding:0 10px}
+.municipal-codes__feedback,.municipal-codes__error{margin:10px 0 0;font-size:10.5px;line-height:1.45}
+.municipal-codes__feedback{color:var(--primary-dark)}
+.municipal-codes__error{color:var(--danger)}
+@media(max-width:560px){.municipal-codes__form{grid-template-columns:1fr 1fr}.municipal-codes__form .button{grid-column:1/-1}.municipal-codes__row{grid-template-columns:1fr 1fr 27px 27px;gap:4px;padding:7px 5px}.municipal-codes__row span{font-size:9px}}

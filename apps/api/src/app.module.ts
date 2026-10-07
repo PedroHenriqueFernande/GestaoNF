@@ -4,6 +4,7 @@ import { DatabaseModule, DatabaseService } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CompaniesController } from './companies/companies.controller.js';
 import { CustomersModule } from './customers/customers.module.js';
+import { ServicesModule } from './services/services.module.js';
 
 @Controller('health')
 class HealthController {
@@ -15,5 +16,5 @@ class HealthController {
   }
 }
 
-@Module({ imports: [DatabaseModule, AuthModule, CustomersModule], controllers: [CompaniesController, HealthController] })
+@Module({ imports: [DatabaseModule, AuthModule, CustomersModule, ServicesModule], controllers: [CompaniesController, HealthController] })
 export class AppModule {}

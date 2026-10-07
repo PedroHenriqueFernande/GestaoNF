@@ -27,6 +27,31 @@ export type Customer = {
 };
 export type CustomerInput = Pick<Customer, 'kind' | 'name' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'notes' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode'>;
 export type CustomerList = { items: Customer[]; total: number; limit: number; offset: number };
+export type Service = {
+  id: string;
+  companyId: string;
+  internalCode: string | null;
+  name: string;
+  description: string | null;
+  unitLabel: string;
+  suggestedUnitPrice: string | null;
+  nationalTaxCode: string | null;
+  nbsCode: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  fiscalClassificationStatus: 'PENDING_NATIONAL_CODE' | 'NATIONAL_CODE_PROVIDED';
+  createdAt: string;
+  updatedAt: string;
+};
+export type ServiceInput = Pick<Service, 'name' | 'internalCode' | 'description' | 'unitLabel' | 'suggestedUnitPrice' | 'nationalTaxCode' | 'nbsCode'>;
+export type ServiceList = { items: Service[]; total: number; limit: number; offset: number };
+export type MunicipalTaxCode = {
+  companyId: string;
+  serviceId: string;
+  municipalityIbgeCode: string;
+  municipalTaxCode: string;
+  createdAt: string;
+  updatedAt: string;
+};
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
@@ -96,4 +121,17 @@ export const api = {
   createCustomer: (companyId: string, input: CustomerInput) => request<Customer>('/customers', { method: 'POST', body: json(input) }, { companyId }),
   updateCustomer: (companyId: string, id: string, input: Partial<CustomerInput> | { status: 'ACTIVE' }) => request<Customer>(`/customers/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
   inactivateCustomer: (companyId: string, id: string) => request<void>(`/customers/${id}`, { method: 'DELETE' }, { companyId }),
+  services: (companyId: string, params: { search: string; status: 'ACTIVE' | 'INACTIVE'; page: number; limit: number }) => {
+    const query = new URLSearchParams({ status: params.status, offset: String(params.page * params.limit), limit: String(params.limit) });
+    if (params.search) query.set('search', params.search);
+    return request<ServiceList>(`/services?${query}`, {}, { companyId });
+  },
+  createService: (companyId: string, input: ServiceInput) => request<Service>('/services', { method: 'POST', body: json(input) }, { companyId }),
+  updateService: (companyId: string, id: string, input: Partial<ServiceInput> | { status: 'ACTIVE' }) => request<Service>(`/services/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
+  inactivateService: (companyId: string, id: string) => request<void>(`/services/${id}`, { method: 'DELETE' }, { companyId }),
+  municipalTaxCodes: (companyId: string, serviceId: string) => request<MunicipalTaxCode[]>(`/services/${serviceId}/municipal-tax-codes`, {}, { companyId }),
+  upsertMunicipalTaxCode: (companyId: string, serviceId: string, municipalityIbgeCode: string, municipalTaxCode: string) =>
+    request<MunicipalTaxCode>(`/services/${serviceId}/municipal-tax-codes/${municipalityIbgeCode}`, { method: 'PUT', body: json({ municipalTaxCode }) }, { companyId }),
+  removeMunicipalTaxCode: (companyId: string, serviceId: string, municipalityIbgeCode: string) =>
+    request<void>(`/services/${serviceId}/municipal-tax-codes/${municipalityIbgeCode}`, { method: 'DELETE' }, { companyId }),
 };

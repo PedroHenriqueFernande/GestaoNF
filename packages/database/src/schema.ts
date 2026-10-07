@@ -3,6 +3,7 @@ import {
   check,
   foreignKey,
   index,
+  numeric,
   pgTable,
   primaryKey,
   timestamp,
@@ -133,5 +134,64 @@ export const customers = pgTable(
     check('customers_city_ibge_code_chk', sql`${table.cityIbgeCode} IS NULL OR ${table.cityIbgeCode} ~ '^[0-9]{7}$'`),
     check('customers_state_code_chk', sql`${table.stateCode} IS NULL OR ${table.stateCode} ~ '^[A-Z]{2}$'`),
     check('customers_country_code_chk', sql`${table.countryCode} ~ '^[A-Z]{2}$'`),
+  ],
+);
+
+export const services = pgTable(
+  'services',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+    internalCode: varchar('internal_code', { length: 20 }),
+    name: varchar('name', { length: 200 }).notNull(),
+    description: text('description'),
+    unitLabel: varchar('unit_label', { length: 16 }).default('UN').notNull(),
+    suggestedUnitPrice: numeric('suggested_unit_price', { precision: 15, scale: 2 }),
+    nationalTaxCode: varchar('national_tax_code', { length: 6 }),
+    nbsCode: varchar('nbs_code', { length: 9 }),
+    status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
+    createdByUserId: uuid('created_by_user_id'),
+    ...timestamps,
+  },
+  (table) => [
+    unique('services_company_id_id_uq').on(table.companyId, table.id),
+    uniqueIndex('services_company_internal_code_uq')
+      .on(table.companyId, sql`lower(${table.internalCode})`)
+      .where(sql`${table.internalCode} IS NOT NULL`),
+    index('services_company_status_name_id_idx').on(table.companyId, table.status, table.name, table.id),
+    foreignKey({
+      name: 'services_created_by_company_user_fk',
+      columns: [table.companyId, table.createdByUserId],
+      foreignColumns: [companyUsers.companyId, companyUsers.userId],
+    }).onDelete('restrict'),
+    check('services_name_chk', sql`length(btrim(${table.name})) > 0`),
+    check('services_unit_chk', sql`length(btrim(${table.unitLabel})) > 0`),
+    check('services_internal_code_chk', sql`${table.internalCode} IS NULL OR length(btrim(${table.internalCode})) > 0`),
+    check('services_description_chk', sql`${table.description} IS NULL OR char_length(${table.description}) <= 1000`),
+    check('services_price_chk', sql`${table.suggestedUnitPrice} IS NULL OR ${table.suggestedUnitPrice} >= 0`),
+    check('services_national_tax_code_chk', sql`${table.nationalTaxCode} IS NULL OR ${table.nationalTaxCode} ~ '^[0-9]{6}$'`),
+    check('services_nbs_code_chk', sql`${table.nbsCode} IS NULL OR ${table.nbsCode} ~ '^[0-9]{9}$'`),
+    check('services_status_chk', sql`${table.status} IN ('ACTIVE', 'INACTIVE')`),
+  ],
+);
+
+export const serviceMunicipalTaxCodes = pgTable(
+  'service_municipal_tax_codes',
+  {
+    companyId: uuid('company_id').notNull(),
+    serviceId: uuid('service_id').notNull(),
+    municipalityIbgeCode: varchar('municipality_ibge_code', { length: 7 }).notNull(),
+    municipalTaxCode: varchar('municipal_tax_code', { length: 3 }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ name: 'service_municipal_tax_codes_pk', columns: [table.companyId, table.serviceId, table.municipalityIbgeCode] }),
+    foreignKey({
+      name: 'service_municipal_tax_codes_service_fk',
+      columns: [table.companyId, table.serviceId],
+      foreignColumns: [services.companyId, services.id],
+    }).onDelete('restrict'),
+    check('service_municipal_tax_codes_city_chk', sql`${table.municipalityIbgeCode} ~ '^[0-9]{7}$'`),
+    check('service_municipal_tax_codes_code_chk', sql`${table.municipalTaxCode} ~ '^[0-9]{3}$'`),
   ],
 );
