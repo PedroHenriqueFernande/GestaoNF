@@ -2,7 +2,7 @@ import { Controller, Get, Inject, Module } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DatabaseModule, DatabaseService } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
-import { CompaniesController } from './companies/companies.controller.js';
+import { CompaniesModule } from './companies/companies.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { ServicesModule } from './services/services.module.js';
 
@@ -16,5 +16,5 @@ class HealthController {
   }
 }
 
-@Module({ imports: [DatabaseModule, AuthModule, CustomersModule, ServicesModule], controllers: [CompaniesController, HealthController] })
+@Module({ imports: [DatabaseModule, AuthModule, CompaniesModule, CustomersModule, ServicesModule], controllers: [HealthController] })
 export class AppModule {}

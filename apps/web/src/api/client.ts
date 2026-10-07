@@ -2,6 +2,16 @@ const API_URL = (import.meta.env.VITE_API_URL ?? `${window.location.protocol}//$
 
 export type User = { id: string; name: string; email: string };
 export type Company = { id: string; name: string; role: string };
+export type CompanyProfile = Company & {
+  kind: 'PF' | 'PJ'; legalName: string | null; tradeName: string | null; taxId: string | null; email: string | null; phone: string | null;
+  street: string | null; number: string | null; complement: string | null; district: string | null;
+  postalCode: string | null; cityName: string | null; cityIbgeCode: string | null; stateCode: string | null;
+  countryCode: string; municipalRegistration: string | null; stateRegistration: string | null; cnaeCode: string | null;
+  simplesNationalOption: '1' | '2' | '3' | '4' | null;
+  simplesTaxationRegime: '1' | '2' | '3' | null; specialTaxRegime: '0' | '1' | '2' | '3' | '4' | '5' | '6' | null;
+  timezone: string; locale: string; status: 'ACTIVE' | 'INACTIVE'; createdAt: string; updatedAt: string;
+};
+export type CompanyInput = Pick<CompanyProfile, 'name' | 'kind' | 'legalName' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode' | 'municipalRegistration' | 'stateRegistration' | 'cnaeCode' | 'simplesNationalOption' | 'simplesTaxationRegime' | 'specialTaxRegime'>;
 export type Customer = {
   id: string;
   companyId: string;
@@ -112,6 +122,9 @@ export const api = {
   register: (name: string, email: string, password: string, companyName: string) => request('/auth/register', { method: 'POST', body: json({ name, email, password, companyName, client: 'web' }) }, { retryAuth: false }),
   logout: () => request<void>('/auth/logout', { method: 'POST', body: '{}' }, { retryAuth: false }),
   companies: () => request<Company[]>('/companies'),
+  company: (companyId: string) => request<CompanyProfile>('/companies/current', {}, { companyId }),
+  createCompany: (input: CompanyInput) => request<CompanyProfile>('/companies', { method: 'POST', body: json(input) }),
+  updateCompany: (companyId: string, input: CompanyInput) => request<CompanyProfile>('/companies/current', { method: 'PATCH', body: json(input) }, { companyId }),
   customers: (companyId: string, params: { search: string; status: 'ACTIVE' | 'INACTIVE' | 'ALL'; page: number; limit: number }) => {
     const query = new URLSearchParams({ status: params.status, offset: String(params.page * params.limit), limit: String(params.limit) });
     if (params.search) query.set('search', params.search);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { ChevronDown, ChevronRight, ClipboardList, LogOut, Menu, UsersRound, X } from 'lucide-react';
+import { Building2, ChevronDown, ChevronRight, ClipboardList, LogOut, Menu, UsersRound, X } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { initials } from '../utils/format';
 import { CompanyPicker } from './CompanyPicker';
@@ -10,6 +10,7 @@ const MOBILE_QUERY = '(max-width: 959px)';
 const navigation = [
   { id: 'customers', label: 'Clientes', path: '/Clientes', icon: UsersRound },
   { id: 'services', label: 'Serviços', path: '/serviço', icon: ClipboardList },
+  { id: 'company', label: 'Empresa', path: '/empresa', icon: Building2 },
 ] as const;
 
 export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, className = '', children }: {
@@ -31,7 +32,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = pathname === '/serviço' || pathname === '/servicos' ? 'services' : 'customers';
+  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : 'customers';
   const company = companies?.find((item) => item.id === companyId);
 
   useEffect(() => {

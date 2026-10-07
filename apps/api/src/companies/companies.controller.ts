@@ -1,20 +1,37 @@
-import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { companies, companyUsers } from '@gestaonf/database/schema';
-import { and, eq } from 'drizzle-orm';
-import { AccessGuard, type RequestContext } from '../auth/access.guard.js';
-import { DatabaseService } from '../database/database.module.js';
+import { Body, Controller, Get, Inject, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
+import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { parseInput } from '../common/validate.js';
+import { CompaniesService } from './companies.service.js';
+import { createCompanySchema, updateCompanySchema } from './companies.schemas.js';
 
 @ApiTags('Empresas')
 @ApiBearerAuth()
 @UseGuards(AccessGuard)
 @Controller('companies')
 export class CompaniesController {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(@Inject(CompaniesService) private readonly companies: CompaniesService) {}
   @Get()
-  async list(@Req() request: RequestContext) {
-    return this.database.db.select({ id: companies.id, name: companies.name, role: companyUsers.role }).from(companyUsers)
-      .innerJoin(companies, eq(companies.id, companyUsers.companyId))
-      .where(and(eq(companyUsers.userId, request.userId!), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE')));
+  list(@Req() request: RequestContext) { return this.companies.list(request.userId!); }
+
+  @Post()
+  @ApiOperation({ summary: 'Cria empresa e vincula o usuário como proprietário' })
+  @ApiBody({ schema: z.toJSONSchema(createCompanySchema, { io: 'input' }) as Record<string, unknown> })
+  create(@Req() request: RequestContext, @Body() body: unknown) {
+    return this.companies.create(request.userId!, parseInput(createCompanySchema, body));
+  }
+
+  @Get('current')
+  @UseGuards(CompanyGuard)
+  @ApiHeader({ name: 'X-Company-Id', required: true })
+  get(@Req() request: RequestContext) { return this.companies.get(request.companyId!, request.userId!); }
+
+  @Patch('current')
+  @UseGuards(CompanyGuard)
+  @ApiHeader({ name: 'X-Company-Id', required: true })
+  @ApiBody({ schema: z.toJSONSchema(updateCompanySchema, { io: 'input' }) as Record<string, unknown> })
+  update(@Req() request: RequestContext, @Body() body: unknown) {
+    return this.companies.update(request.companyId!, request.userId!, parseInput(updateCompanySchema, body));
   }
 }

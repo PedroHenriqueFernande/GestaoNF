@@ -1,0 +1,2 @@
+ALTER TABLE "companies" ADD COLUMN "trade_name" varchar(200);--> statement-breakpoint
+ALTER TABLE "companies" ADD CONSTRAINT "companies_trade_name_kind_chk" CHECK ("companies"."kind" = 'PJ' OR "companies"."trade_name" IS NULL);

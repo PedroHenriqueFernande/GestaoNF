@@ -22,6 +22,20 @@
       "when": 1791344156163,
       "tag": "0002_neat_havok",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791348001765,
+      "tag": "0003_lush_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791348265737,
+      "tag": "0004_shiny_stick",
+      "breakpoints": true
     }
   ]
 }
