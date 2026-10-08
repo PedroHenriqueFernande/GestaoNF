@@ -5,7 +5,7 @@ import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.g
 import { parseInput } from '../common/validate.js';
 import { SalesPaymentsService } from './sales-payments.service.js';
 import { SalesService } from './sales.service.js';
-import { cancelSaleSchema, confirmSaleSchema, createSaleSchema, idempotencyKeySchema, listSalesSchema, receiptSchema, reverseReceiptSchema, saleIdSchema, updateSaleSchema, workOrderSchema } from './sales.schemas.js';
+import { cancelSaleSchema, confirmSaleSchema, createSaleSchema, idempotencyKeySchema, listSalesSchema, receiptSchema, reverseReceiptSchema, saleIdSchema, updateConfirmedSaleSchema, updateSaleSchema, workOrderSchema } from './sales.schemas.js';
 
 @ApiTags('Portal de Serviços')
 @ApiBearerAuth()
@@ -34,6 +34,13 @@ export class SalesController {
   @ApiBody({ schema: z.toJSONSchema(updateSaleSchema, { io: 'input' }) as Record<string, unknown> })
   update(@Req() req: RequestContext, @Param('id') id: string, @Body() body: unknown) {
     return this.service.update(req.companyId!, parseInput(saleIdSchema, id), req.userId!, parseInput(updateSaleSchema, body));
+  }
+
+  @Patch(':id/confirmed')
+  @ApiOperation({ summary: 'Atualiza venda confirmada preservando códigos e histórico dos recebimentos' })
+  @ApiBody({ schema: z.toJSONSchema(updateConfirmedSaleSchema, { io: 'input' }) as Record<string, unknown> })
+  updateConfirmed(@Req() req: RequestContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.service.updateConfirmed(req.companyId!, parseInput(saleIdSchema, id), req.userId!, parseInput(updateConfirmedSaleSchema, body));
   }
 
   @Post(':id/confirm')

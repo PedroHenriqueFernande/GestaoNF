@@ -1,0 +1,1 @@
+CREATE INDEX "receivable_movements_company_receipt_date_idx" ON "receivable_movements" USING btree ("company_id","effective_on","receivable_id") WHERE "receivable_movements"."kind" = 'RECEIPT';

@@ -1,0 +1,3 @@
+CREATE INDEX "receivables_company_sale_idx" ON "receivables" USING btree ("company_id","sale_id","sale_installment_id");--> statement-breakpoint
+CREATE INDEX "sale_installments_company_paycode_idx" ON "sale_installments" USING btree ("company_id","paycode","sale_id") WHERE "sale_installments"."paycode" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "sales_company_finance_recent_idx" ON "sales" USING btree ("company_id","confirmed_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE "sales"."status" = 'CONFIRMED';

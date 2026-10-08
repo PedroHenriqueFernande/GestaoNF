@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { api, ApiError, type Company, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service } from '../../api/client';
+import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service } from '../../api/client';
 import { CustomerForm } from '../customers/CustomerForm';
 import { SaleDropdown } from './SaleDropdown';
 
-type ItemLine = { key: string; serviceId: string; name: string; quantity: string; unitPrice: string; discountAmount: string; discountPercent: string; discountBasis: 'AMOUNT' | 'PERCENT' };
-type PaymentLine = { key: string; paymentMethod: PaymentMethod; amount: string; dueOn: string; state: 'PAID' | 'PENDING'; receivedOn: string };
+type ItemLine = { key: string; id?: string; serviceId: string; name: string; description?: string | null; performedOn?: string | null; quantity: string; unitPrice: string; discountAmount: string; discountPercent: string; discountBasis: 'AMOUNT' | 'PERCENT' };
+type PaymentLine = { key: string; id?: string; paycode?: string | null; hasHistory?: boolean; initiallyPaid?: boolean; paidAmount?: string; paymentMethod: PaymentMethod; amount: string; dueOn: string; state: 'PAID' | 'PENDING'; receivedOn: string };
 const methods: { value: PaymentMethod; label: string }[] = [
   { value: 'PIX', label: 'PIX' }, { value: 'CASH', label: 'Dinheiro' }, { value: 'CREDIT_CARD', label: 'Cartão de crédito' },
   { value: 'DEBIT_CARD', label: 'Cartão de débito' }, { value: 'BOLETO', label: 'Boleto' }, { value: 'TRANSFER', label: 'Transferência' }, { value: 'OTHER', label: 'Outra' },
@@ -41,9 +41,10 @@ function validItem(line: ItemLine) {
     Number.isFinite(discountCents(line.discountAmount)) && discountCents(line.discountAmount) <= gross;
 }
 
-export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClose, onCreated }: {
-  companyId: string; companies: Company[]; draft?: SaleDetail | null; onCompanyChange: (id: string) => void; onClose: () => void; onCreated: (sale: SaleDetail) => void;
+export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClose, onDetails, onCreated }: {
+  companyId: string; companies: Company[]; draft?: SaleDetail | null; onCompanyChange: (id: string) => void; onClose: () => void; onDetails?: () => void; onCreated: (sale: SaleDetail) => void;
 }) {
+  const confirmedEdit = draft?.status === 'CONFIRMED';
   const [customerId, setCustomerId] = useState(draft?.customerId ?? '');
   const [customerInput, setCustomerInput] = useState(draft?.customerNameSnapshot ?? '');
   const [customerTerm, setCustomerTerm] = useState('');
@@ -55,9 +56,9 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [serviceHighlight, setServiceHighlight] = useState(0);
-  const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), serviceId: item.serviceId, name: item.serviceNameSnapshot, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT' })) ?? []);
+  const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), id: item.id, serviceId: item.serviceId, name: item.serviceNameSnapshot, description: item.descriptionSnapshot, performedOn: item.performedOn, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT' })) ?? []);
   const [serviceDraft, setServiceDraft] = useState<ItemLine | null>(null);
-  const [payments, setPayments] = useState<PaymentLine[]>(draft?.installments.map((part) => ({ key: crypto.randomUUID(), paymentMethod: part.paymentMethod, amount: part.amount, dueOn: part.dueOn ?? today(), state: part.initialReceivedOn ? 'PAID' : 'PENDING', receivedOn: part.initialReceivedOn ?? today() })) ?? [{ key: crypto.randomUUID(), paymentMethod: 'PIX', amount: '', dueOn: today(), state: 'PENDING', receivedOn: today() }]);
+  const [payments, setPayments] = useState<PaymentLine[]>(draft?.installments.map((part) => ({ key: crypto.randomUUID(), id: part.id, paycode: part.paycode, hasHistory: part.movements.length > 0, initiallyPaid: !!part.initialReceivedOn, paidAmount: part.paidAmount, paymentMethod: part.paymentMethod, amount: part.amount, dueOn: part.dueOn ?? today(), state: part.initialReceivedOn ? 'PAID' : 'PENDING', receivedOn: part.initialReceivedOn ?? today() })) ?? [{ key: crypto.randomUUID(), paymentMethod: 'PIX', amount: '', dueOn: today(), state: 'PENDING', receivedOn: today() }]);
   const [soldOn, setSoldOn] = useState(draft?.soldOn ?? today());
   const [workOrderNumber, setWorkOrderNumber] = useState(draft?.workOrderNumber ?? '');
   const [notes, setNotes] = useState(draft?.notes ?? '');
@@ -180,10 +181,11 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const saveDraftOnly = draft?.status === 'DRAFT' && (event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-action') === 'save-draft';
     setError('');
     if (!companyId || !customerId || !items.length || !soldOn) { setError('Selecione a empresa e o cliente e adicione ao menos um serviço.'); return; }
     if (!payments.length || items.some((line) => !validItem(line)) ||
-      payments.some((line) => !fixed(line.amount, 2) || (line.state === 'PENDING' ? !line.dueOn : !line.receivedOn))) {
+      payments.some((line) => !fixed(line.amount, 2) || money(line.amount) <= 0 || (line.state === 'PENDING' ? !line.dueOn : !line.receivedOn))) {
       setError('Revise quantidade, valores e datas dos serviços e dos recebimentos.'); return;
     }
     if (Math.abs(Math.round(total * 100) - Math.round(paymentTotal * 100)) > 0 || total <= 0) {
@@ -191,18 +193,28 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     }
     const payload: SaleInput = {
       customerId, soldOn, workOrderNumber: workOrderNumber.trim() || null, notes: notes.trim() || null,
-      items: items.map((line) => ({ serviceId: line.serviceId, quantity: fixed(line.quantity, 4)!, unitPrice: fixed(line.unitPrice, 2)!, discountAmount: fixed(line.discountAmount || '0', 2)! })),
+      items: items.map((line) => ({ serviceId: line.serviceId, quantity: fixed(line.quantity, 4)!, unitPrice: fixed(line.unitPrice, 2)!, discountAmount: fixed(line.discountAmount || '0', 2)!, ...(line.description !== undefined ? { description: line.description } : {}), ...(line.performedOn !== undefined ? { performedOn: line.performedOn } : {}) })),
       installments: payments.map((line) => ({ paymentMethod: line.paymentMethod, amount: fixed(line.amount, 2)!, ...(line.state === 'PAID' ? { receivedOn: line.receivedOn } : { dueOn: line.dueOn }) })),
     };
     setSaving(true);
     try {
-      const draft = pendingDraft ? await api.updateSale(companyId, pendingDraft.id, pendingDraft.version, payload) : await api.createSale(companyId, payload, createKey.current);
-      setPendingDraft(draft);
-      const initialReceipts = payments.flatMap((line, index) => line.state === 'PAID' ? [{ installmentId: draft.installments[index].id, amount: fixed(line.amount, 2)!, paymentMethod: line.paymentMethod, receivedOn: line.receivedOn }] : []);
-      const confirmed = await api.confirmSale(companyId, draft.id, draft.version, initialReceipts);
+      if (confirmedEdit && draft) {
+        const edited: ConfirmedSaleInput = { ...payload, items: items.map((line, index) => ({
+          ...payload.items[index], ...(line.id ? { id: line.id } : {}),
+        })), installments: payments.map((line, index) => ({
+          ...payload.installments[index], ...(line.id ? { id: line.id } : {}),
+        })) };
+        onCreated(await api.updateConfirmedSale(companyId, draft.id, draft.version, edited));
+        return;
+      }
+      const savedDraft = pendingDraft ? await api.updateSale(companyId, pendingDraft.id, pendingDraft.version, payload) : await api.createSale(companyId, payload, createKey.current);
+      setPendingDraft(savedDraft);
+      if (saveDraftOnly) { onCreated(savedDraft); return; }
+      const initialReceipts = payments.flatMap((line, index) => line.state === 'PAID' ? [{ installmentId: savedDraft.installments[index].id, amount: fixed(line.amount, 2)!, paymentMethod: line.paymentMethod, receivedOn: line.receivedOn }] : []);
+      const confirmed = await api.confirmSale(companyId, savedDraft.id, savedDraft.version, initialReceipts);
       onCreated(confirmed);
     } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 409 && pendingDraft) {
+      if (!confirmedEdit && cause instanceof ApiError && cause.status === 409 && pendingDraft) {
         const latest = await api.sale(companyId, pendingDraft.id).catch(() => null);
         if (latest?.status === 'CONFIRMED') { onCreated(latest); return; }
       }
@@ -211,8 +223,8 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   }
 
   return <main id="workspace-main" className="sale-editor-page" tabIndex={-1}>
-    <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving}><ArrowLeft size={17} /> Portal de Serviços</button><span>{draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
-    <div className="sale-editor-heading"><div><span className="sale-eyebrow">GESTÃO DE SERVIÇOS</span><h1>{draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1><p>Registre o serviço, combine os recebimentos e marque o que já foi recebido.</p></div><div className="sale-editor-heading__total"><span>TOTAL DA VENDA</span><strong>{brl(total)}</strong></div></div>
+    <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving}><ArrowLeft size={17} /> Portal de Serviços</button><span>{confirmedEdit ? `EDITAR PEDIDO #${draft.orderCode}` : draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
+    <div className="sale-editor-heading"><div><span className="sale-eyebrow">GESTÃO DE SERVIÇOS</span><h1>{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1><p>{confirmedEdit ? 'Atualize cliente, serviços, valores, vencimentos e demais dados do pedido.' : 'Registre o serviço, combine os recebimentos e marque o que já foi recebido.'}</p>{onDetails && <button type="button" className="sale-editor-details" onClick={onDetails} disabled={saving}>Ver detalhes, baixas e histórico</button>}</div><div className="sale-editor-heading__total"><span>TOTAL DA VENDA</span><strong>{brl(total)}</strong></div></div>
     <form onSubmit={submit} className="sale-editor-form">
       <section className="sale-editor-section sale-editor-section--identity"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2>Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div></div>
         <div className="sale-identity-grid">
@@ -270,20 +282,20 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
       </section>
 
       <section ref={paymentRef} id="sale-payment-section" className="sale-editor-section"><div className="sale-section-heading"><div className="sale-section-number">03</div><div><h2>Formas de pagamento</h2><p>Defina valores, vencimentos e recebimentos já realizados</p></div></div>
-        <div className="sale-payment-list">{payments.map((line, index) => <div key={line.key} className="sale-payment-card"><div className="sale-payment-card__title"><strong>{index === 0 ? 'Recebimento' : `Recebimento ${index + 1}`}</strong><button type="button" aria-label={`Remover recebimento ${index + 1}`} onClick={() => setPayments((current) => current.filter((entry) => entry.key !== line.key))}><Trash2 size={15} /></button></div><div className="sale-payment-grid">
-          <div className="sale-field"><span>Forma planejada</span><SaleDropdown label={`Forma planejada do recebimento ${index + 1}`} value={line.paymentMethod} options={methods} onChange={(paymentMethod) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, paymentMethod } : entry))} /></div>
-          <label className="sale-field"><span>Valor</span><input type="number" min="0.01" step="0.01" value={line.amount} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, amount: event.target.value } : entry))} placeholder="0,00" /></label>
-          <div className="sale-field"><span>Situação</span><SaleDropdown label={`Situação do recebimento ${index + 1}`} value={line.state} options={paymentStates} onChange={(state) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, state } : entry))} /></div>
+        <div className="sale-payment-list">{payments.map((line, index) => <div key={line.key} className="sale-payment-card"><div className="sale-payment-card__title"><strong>{index === 0 ? 'Recebimento' : `Recebimento ${index + 1}`}{line.paycode && <small> · Código {line.paycode}</small>}</strong><button type="button" aria-label={`Remover recebimento ${index + 1}`} title={line.hasHistory ? 'Recebimento com histórico de baixas não pode ser removido' : 'Remover recebimento'} disabled={line.hasHistory} onClick={() => setPayments((current) => current.filter((entry) => entry.key !== line.key))}><Trash2 size={15} /></button></div><div className="sale-payment-grid">
+          <div className="sale-field"><span>Forma de pagamento</span><SaleDropdown label={`Forma de pagamento do recebimento ${index + 1}`} value={line.paymentMethod} options={methods} disabled={line.initiallyPaid && line.hasHistory} onChange={(paymentMethod) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, paymentMethod } : entry))} /></div>
+          <label className="sale-field"><span>Valor</span><input type="number" min={line.paidAmount && Number(line.paidAmount) > 0 ? line.paidAmount : '0.01'} step="0.01" value={line.amount} disabled={line.initiallyPaid && line.hasHistory} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, amount: event.target.value } : entry))} placeholder="0,00" /></label>
+          <div className="sale-field"><span>Situação</span><SaleDropdown label={`Situação do recebimento ${index + 1}`} value={line.state} options={paymentStates} disabled={line.hasHistory} onChange={(state) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, state } : entry))} /></div>
           {line.state === 'PENDING' && <label className="sale-field"><span>Vencimento</span><input type="date" value={line.dueOn} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, dueOn: event.target.value } : entry))} required /></label>}
-          {line.state === 'PAID' && <label className="sale-field"><span>Recebido em</span><input type="date" value={line.receivedOn} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, receivedOn: event.target.value } : entry))} required /></label>}
-        </div></div>)}</div>
+          {line.state === 'PAID' && <label className="sale-field"><span>Recebido em</span><input type="date" value={line.receivedOn} disabled={line.hasHistory} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, receivedOn: event.target.value } : entry))} required /></label>}
+        </div>{line.hasHistory && <p className="sale-payment-history">{brl(Number(line.paidAmount ?? '0'))} já baixados. O histórico do pagamento será preservado.</p>}</div>)}</div>
         <button type="button" className="sale-add-payment" onClick={addPayment}><Plus size={15} /> Adicionar forma de pagamento</button>
         <div className={`sale-payment-balance${Math.round(total * 100) === Math.round(paymentTotal * 100) && total > 0 ? ' is-matched' : ''}`}><span>Distribuído nos recebimentos</span><strong>{brl(paymentTotal)} <small>de {brl(total)}</small></strong></div>
       </section>
 
       <section className="sale-editor-section sale-editor-section--notes"><label className="sale-field"><span>Observações da venda</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Informações úteis para acompanhar este serviço" rows={3} /></label></section>
-      {error && <div className="sale-form-error" role="alert">{error}{pendingDraft && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
-      <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>Pedido e recebimentos serão registrados na empresa selecionada.</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving}>Cancelar</button><button type="submit" className="button button--primary" disabled={saving}>{saving ? 'Registrando...' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
+      {error && <div className="sale-form-error" role="alert">{error}{pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
+      <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>{confirmedEdit ? 'Os códigos e o histórico dos pagamentos serão preservados.' : 'Pedido e recebimentos serão registrados na empresa selecionada.'}</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving}>Cancelar</button>{draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving}>Salvar alterações</button>}<button type="submit" className="button button--primary" disabled={saving}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
     </form>
     {selectedService && serviceDraft && <SaleServiceModal
       service={selectedService}

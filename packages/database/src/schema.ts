@@ -266,6 +266,8 @@ export const sales = pgTable(
     index('sales_company_customer_date_id_idx').on(table.companyId, table.customerId, table.soldOn.desc(), table.id),
     index('sales_company_work_order_number_idx').on(table.companyId, table.workOrderNumber)
       .where(sql`${table.workOrderNumber} IS NOT NULL`),
+    index('sales_company_finance_recent_idx').on(table.companyId, table.confirmedAt.desc(), table.id.desc())
+      .where(sql`${table.status} = 'CONFIRMED'`),
     foreignKey({
       name: 'sales_customer_company_fk',
       columns: [table.companyId, table.customerId],
@@ -340,7 +342,7 @@ export const saleInstallments = pgTable(
     companyId: uuid('company_id').notNull(),
     saleId: uuid('sale_id').notNull(),
     number: integer('number').notNull(),
-    controlCode: char('control_code', { length: 4 }),
+    paycode: char('paycode', { length: 4 }),
     paymentMethod: varchar('payment_method', { length: 24 }).notNull(),
     amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
     dueOn: date('due_on'),
@@ -350,8 +352,10 @@ export const saleInstallments = pgTable(
   (table) => [
     unique('sale_installments_company_sale_id_uq').on(table.companyId, table.saleId, table.id),
     unique('sale_installments_company_sale_number_uq').on(table.companyId, table.saleId, table.number),
-    uniqueIndex('sale_installments_company_sale_code_uq').on(table.companyId, table.saleId, table.controlCode)
-      .where(sql`${table.controlCode} IS NOT NULL`),
+    uniqueIndex('sale_installments_company_sale_paycode_uq').on(table.companyId, table.saleId, table.paycode)
+      .where(sql`${table.paycode} IS NOT NULL`),
+    index('sale_installments_company_paycode_idx').on(table.companyId, table.paycode, table.saleId)
+      .where(sql`${table.paycode} IS NOT NULL`),
     index('sale_installments_company_due_on_idx').on(table.companyId, table.dueOn),
     foreignKey({
       name: 'sale_installments_sale_company_fk',
@@ -359,7 +363,7 @@ export const saleInstallments = pgTable(
       foreignColumns: [sales.companyId, sales.id],
     }).onDelete('restrict'),
     check('sale_installments_number_chk', sql`${table.number} > 0`),
-    check('sale_installments_code_chk', sql`${table.controlCode} IS NULL OR ${table.controlCode} ~ '^[0-9]{4}$'`),
+    check('sale_installments_paycode_chk', sql`${table.paycode} IS NULL OR ${table.paycode} ~ '^[0-9]{4}$'`),
     check('sale_installments_method_chk', sql`${table.paymentMethod} IN ('PIX', 'CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'BOLETO', 'TRANSFER', 'OTHER')`),
     check('sale_installments_amount_chk', sql`${table.amount} > 0`),
     check('sale_installments_payment_date_chk', sql`(${table.dueOn} IS NOT NULL AND ${table.initialReceivedOn} IS NULL) OR (${table.dueOn} IS NULL AND ${table.initialReceivedOn} IS NOT NULL)`),
@@ -381,6 +385,7 @@ export const receivables = pgTable(
     unique('receivables_company_id_uq').on(table.companyId, table.id),
     unique('receivables_company_installment_uq').on(table.companyId, table.saleInstallmentId),
     index('receivables_company_due_on_idx').on(table.companyId, table.dueOn),
+    index('receivables_company_sale_idx').on(table.companyId, table.saleId, table.saleInstallmentId),
     foreignKey({
       name: 'receivables_installment_company_sale_fk',
       columns: [table.companyId, table.saleId, table.saleInstallmentId],
@@ -413,6 +418,8 @@ export const receivableMovements = pgTable(
     uniqueIndex('receivable_movements_one_reversal_uq').on(table.companyId, table.reversesMovementId)
       .where(sql`${table.reversesMovementId} IS NOT NULL`),
     index('receivable_movements_company_receivable_recorded_idx').on(table.companyId, table.receivableId, table.recordedAt),
+    index('receivable_movements_company_receipt_date_idx').on(table.companyId, table.effectiveOn, table.receivableId)
+      .where(sql`${table.kind} = 'RECEIPT'`),
     foreignKey({
       name: 'receivable_movements_receivable_company_fk',
       columns: [table.companyId, table.receivableId],

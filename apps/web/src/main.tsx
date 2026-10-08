@@ -14,11 +14,12 @@ const CustomersPage = lazy(() => import('./features/customers/CustomersPage').th
 const ServicesPage = lazy(() => import('./features/services/ServicesPage').then((module) => ({ default: module.ServicesPage })));
 const CompanyPage = lazy(() => import('./features/companies/CompanyPage').then((module) => ({ default: module.CompanyPage })));
 const SalesPage = lazy(() => import('./features/sales/SalesPage').then((module) => ({ default: module.SalesPage })));
+const FinancePage = lazy(() => import('./features/finance/FinancePage').then((module) => ({ default: module.FinancePage })));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000, refetchOnWindowFocus: false } } });
 
-function SessionGate({ page }: { page: 'customers' | 'services' | 'company' | 'sales' }) {
-  useEffect(() => { document.title = `GestãoNF · ${page === 'services' ? 'Serviços' : page === 'company' ? 'Empresa' : page === 'sales' ? 'Portal de Serviços' : 'Clientes'}`; }, [page]);
+function SessionGate({ page }: { page: 'customers' | 'services' | 'company' | 'sales' | 'finance' }) {
+  useEffect(() => { document.title = `GestãoNF · ${page === 'services' ? 'Serviços' : page === 'company' ? 'Empresa' : page === 'sales' ? 'Portal de Serviços' : page === 'finance' ? 'Financeiro' : 'Clientes'}`; }, [page]);
   const session = useQuery({ queryKey: ['me'], queryFn: api.me });
   const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies, enabled: session.isSuccess });
   if (session.isPending) return <div className="startup"><Brand /><div className="loading-line" /><p>Carregando sua área de trabalho...</p></div>;
@@ -28,7 +29,7 @@ function SessionGate({ page }: { page: 'customers' | 'services' | 'company' | 's
   if (companies.isError) return <div className="startup"><Brand /><p>Não foi possível carregar suas empresas.</p><button className="button button--primary" onClick={() => companies.refetch()}><RefreshCw size={16} /> Tentar novamente</button></div>;
   if (page !== 'company' && companies.data.length === 0) return <Navigate to="/empresa" replace />;
   return <Suspense fallback={<div className="startup"><Brand /><div className="loading-line" /><p>Carregando sua área de trabalho...</p></div>}>
-    {page === 'services' ? <ServicesPage user={session.data} /> : page === 'company' ? <CompanyPage user={session.data} /> : page === 'sales' ? <SalesPage user={session.data} /> : <CustomersPage user={session.data} />}
+    {page === 'services' ? <ServicesPage user={session.data} /> : page === 'company' ? <CompanyPage user={session.data} /> : page === 'sales' ? <SalesPage user={session.data} /> : page === 'finance' ? <FinancePage user={session.data} /> : <CustomersPage user={session.data} />}
   </Suspense>;
 }
 
@@ -43,6 +44,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/Servicos" element={<SessionGate page="services" />} />
           <Route path="/empresa" element={<SessionGate page="company" />} />
           <Route path="/portal-de-servicos" element={<SessionGate page="sales" />} />
+          <Route path="/financeiro" element={<SessionGate page="finance" />} />
           <Route path="*" element={<Navigate to="/Clientes" replace />} />
         </Routes>
       </BrowserRouter>

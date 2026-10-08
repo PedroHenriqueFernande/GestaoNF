@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { Building2, ChevronDown, ChevronRight, ClipboardList, LogOut, Menu, ReceiptText, UsersRound, X } from 'lucide-react';
+import { Building2, ChevronDown, ChevronRight, ClipboardList, Landmark, LogOut, Menu, ReceiptText, UsersRound, X } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { initials } from '../utils/format';
 import { CompanyPicker } from './CompanyPicker';
@@ -12,6 +12,7 @@ const navigation = [
   { id: 'services', label: 'Serviços', path: '/serviço', icon: ClipboardList },
   { id: 'company', label: 'Empresa', path: '/empresa', icon: Building2 },
   { id: 'sales', label: 'Portal de Serviços', path: '/portal-de-servicos', icon: ReceiptText },
+  { id: 'finance', label: 'Financeiro', path: '/financeiro', icon: Landmark },
 ] as const;
 
 export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, onboarding = false, className = '', children }: {
@@ -34,7 +35,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : 'customers';
+  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : 'customers';
   const company = companies?.find((item) => item.id === companyId);
 
   useEffect(() => {
@@ -99,7 +100,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
       </div>
       <div className="workspace-sidebar__navigation">
         {([
-          { label: 'Gestão', items: [navigation[3]] },
+          { label: 'Gestão', items: [navigation[3], navigation[4]] },
           { label: 'Cadastros', items: onboarding ? [navigation[2], navigation[0], navigation[1]] : [navigation[0], navigation[1], navigation[2]] },
         ] as const).map((group) => <div className="workspace-nav-group" key={group.label}>
         <p className="workspace-sidebar__label">{group.label}</p>

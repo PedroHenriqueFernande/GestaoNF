@@ -67,6 +67,7 @@ export type SaleStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELED';
 export type SaleItemInput = { serviceId: string; quantity: string; unitPrice: string; discountAmount: string; description?: string | null; performedOn?: string | null };
 export type SaleInstallmentInput = { paymentMethod: PaymentMethod; amount: string } & ({ dueOn: string; receivedOn?: never } | { receivedOn: string; dueOn?: never });
 export type SaleInput = { customerId: string; soldOn: string; workOrderNumber?: string | null; notes?: string | null; items: SaleItemInput[]; installments: SaleInstallmentInput[] };
+export type ConfirmedSaleInput = Omit<SaleInput, 'items' | 'installments'> & { items: (SaleItemInput & { id?: string })[]; installments: (SaleInstallmentInput & { id?: string })[] };
 export type Sale = {
   id: string; companyId: string; orderCode: string; workOrderNumber: string | null; customerId: string;
   customerNameSnapshot: string; customerKindSnapshot: 'PF' | 'PJ'; customerTaxIdSnapshot: string | null;
@@ -74,13 +75,39 @@ export type Sale = {
   notes: string | null; version: number; createdAt: string; confirmedAt: string | null;
 };
 export type SaleMovement = { id: string; kind: 'RECEIPT' | 'REVERSAL'; amount: string; effectiveOn: string; paymentMethod: PaymentMethod | null; reference: string | null; reversesMovementId: string | null; recordedAt: string };
-export type SaleInstallment = { id: string; number: number; controlCode: string | null; paymentMethod: PaymentMethod;
+export type SaleInstallment = { id: string; number: number; paycode: string | null; paymentMethod: PaymentMethod;
   amount: string; dueOn: string | null; initialReceivedOn: string | null; receivableId: string | null; paidAmount: string; remainingAmount: string;
   paymentStatus: 'DRAFT' | 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE'; movements: SaleMovement[] };
 export type SaleItem = { id: string; serviceId: string; position: number; serviceNameSnapshot: string; descriptionSnapshot: string | null;
-  quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string };
+  quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string; performedOn: string | null };
 export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[] };
 export type SaleList = { items: Sale[]; total: number; limit: number; offset: number };
+export type FinanceSettlement = 'ALL' | 'PENDING' | 'PARTIAL' | 'PAID';
+export type FinanceDateBasis = 'SALE' | 'DUE' | 'RECEIPT';
+export type FinanceOverdue = 'ALL' | 'ONLY' | 'EXCLUDE';
+export type FinanceFilters = {
+  customerId?: string; search?: string; orderCode?: string; paycode?: string; workOrderNumber?: string;
+  dateFrom?: string; dateTo?: string; dateBasis: FinanceDateBasis; settlement: FinanceSettlement;
+  overdue: FinanceOverdue; paymentMethod?: PaymentMethod;
+};
+export type FinancePayment = {
+  receivableId: string; installmentId: string; number: number; paycode: string; paymentMethod: PaymentMethod;
+  originalAmount: string; paidAmount: string; remainingAmount: string; dueOn: string | null;
+  initialReceivedOn: string | null; settlement: Exclude<FinanceSettlement, 'ALL'>;
+  isOverdue: boolean; matchesFilter: boolean;
+};
+export type FinanceSale = {
+  saleId: string; version: number; orderCode: string; workOrderNumber: string | null; customerId: string;
+  customerName: string; soldOn: string; confirmedAt: string; totalAmount: string;
+  paidAmount: string; remainingAmount: string; payments: FinancePayment[];
+};
+export type FinanceMovement = SaleMovement;
+export type FinanceDetail = Omit<FinanceSale, 'payments'> & { payments: (FinancePayment & { movements: FinanceMovement[] })[] };
+export type FinanceList = { items: FinanceSale[]; nextCursor: string | null; limit: number };
+export type FinanceSummary = {
+  paymentCount: number; saleCount: number; originalAmount: string; paidAmount: string;
+  remainingAmount: string; overdueAmount: string;
+};
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
@@ -175,6 +202,8 @@ export const api = {
   createSale: (companyId: string, input: SaleInput, key: string) => request<SaleDetail>('/sales', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
   updateSale: (companyId: string, id: string, expectedVersion: number, input: SaleInput) =>
     request<SaleDetail>(`/sales/${id}`, { method: 'PATCH', body: json({ ...input, expectedVersion }) }, { companyId }),
+  updateConfirmedSale: (companyId: string, id: string, expectedVersion: number, input: ConfirmedSaleInput) =>
+    request<SaleDetail>(`/sales/${id}/confirmed`, { method: 'PATCH', body: json({ ...input, expectedVersion }) }, { companyId }),
   confirmSale: (companyId: string, id: string, expectedVersion: number, initialReceipts: { installmentId: string; amount: string; paymentMethod: PaymentMethod; receivedOn: string }[]) =>
     request<SaleDetail>(`/sales/${id}/confirm`, { method: 'POST', body: json({ expectedVersion, initialReceipts }) }, { companyId }),
   updateSaleWorkOrder: (companyId: string, id: string, expectedVersion: number, workOrderNumber: string | null) =>
@@ -185,4 +214,18 @@ export const api = {
     request<SaleDetail>(`/sales/${saleId}/installments/${installmentId}/receipts`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
   reverseSaleReceipt: (companyId: string, saleId: string, movementId: string, reason: string, key: string) =>
     request<SaleDetail>(`/sales/${saleId}/receipts/${movementId}/reverse`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ reason }) }, { companyId }),
+  financeReceivables: (companyId: string, filters: FinanceFilters, cursor: string | null, limit = 20) => {
+    const query = new URLSearchParams({ limit: String(limit) });
+    for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+    if (cursor) query.set('cursor', cursor);
+    return request<FinanceList>(`/finance/receivables?${query}`, {}, { companyId });
+  },
+  financeSummary: (companyId: string, filters: FinanceFilters) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+    return request<FinanceSummary>(`/finance/receivables/summary?${query}`, {}, { companyId });
+  },
+  financeDetail: (companyId: string, saleId: string) => request<FinanceDetail>(`/finance/receivables/${saleId}`, {}, { companyId }),
+  updateFinanceDates: (companyId: string, saleId: string, installmentId: string, input: { expectedVersion: number; soldOn: string; dueOn: string | null }) =>
+    request<FinanceDetail>(`/finance/receivables/${saleId}/payments/${installmentId}/dates`, { method: 'PATCH', body: json(input) }, { companyId }),
 };

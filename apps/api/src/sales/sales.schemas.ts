@@ -36,6 +36,17 @@ const saleFields = {
 
 export const createSaleSchema = z.strictObject(saleFields);
 export const updateSaleSchema = z.strictObject({ ...saleFields, expectedVersion: z.number().int().positive() });
+const confirmedInstallment = z.union([
+  z.strictObject({ ...installmentFields, id: z.uuid().optional(), dueOn: date }),
+  z.strictObject({ ...installmentFields, id: z.uuid().optional(), receivedOn: date }),
+]);
+export const updateConfirmedSaleSchema = z.strictObject({
+  ...saleFields,
+  soldOn: date,
+  items: z.array(item.extend({ id: z.uuid().optional() })).min(1).max(100),
+  installments: z.array(confirmedInstallment).min(1).max(100),
+  expectedVersion: z.number().int().positive(),
+});
 export const initialReceiptSchema = z.strictObject({
   installmentId: z.uuid(),
   amount: positiveMoney,
@@ -64,6 +75,7 @@ export const idempotencyKeySchema = z.uuid();
 
 export type CreateSaleInput = z.output<typeof createSaleSchema>;
 export type UpdateSaleInput = z.output<typeof updateSaleSchema>;
+export type UpdateConfirmedSaleInput = z.output<typeof updateConfirmedSaleSchema>;
 export type ConfirmSaleInput = z.output<typeof confirmSaleSchema>;
 export type ListSalesInput = z.output<typeof listSalesSchema>;
 export type ReceiptInput = z.output<typeof receiptSchema>;

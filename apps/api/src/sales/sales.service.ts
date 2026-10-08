@@ -5,8 +5,8 @@ import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from 'dr
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
 import { amount, cents, itemAmounts } from './sales-money.js';
-import { installmentCodes, orderCode } from './sales-codes.js';
-import type { ConfirmSaleInput, CreateSaleInput, ListSalesInput, UpdateSaleInput } from './sales.schemas.js';
+import { orderCode, paycodes } from './sales-codes.js';
+import type { ConfirmSaleInput, CreateSaleInput, ListSalesInput, UpdateConfirmedSaleInput, UpdateSaleInput } from './sales.schemas.js';
 
 function constraintName(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null;
@@ -19,22 +19,28 @@ function constraintName(error: unknown): string | null {
 export class SalesService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  private async prepare(companyId: string, input: CreateSaleInput) {
+  private async prepare(companyId: string, input: CreateSaleInput | UpdateConfirmedSaleInput, existing?: { customerId: string; serviceIds: Set<string>; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }) {
     const [customer] = await this.database.db.select().from(customers)
       .where(and(eq(customers.companyId, companyId), eq(customers.id, input.customerId))).limit(1);
-    if (!customer || customer.status !== 'ACTIVE') throw new BadRequestException('Selecione um cliente ativo desta empresa');
+    if (!customer || (customer.status !== 'ACTIVE' && customer.id !== existing?.customerId)) throw new BadRequestException('Selecione um cliente ativo desta empresa');
     const itemRows = [];
     for (const [index, item] of input.items.entries()) {
       const [service] = await this.database.db.select().from(services)
         .where(and(eq(services.companyId, companyId), eq(services.id, item.serviceId))).limit(1);
-      if (!service || service.status !== 'ACTIVE') throw new BadRequestException('Selecione apenas serviços ativos desta empresa');
+      if (!service || (service.status !== 'ACTIVE' && !existing?.serviceIds.has(service.id))) throw new BadRequestException('Selecione apenas serviços ativos desta empresa');
       const calculated = itemAmounts(item.quantity, item.unitPrice, item.discountAmount);
+      const original = 'id' in item && typeof item.id === 'string' ? existing?.itemSnapshots?.get(item.id) : undefined;
+      if (original && original.serviceId !== item.serviceId) throw new BadRequestException('Serviço original do item não corresponde ao cadastro');
       itemRows.push({
         companyId, serviceId: service.id, position: index + 1,
-        serviceNameSnapshot: service.name, descriptionSnapshot: item.description === undefined ? service.description : item.description,
-        unitLabelSnapshot: service.unitLabel, nationalTaxCodeSnapshot: service.nationalTaxCode, nbsCodeSnapshot: service.nbsCode,
+        serviceNameSnapshot: original?.serviceNameSnapshot ?? service.name,
+        descriptionSnapshot: item.description === undefined ? original?.descriptionSnapshot ?? service.description : item.description,
+        unitLabelSnapshot: original?.unitLabelSnapshot ?? service.unitLabel,
+        nationalTaxCodeSnapshot: original ? original.nationalTaxCodeSnapshot : service.nationalTaxCode,
+        nbsCodeSnapshot: original ? original.nbsCodeSnapshot : service.nbsCode,
         quantity: item.quantity, unitPrice: item.unitPrice, grossAmount: calculated.grossAmount,
-        discountAmount: item.discountAmount, totalAmount: calculated.totalAmount, performedOn: item.performedOn ?? null,
+        discountAmount: item.discountAmount, totalAmount: calculated.totalAmount,
+        performedOn: item.performedOn === undefined ? original?.performedOn ?? null : item.performedOn,
       });
     }
     const subtotal = itemRows.reduce((sum, row) => sum + cents(row.grossAmount), 0n);
@@ -161,6 +167,109 @@ export class SalesService {
     return this.get(companyId, id);
   }
 
+  async updateConfirmed(companyId: string, id: string, userId: string, input: UpdateConfirmedSaleInput) {
+    const current = await this.get(companyId, id);
+    if (current.status !== 'CONFIRMED') throw new ConflictException('Somente vendas confirmadas podem ser editadas aqui');
+    const itemIds = input.items.flatMap((item) => item.id ? [item.id] : []);
+    if (new Set(itemIds).size !== itemIds.length || itemIds.some((itemId) => !current.items.some((item) => item.id === itemId))) {
+      throw new BadRequestException('Item original inválido nesta venda');
+    }
+    const prepared = await this.prepare(companyId, input, {
+      customerId: current.customerId,
+      serviceIds: new Set(current.items.map((item) => item.serviceId)),
+      itemSnapshots: new Map(current.items.map((item) => [item.id, item])),
+    });
+    if (cents(prepared.totals.totalAmount) <= 0n ||
+      prepared.installmentRows.reduce((sum, part) => sum + cents(part.amount), 0n) !== cents(prepared.totals.totalAmount)) {
+      throw new BadRequestException('A soma dos recebimentos deve corresponder ao total da venda');
+    }
+    const ids = input.installments.flatMap((part) => part.id ? [part.id] : []);
+    if (new Set(ids).size !== ids.length) throw new BadRequestException('Recebimento duplicado na edição');
+
+    await this.database.db.transaction(async (tx) => {
+      const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
+      if (!sale) throw new NotFoundException('Pedido não encontrado');
+      if (sale.status !== 'CONFIRMED' || sale.version !== input.expectedVersion) throw new ConflictException('Esta venda foi alterada. Reabra o pedido antes de salvar.');
+      const existing = await tx.select().from(saleInstallments)
+        .where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, id))).orderBy(saleInstallments.number);
+      if (ids.some((partId) => !existing.some((part) => part.id === partId))) throw new BadRequestException('Recebimento não pertence a esta venda');
+      const open = await tx.select().from(receivables)
+        .where(and(eq(receivables.companyId, companyId), eq(receivables.saleId, id))).for('update');
+      if (open.length !== existing.length) throw new ConflictException('Os recebimentos desta venda estão inconsistentes');
+      const movements = open.length ? await tx.select().from(receivableMovements)
+        .where(and(eq(receivableMovements.companyId, companyId), inArray(receivableMovements.receivableId, open.map((row) => row.id)))) : [];
+      const historyByPart = new Map(existing.map((part) => {
+        const receivable = open.find((row) => row.saleInstallmentId === part.id);
+        const history = movements.filter((movement) => movement.receivableId === receivable?.id);
+        const paid = history.reduce((sum, movement) => sum + (movement.kind === 'RECEIPT' ? cents(movement.amount) : -cents(movement.amount)), 0n);
+        return [part.id, { receivable, history, paid }] as const;
+      }));
+
+      for (const part of existing) {
+        const next = input.installments.find((entry) => entry.id === part.id);
+        const state = historyByPart.get(part.id)!;
+        if (!next) {
+          if (state.history.length) throw new ConflictException(`O pagamento ${part.paycode} tem histórico de baixas e não pode ser removido`);
+          await tx.delete(receivables).where(eq(receivables.id, state.receivable!.id));
+          await tx.delete(saleInstallments).where(eq(saleInstallments.id, part.id));
+          continue;
+        }
+        if (cents(next.amount) < state.paid) throw new ConflictException(`O pagamento ${part.paycode} não pode ficar abaixo do valor já baixado`);
+        const receivedOn = 'receivedOn' in next ? next.receivedOn ?? null : null;
+        if (state.history.length && (part.initialReceivedOn !== receivedOn ||
+          (part.initialReceivedOn && (next.amount !== part.amount || next.paymentMethod !== part.paymentMethod)))) {
+          throw new ConflictException(`O pagamento ${part.paycode} já tem baixas; data, forma e valor do recebimento inicial devem ser preservados`);
+        }
+        await tx.update(saleInstallments).set({ number: part.number + 1000 }).where(eq(saleInstallments.id, part.id));
+      }
+
+      const reservedCodes = new Set(existing.map((part) => part.paycode).filter((code): code is string => !!code));
+      for (const [index, part] of input.installments.entries()) {
+        const dueOn = 'dueOn' in part ? part.dueOn ?? null : null;
+        const initialReceivedOn = 'receivedOn' in part ? part.receivedOn ?? null : null;
+        if (part.id) {
+          const old = existing.find((entry) => entry.id === part.id)!;
+          const state = historyByPart.get(old.id)!;
+          await tx.update(saleInstallments).set({
+            number: index + 1, paymentMethod: part.paymentMethod, amount: part.amount, dueOn, initialReceivedOn, updatedAt: new Date(),
+          }).where(eq(saleInstallments.id, old.id));
+          await tx.update(receivables).set({ originalAmount: part.amount, dueOn, updatedAt: new Date() })
+            .where(eq(receivables.id, state.receivable!.id));
+          if (initialReceivedOn && !state.history.length) {
+            await tx.insert(receivableMovements).values({ companyId, receivableId: state.receivable!.id, kind: 'RECEIPT',
+              amount: part.amount, paymentMethod: part.paymentMethod, effectiveOn: initialReceivedOn, createdByUserId: userId });
+          }
+        } else {
+          let code = paycodes(1)[0];
+          while (reservedCodes.has(code)) code = paycodes(1)[0];
+          reservedCodes.add(code);
+          const [inserted] = await tx.insert(saleInstallments).values({ companyId, saleId: id, number: index + 1,
+            paycode: code, paymentMethod: part.paymentMethod, amount: part.amount, dueOn, initialReceivedOn })
+            .returning({ id: saleInstallments.id });
+          const [receivable] = await tx.insert(receivables).values({ companyId, saleId: id, saleInstallmentId: inserted.id,
+            originalAmount: part.amount, dueOn }).returning({ id: receivables.id });
+          if (initialReceivedOn) await tx.insert(receivableMovements).values({ companyId, receivableId: receivable.id,
+            kind: 'RECEIPT', amount: part.amount, paymentMethod: part.paymentMethod,
+            effectiveOn: initialReceivedOn, createdByUserId: userId });
+        }
+      }
+
+      await tx.delete(saleItems).where(and(eq(saleItems.companyId, companyId), eq(saleItems.saleId, id)));
+      await tx.insert(saleItems).values(prepared.itemRows.map((row) => ({ ...row, saleId: id })));
+      await tx.update(sales).set({
+        customerId: prepared.customer.id, customerKindSnapshot: prepared.customer.kind,
+        customerNameSnapshot: prepared.customer.name, customerTaxIdSnapshot: prepared.customer.taxId,
+        workOrderNumber: input.workOrderNumber ?? null, soldOn: input.soldOn,
+        notes: input.notes ?? null, ...prepared.totals, version: sale.version + 1, updatedAt: new Date(),
+      }).where(eq(sales.id, id));
+      if (sale.workOrderNumber !== (input.workOrderNumber ?? null)) await tx.insert(saleReferenceHistory).values({
+        companyId, saleId: id, oldWorkOrderNumber: sale.workOrderNumber,
+        newWorkOrderNumber: input.workOrderNumber ?? null, actorUserId: userId,
+      });
+    });
+    return this.get(companyId, id);
+  }
+
   async confirm(companyId: string, id: string, userId: string, input: ConfirmSaleInput) {
     await this.database.db.transaction(async (tx) => {
       const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
@@ -191,9 +300,9 @@ export class SalesService {
         received.add(part.id);
       }
       if (installments.some((part) => part.initialReceivedOn && !received.has(part.id))) throw new BadRequestException('Informe o recebimento de cada parcela já recebida');
-      const codes = installmentCodes(installments.length);
+      const codes = paycodes(installments.length);
       for (const [index, part] of installments.entries()) {
-        await tx.update(saleInstallments).set({ controlCode: codes[index], updatedAt: new Date() }).where(eq(saleInstallments.id, part.id));
+        await tx.update(saleInstallments).set({ paycode: codes[index], updatedAt: new Date() }).where(eq(saleInstallments.id, part.id));
         const [receivable] = await tx.insert(receivables).values({ companyId, saleId: id, saleInstallmentId: part.id, originalAmount: part.amount, dueOn: part.dueOn }).returning({ id: receivables.id });
         const initial = input.initialReceipts.find((entry) => entry.installmentId === part.id);
         if (initial) await tx.insert(receivableMovements).values({ companyId, receivableId: receivable.id, kind: 'RECEIPT', amount: initial.amount, paymentMethod: initial.paymentMethod, effectiveOn: initial.receivedOn, createdByUserId: userId });
