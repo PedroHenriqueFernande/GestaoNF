@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, companyUsers, users, crmContacts, crmOpportunities, crmLeadEntries, services } from '@gestaonf/database/schema';
+import { companies, companyUsers, users, crmContacts, crmOpportunities, crmLeadEntries, crmMeetings, services } from '@gestaonf/database/schema';
 import { and, eq, exists, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 import type { CrmContext } from './crm.schemas.js';
@@ -22,6 +22,9 @@ export class CrmPolicyService {
   opportunityScope(a: CrmAccess) {
     return and(eq(crmOpportunities.companyId, a.companyId), a.manager ? sql`true` : eq(crmOpportunities.assignedUserId, a.userId))!;
   }
+  meetingScope(a: CrmAccess) {
+    return and(eq(crmMeetings.companyId, a.companyId), a.manager ? sql`true` : eq(crmMeetings.assignedUserId, a.userId))!;
+  }
   entryScope(a: CrmAccess, db: CrmDb = this.database.db) {
     return and(eq(crmLeadEntries.companyId, a.companyId), exists(db.select({ id: crmOpportunities.id }).from(crmOpportunities).where(and(this.opportunityScope(a), eq(crmOpportunities.originEntryId, crmLeadEntries.id), eq(crmOpportunities.contactId, crmLeadEntries.contactId)))))!;
   }
@@ -35,6 +38,12 @@ export class CrmPolicyService {
     const query = db.select().from(crmOpportunities).where(and(this.opportunityScope(a), eq(crmOpportunities.id, id))).limit(1);
     const [row] = await (lock ? query.for('update') : query);
     if (!row) throw new NotFoundException('Negociação não encontrada');
+    return row;
+  }
+  async meeting(a: CrmAccess, id: string, db: CrmDb = this.database.db, lock = false) {
+    const query = db.select().from(crmMeetings).where(and(this.meetingScope(a), eq(crmMeetings.id, id))).limit(1);
+    const [row] = await (lock ? query.for('update') : query);
+    if (!row) throw new NotFoundException('Reunião não encontrada');
     return row;
   }
   editContact(a: CrmAccess, c: typeof crmContacts.$inferSelect) {

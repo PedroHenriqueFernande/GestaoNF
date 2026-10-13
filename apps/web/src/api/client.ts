@@ -162,7 +162,7 @@ export type CrmPipeline = {
   stages: { id: string; pipelineId: string; name: string; position: number; isEntry: boolean; version: number }[];
 };
 export type CrmFilters = {
-  search?: string; status?: CrmStatus; pipelineId?: string; stageId?: string; primaryServiceId?: string;
+  search?: string; status?: CrmStatus; contactId?: string; pipelineId?: string; stageId?: string; primaryServiceId?: string;
   sourceLabel?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string;
   from?: string; to?: string; periodBy?: 'ENTRY_RECEIVED' | 'CONTACT_CREATED'; includeArchived?: boolean;
 };
@@ -173,6 +173,23 @@ export type CrmLeadInput = {
   pipelineId?: string; title?: string;
 };
 export type CrmCreateResult = { leadId: string; entryId: string; opportunityId: string };
+export type MeetingStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELED' | 'NO_SHOW';
+export type MeetingParticipant = { kind: 'CONTACT'; contactId: string } | { kind: 'USER'; userId: string } | { kind: 'EXTERNAL'; name: string | null; email: string | null; phone: string | null };
+export type Meeting = {
+  id: string; companyId: string; contactId: string; opportunityId: string | null; title: string; assignedUserId: string;
+  startsAt: string; endsAt: string; timezone: string; modality: 'IN_PERSON' | 'ONLINE'; location: string | null;
+  meetingUrl: string | null; description: string | null; notes: string | null; status: MeetingStatus;
+  outcomeNotes: string | null; nextSteps: string | null; cancellationReason: string | null;
+  version: number; createdAt: string; updatedAt: string;
+  lead: { id: string; name: string; organizationName: string | null; email?: string | null; phone?: string | null };
+  responsible: { id: string; name: string };
+};
+export type MeetingDetail = Meeting & { opportunity: { id: string; title: string; commercialStatus: CrmStatus } | null; participants: MeetingParticipant[]; reminderMinutes: number[] };
+export type MeetingList = { items: Meeting[]; total: number; limit: number; offset: number; summary: { total: number; scheduled: number; completed: number; canceled: number; noShow: number } };
+export type MeetingFilters = { from: string; to: string; assignedUserId?: string; contactId?: string; opportunityId?: string; status?: MeetingStatus; modality?: Meeting['modality']; search?: string };
+export type MeetingCreateInput = { contactId: string; opportunityId?: string | null; title: string; assignedUserId?: string; startsAt: string; endsAt: string; timezone: string; modality: Meeting['modality']; location?: string | null; meetingUrl?: string | null; description?: string | null; notes?: string | null; participants: MeetingParticipant[]; reminderMinutes?: number[]; allowConflict: boolean };
+export type MeetingSettings = { companyId: string; qualifyOpportunityOnMeeting: boolean; defaultReminderMinutes: number | null; conflictPolicy: 'WARN' | 'ALLOW'; version: number };
+export type MeetingNotification = { id: string; meetingId: string; title: string; body: string; createdAt: string; readAt: string | null };
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
@@ -299,6 +316,7 @@ export const api = {
     return request<CrmOpportunityList>(`/crm/opportunities?${query}`, {}, { companyId });
   },
   crmLead: (companyId: string, id: string) => request<CrmLeadDetail>(`/crm/leads/${id}`, {}, { companyId }),
+  crmLeads: (companyId: string, search = '') => request<{ items: CrmLead[]; total: number }>(`/crm/leads?limit=30&offset=0${search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''}`, {}, { companyId }),
   crmOpportunity: (companyId: string, id: string) => request<CrmOpportunityDetail>(`/crm/opportunities/${id}`, {}, { companyId }),
   createCrmLead: (companyId: string, input: CrmLeadInput, key: string) =>
     request<CrmCreateResult>('/crm/leads', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
@@ -313,6 +331,24 @@ export const api = {
   addCrmNote: (companyId: string, leadId: string, opportunityId: string, note: string, key: string) =>
     request<{ id: string }>(`/crm/leads/${leadId}/notes`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ opportunityId, note }) }, { companyId }),
   crmPipelines: (companyId: string) => request<{ items: CrmPipeline[] }>('/crm/pipelines', {}, { companyId }),
+  meetings: (companyId: string, filters: MeetingFilters, offset = 0, limit = 100) => {
+    const query = new URLSearchParams({ from: filters.from, to: filters.to, offset: String(offset), limit: String(limit) });
+    for (const [key, value] of Object.entries(filters)) if (key !== 'from' && key !== 'to' && value) query.set(key, value);
+    return request<MeetingList>(`/crm/meetings?${query}`, {}, { companyId });
+  },
+  meeting: (companyId: string, id: string) => request<MeetingDetail>(`/crm/meetings/${id}`, {}, { companyId }),
+  meetingResponsibles: (companyId: string) => request<{ items: { id: string; name: string }[] }>('/crm/meetings/responsibles', {}, { companyId }),
+  meetingConflicts: (companyId: string, input: { assignedUserId: string; startsAt: string; endsAt: string; excludeMeetingId?: string }) => request<{ hasConflict: boolean; items: { id: string; title: string; startsAt: string; endsAt: string }[] }>('/crm/meetings/conflicts', { method: 'POST', body: json(input) }, { companyId }),
+  createMeeting: (companyId: string, input: MeetingCreateInput, key: string) => request<{ meetingId: string; opportunityQualified: boolean }>('/crm/meetings', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  updateMeeting: (companyId: string, id: string, input: { expectedVersion: number; allowConflict?: boolean; title?: string; assignedUserId?: string; timezone?: string; modality?: Meeting['modality']; location?: string | null; meetingUrl?: string | null; description?: string | null; notes?: string | null; participants?: MeetingParticipant[]; reminderMinutes?: number[] }) => request<Meeting>(`/crm/meetings/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
+  rescheduleMeeting: (companyId: string, id: string, input: { expectedVersion: number; startsAt: string; endsAt: string; timezone: string; allowConflict: boolean }) => request<Meeting>(`/crm/meetings/${id}/reschedule`, { method: 'POST', body: json(input) }, { companyId }),
+  changeMeetingStatus: (companyId: string, id: string, input: { expectedVersion: number; status: MeetingStatus; outcomeNotes?: string | null; nextSteps?: string | null; cancellationReason?: string | null }) => request<Meeting>(`/crm/meetings/${id}/status`, { method: 'PATCH', body: json(input) }, { companyId }),
+  reopenMeeting: (companyId: string, id: string, expectedVersion: number, allowConflict: boolean) => request<Meeting>(`/crm/meetings/${id}/reopen`, { method: 'POST', body: json({ expectedVersion, allowConflict }) }, { companyId }),
+  meetingHistory: (companyId: string, id: string, offset = 0) => request<{ items: { id: string; kind: string; actorType: string; occurredAt: string }[]; total: number }>(`/crm/meetings/${id}/history?limit=50&offset=${offset}`, {}, { companyId }),
+  meetingSettings: (companyId: string) => request<MeetingSettings>('/crm/meeting-settings', {}, { companyId }),
+  updateMeetingSettings: (companyId: string, input: { expectedVersion: number; qualifyOpportunityOnMeeting?: boolean; defaultReminderMinutes?: number | null; conflictPolicy?: 'WARN' | 'ALLOW' }) => request<MeetingSettings>('/crm/meeting-settings', { method: 'PATCH', body: json(input) }, { companyId }),
+  meetingNotifications: (companyId: string) => request<{ items: MeetingNotification[]; total: number }>('/crm/notifications?limit=100&offset=0', {}, { companyId }),
+  readMeetingNotification: (companyId: string, id: string) => request<MeetingNotification>(`/crm/notifications/${id}/read`, { method: 'PATCH', body: '{}' }, { companyId }),
   whatsappLinkStatus: (companyId: string) => request<WhatsAppLinkStatus>('/integrations/whatsapp/link/status', {}, { companyId }),
   createWhatsAppChallenge: (companyId: string, input: { mode?: 'NEW_NUMBER' | 'EXISTING_NUMBER'; linkId?: string } = {}) => request<WhatsAppLinkChallenge>('/integrations/whatsapp/link/challenges', { method: 'POST', body: json(input) }, { companyId }),
   whatsappChallengeStatus: (companyId: string, challengeId: string) => request<WhatsAppChallengeStatus>(`/integrations/whatsapp/link/challenges/${challengeId}`, {}, { companyId }),

@@ -71,4 +71,4 @@ corepack pnpm --filter @gestaonf/database db:check
 
 `tests/crm-leads.test.ts` cria um PostgreSQL isolado e aplica as migrations existentes. Use `CRM_TEST_DATABASE_URL` ou `DATABASE_URL` com permissão para criar esse banco de teste. Os testes não enviam WhatsApp nem chamam OpenAI.
 
-A tela do CRM, gestão completa de funis, formulários públicos, importações, anúncios, agenda, propostas e ferramentas CRM do Nero são etapas posteriores. O ponto interno de captação prepara a composição com adaptadores autenticados; não constitui um endpoint público de recebimento desses canais.
+A tela do banco de leads, a agenda web e o backend de reuniões estão implementados. Consulte [MEETINGS-IMPLEMENTATION.md](./MEETINGS-IMPLEMENTATION.md) para rotas, worker, permissões e instalação da migration 0017. Gestão completa de funis, formulários públicos, importações, anúncios, propostas e ferramentas CRM do Nero são etapas posteriores. O ponto interno de captação prepara a composição com adaptadores autenticados; não constitui um endpoint público de recebimento desses canais.

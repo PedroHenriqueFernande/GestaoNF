@@ -6,10 +6,13 @@ import { CrmHistoryService } from './crm-history.service.js';
 import { LeadCaptureService } from './lead-capture.service.js';
 import { LeadsService } from './leads.service.js';
 import { OpportunitiesService } from './opportunities.service.js';
+import { MeetingsController } from './meetings.controller.js';
+import { MeetingsService } from './meetings.service.js';
+import { MeetingReminderService } from './meeting-reminder.service.js';
 
 @Module({
-  imports: [AuthModule], controllers: [CrmController],
-  providers: [CrmPolicyService, CrmHistoryService, LeadCaptureService, LeadsService, OpportunitiesService],
-  exports: [LeadCaptureService, LeadsService, OpportunitiesService],
+  imports: [AuthModule], controllers: [CrmController, MeetingsController],
+  providers: [CrmPolicyService, CrmHistoryService, LeadCaptureService, LeadsService, OpportunitiesService, MeetingsService, MeetingReminderService],
+  exports: [LeadCaptureService, LeadsService, OpportunitiesService, MeetingsService, MeetingReminderService],
 })
 export class CrmModule {}

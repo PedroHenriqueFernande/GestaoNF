@@ -120,6 +120,13 @@
       "when": 1791866315808,
       "tag": "0016_crm_leads",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791869109171,
+      "tag": "0017_crm_meetings",
+      "breakpoints": true
     }
   ]
 }

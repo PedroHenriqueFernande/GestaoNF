@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router';
 import { AlertCircle, ArrowRight, BriefcaseBusiness, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Filter, Plus, RefreshCw, RotateCcw, Search, UsersRound } from 'lucide-react';
 import { api, type CrmCreateResult, type CrmFilters, type CrmOpportunity, type CrmStatus, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
@@ -102,7 +103,7 @@ export function CrmPage({ user }: { user: User }) {
     <main id="workspace-main" className="crm-main" tabIndex={-1}>
       <header className="crm-page-header">
         <div><span className="crm-eyebrow">RELACIONAMENTO / BANCO DE LEADS</span><h1>CRM</h1><p>Organize cada contato, acompanhe negociações e preserve a origem de cada oportunidade.</p></div>
-        <div className="crm-page-header__actions"><button type="button" className="crm-refresh" onClick={() => { list.refetch(); statusCounts.forEach((query) => query.refetch()); }} disabled={list.isFetching || !companyId}><RefreshCw size={16} className={list.isFetching ? 'is-spinning' : ''} /> Atualizar</button><button type="button" className="button button--primary" onClick={() => setCreating(true)} disabled={!companyId}><Plus size={16} /> Novo lead</button></div>
+        <div className="crm-page-header__actions"><Link to="/agenda" className="crm-refresh"><CalendarDays size={16} /> Agenda</Link><button type="button" className="crm-refresh" onClick={() => { list.refetch(); statusCounts.forEach((query) => query.refetch()); }} disabled={list.isFetching || !companyId}><RefreshCw size={16} className={list.isFetching ? 'is-spinning' : ''} /> Atualizar</button><button type="button" className="button button--primary" onClick={() => setCreating(true)} disabled={!companyId}><Plus size={16} /> Novo lead</button></div>
       </header>
 
       <section className="crm-cadence" aria-labelledby="crm-cadence-title">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
 import { AlertCircle, CalendarDays, Check, CircleDollarSign, Clock3, Mail, MessageSquarePlus, Phone, Tag, UserRound, X } from 'lucide-react';
 import { api, ApiError, type CrmOpportunity, type CrmStatus } from '../../api/client';
 import { CRM_STATUSES, dateOnly, money, normalizeMoney, shortDateTime, statusLabel } from './crm-utils';
@@ -10,10 +11,13 @@ const activityNames: Record<string, string> = {
   CONTACT_UPDATED: 'Dados atualizados', ASSIGNED: 'Responsável alterado', STAGE_CHANGED: 'Card movimentado',
   STATUS_CHANGED: 'Situação alterada', NOTE_ADDED: 'Nota adicionada', CUSTOMER_LINKED: 'Cliente vinculado',
   ARCHIVED: 'Registro arquivado', RESTORED: 'Registro restaurado',
+  MEETING_CREATED: 'Reunião agendada', MEETING_UPDATED: 'Reunião atualizada',
+  MEETING_RESCHEDULED: 'Reunião reagendada', MEETING_STATUS_CHANGED: 'Situação da reunião alterada',
 };
 type EditState = { name: string; organizationName: string; phone: string; email: string; notes: string; title: string; amount: string; expectedCloseOn: string; serviceId: string; status: CrmStatus; reasonText: string };
 
 export function CrmOpportunityModal({ companyId, opportunity, onClose, onChanged }: { companyId: string; opportunity: CrmOpportunity; onClose: () => void; onChanged: (message: string) => void }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'DETAIL' | 'HISTORY'>('DETAIL');
   const [edit, setEdit] = useState(false);
@@ -78,7 +82,7 @@ export function CrmOpportunityModal({ companyId, opportunity, onClose, onChanged
         </div>}
         {error && <div className="crm-modal__error" role="alert"><AlertCircle size={16} />{error}</div>}
       </div>
-      <footer className="crm-modal__footer"><span>{current ? `Atualizado ${shortDateTime(current.updatedAt)}` : ''}</span><div>{tab === 'DETAIL' && !edit && <button type="button" className="button button--secondary" onClick={() => { setEdit(true); setError(''); }}>Editar</button>}{tab === 'DETAIL' && edit && <><button type="button" className="button button--secondary" onClick={() => { setEdit(false); setForm(null); setError(''); }} disabled={save.isPending}>Cancelar</button><button form="crm-edit-form" type="submit" className="button button--primary" disabled={save.isPending}>{save.isPending ? 'Salvando...' : 'Salvar alterações'}</button></>}<button type="button" className="button button--secondary" onClick={onClose}>Fechar</button></div></footer>
+      <footer className="crm-modal__footer"><span>{current ? `Atualizado ${shortDateTime(current.updatedAt)}` : ''}</span><div>{tab === 'DETAIL' && !edit && <><button type="button" className="button button--secondary" onClick={() => navigate(`/agenda?${new URLSearchParams({ contactId: opportunity.contactId, opportunityId: opportunity.id, name: opportunity.lead.name, title: opportunity.title })}`)}><CalendarDays size={15} /> Agendar reunião</button><button type="button" className="button button--secondary" onClick={() => { setEdit(true); setError(''); }}>Editar</button></>}{tab === 'DETAIL' && edit && <><button type="button" className="button button--secondary" onClick={() => { setEdit(false); setForm(null); setError(''); }} disabled={save.isPending}>Cancelar</button><button form="crm-edit-form" type="submit" className="button button--primary" disabled={save.isPending}>{save.isPending ? 'Salvando...' : 'Salvar alterações'}</button></>}<button type="button" className="button button--secondary" onClick={onClose}>Fechar</button></div></footer>
     </section>
   </div>;
 }
