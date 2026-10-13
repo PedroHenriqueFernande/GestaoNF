@@ -1,0 +1,4 @@
+CREATE INDEX "crm_activities_opportunity_status_date_idx" ON "crm_activities" USING btree ("company_id","opportunity_id","occurred_at" DESC NULLS LAST,"recorded_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE "crm_activities"."kind" = 'STATUS_CHANGED' AND "crm_activities"."opportunity_id" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "customers_company_created_id_idx" ON "customers" USING btree ("company_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "receivable_movements_company_effective_id_idx" ON "receivable_movements" USING btree ("company_id","effective_on","id");--> statement-breakpoint
+CREATE INDEX "services_company_created_id_idx" ON "services" USING btree ("company_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);

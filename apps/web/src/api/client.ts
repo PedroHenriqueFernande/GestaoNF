@@ -278,7 +278,17 @@ async function requestBlob(path: string, companyId: string): Promise<Blob> {
 
 const json = (value: unknown) => JSON.stringify(value);
 
+export type ReportType = 'closed-services' | 'service-receipts' | 'lead-entries' | 'customers' | 'service-catalog' | 'meetings' | 'disqualification-rate' | 'loss-rate';
+export type ReportFilters = { from?: string; to?: string; search?: string; customerId?: string; serviceId?: string; assignedUserId?: string; status?: string; captureKind?: string; utmSource?: string; utmCampaign?: string; sourceFormReference?: string; paymentMethod?: string; limit?: number; cursor?: string };
+export type ReportResult = { summary: Record<string, number | string | null>; items: Array<Record<string, unknown> & { id: string }>; nextCursor: string | null; generatedAt: string; timezone: string; visibility: 'COMPANY' | 'ASSIGNED' };
+function reportQuery(filters: ReportFilters) {
+  return new URLSearchParams(Object.entries(filters).filter(([,value]) => value !== undefined && value !== '').map(([key,value]) => [key,String(value)]));
+}
+
 export const api = {
+  report: (companyId: string, type: ReportType, filters: ReportFilters) => request<ReportResult>(`/reports/${type}?${reportQuery(filters)}`, {}, { companyId }),
+  reportOptions: (companyId: string, field: 'customerId' | 'serviceId' | 'assignedUserId', search = '') => request<{ items: Array<{ id: string; name: string }> }>(`/reports/options?${new URLSearchParams({ field, search, limit: '100' })}`, {}, { companyId }),
+  reportCsv: (companyId: string, type: 'customers' | 'service-catalog', filters: ReportFilters) => requestBlob(`/reports/${type}.csv?${reportQuery(filters)}`, companyId),
   fileCapabilities: (companyId: string) => request<UploadCapabilities>('/files/capabilities', {}, { companyId }),
   beginFileUpload: (companyId: string, input: { fileName: string; mimeType: StoredFile['mimeType']; sizeBytes: number }, key: string) => request<UploadSession>('/files/uploads', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
   completeFileUpload: (companyId: string, id: string) => request<StoredFile>(`/files/${id}/complete`, { method: 'POST', body: '{}' }, { companyId }),

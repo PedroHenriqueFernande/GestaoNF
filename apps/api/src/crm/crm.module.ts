@@ -19,6 +19,6 @@ import { ProposalDocumentService } from './proposal-document.service.js';
 @Module({
   imports: [AuthModule, SalesModule, CustomersModule], controllers: [CrmController, MeetingsController, ProposalsController],
   providers: [CrmPolicyService, CrmHistoryService, LeadCaptureService, LeadsService, OpportunitiesService, MeetingsService, MeetingReminderService, ProposalsService, ProposalReadService, ProposalDocumentService],
-  exports: [LeadCaptureService, LeadsService, OpportunitiesService, MeetingsService, MeetingReminderService, ProposalsService],
+  exports: [CrmPolicyService, LeadCaptureService, LeadsService, OpportunitiesService, MeetingsService, MeetingReminderService, ProposalsService],
 })
 export class CrmModule {}

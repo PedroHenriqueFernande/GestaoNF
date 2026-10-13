@@ -330,6 +330,7 @@ export const customers = pgTable(
       .on(table.companyId, table.taxId)
       .where(sql`${table.taxId} IS NOT NULL`),
     index('customers_company_name_id_idx').on(table.companyId, table.name, table.id),
+    index('customers_company_created_id_idx').on(table.companyId, table.createdAt.desc(), table.id.desc()),
     foreignKey({
       name: 'customers_created_by_company_user_fk',
       columns: [table.companyId, table.createdByUserId],
@@ -372,6 +373,7 @@ export const services = pgTable(
       .on(table.companyId, sql`lower(${table.internalCode})`)
       .where(sql`${table.internalCode} IS NOT NULL`),
     index('services_company_status_name_id_idx').on(table.companyId, table.status, table.name, table.id),
+    index('services_company_created_id_idx').on(table.companyId, table.createdAt.desc(), table.id.desc()),
     foreignKey({
       name: 'services_created_by_company_user_fk',
       columns: [table.companyId, table.createdByUserId],
@@ -597,6 +599,7 @@ export const receivableMovements = pgTable(
     uniqueIndex('receivable_movements_one_reversal_uq').on(table.companyId, table.reversesMovementId)
       .where(sql`${table.reversesMovementId} IS NOT NULL`),
     index('receivable_movements_company_receivable_recorded_idx').on(table.companyId, table.receivableId, table.recordedAt),
+    index('receivable_movements_company_effective_id_idx').on(table.companyId, table.effectiveOn, table.id),
     index('receivable_movements_company_receipt_date_idx').on(table.companyId, table.effectiveOn, table.receivableId)
       .where(sql`${table.kind} = 'RECEIPT'`),
     foreignKey({
@@ -1473,5 +1476,6 @@ export const crmActivities = pgTable('crm_activities', {
   uniqueIndex('crm_activities_command_uq').on(t.companyId, t.commandNamespace, t.idempotencyKey).where(sql`${t.idempotencyKey} IS NOT NULL`),
   index('crm_activities_contact_idx').on(t.companyId, t.contactId, t.recordedAt.desc(), t.id.desc()),
   index('crm_activities_opportunity_idx').on(t.companyId, t.opportunityId, t.recordedAt.desc(), t.id.desc()).where(sql`${t.opportunityId} IS NOT NULL`),
+  index('crm_activities_opportunity_status_date_idx').on(t.companyId, t.opportunityId, t.occurredAt.desc(), t.recordedAt.desc(), t.id.desc()).where(sql`${t.kind} = 'STATUS_CHANGED' AND ${t.opportunityId} IS NOT NULL`),
   index('crm_activities_meeting_idx').on(t.companyId, t.meetingId, t.recordedAt.desc(), t.id.desc()).where(sql`${t.meetingId} IS NOT NULL`),
 ]);
