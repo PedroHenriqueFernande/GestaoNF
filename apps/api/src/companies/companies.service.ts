@@ -5,21 +5,23 @@ import type { z } from 'zod';
 import { isValidCpf, isValidCnpj } from '../customers/tax-id.js';
 import { DatabaseService } from '../database/database.module.js';
 import type { createCompanySchema, updateCompanySchema } from './companies.schemas.js';
+import { AccountsService } from '../accounts/accounts.service.js';
+import { companyAvailable } from '../accounts/account-policy.js';
 
 @Injectable()
 export class CompaniesService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(AccountsService) private readonly accounts: AccountsService) {}
 
   list(userId: string) {
-    return this.database.db.select({ id: companies.id, name: companies.name, role: companyUsers.role }).from(companyUsers)
+    return this.database.db.select({ id: companies.id, name: companies.name, role: companyUsers.role, accountId: companies.accountId }).from(companyUsers)
       .innerJoin(companies, eq(companies.id, companyUsers.companyId))
-      .where(and(eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE')));
+      .where(and(eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id)));
   }
 
   async get(companyId: string, userId: string) {
     const [row] = await this.database.db.select({ company: companies, role: companyUsers.role }).from(companies)
       .innerJoin(companyUsers, and(eq(companyUsers.companyId, companies.id), eq(companyUsers.userId, userId)))
-      .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), eq(companyUsers.status, 'ACTIVE'))).limit(1);
+      .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), eq(companyUsers.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
     if (!row) throw new NotFoundException('Empresa não encontrada');
     return { ...row.company, role: row.role };
   }
@@ -29,7 +31,8 @@ export class CompaniesService {
     this.validateTradeName(input.kind ?? 'PJ', input.tradeName);
     this.validateTaxRegime(input.simplesNationalOption, input.simplesTaxationRegime);
     const company = await this.database.db.transaction(async (tx) => {
-      const [created] = await tx.insert(companies).values({ ...input, kind: input.kind ?? 'PJ' }).returning();
+      const accountId = await this.accounts.companyAccount(tx, userId, input.name, input.accountId);
+      const [created] = await tx.insert(companies).values({ ...input, accountId, kind: input.kind ?? 'PJ' }).returning();
       await tx.insert(companyUsers).values({ companyId: created.id, userId, role: 'OWNER' });
       return created;
     });

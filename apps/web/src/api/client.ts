@@ -1,7 +1,14 @@
 const API_URL = (import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:3000`).replace(/\/$/, '');
 
 export type User = { id: string; name: string; email: string };
-export type Company = { id: string; name: string; role: string };
+export type Company = { id: string; name: string; role: string; accountId: string };
+export type Account = { id: string; name: string; status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELED'; planCode: string; additionalUsersPerCompany: number };
+export type UserCapacity = { companyId: string; name: string; status: string; limit: number; occupied: number; reserved: number; available: number; overLimit: number; ownerIncludedSeparately: boolean };
+export type ManagedMember = { id: string; type: 'MEMBER'; name: string; email: string; status: 'OWNER' | 'ACTIVE' | 'INACTIVE'; companies: { companyId: string; companyName: string; status: 'ACTIVE' | 'INACTIVE'; role: string; version: number }[]; version: string };
+export type ManagedInvitation = { id: string; type: 'INVITATION'; name: string; email: string; status: 'PENDING' | 'REVOKED' | 'EXPIRED'; expiresAt: string; version: number; createdAt: string; companies: { id: string; name: string }[]; delivery: { id: string; sendStatus: string } | null };
+export type ManagedUser = ManagedMember | ManagedInvitation;
+export type ManagedUsersList = { items: ManagedUser[]; total: number };
+export type InvitationPreview = { invitationId: string; name: string; accountName: string; email: string; companies: { id: string; name: string }[]; expiresAt: string; nextStep: 'LOGIN' | 'DEFINE_PASSWORD' };
 export type CompanyProfile = Company & {
   kind: 'PF' | 'PJ'; legalName: string | null; tradeName: string | null; taxId: string | null; email: string | null; phone: string | null;
   street: string | null; number: string | null; complement: string | null; district: string | null;
@@ -80,6 +87,7 @@ export type Sale = {
   status: SaleStatus; soldOn: string | null; subtotalAmount: string; discountAmount: string; totalAmount: string;
   notes: string | null; version: number; createdAt: string; confirmedAt: string | null;
 };
+export type SaleListItem = Sale & { createdByUserName: string };
 export type SaleMovement = { id: string; kind: 'RECEIPT' | 'REVERSAL'; amount: string; effectiveOn: string; paymentMethod: PaymentMethod | null; reference: string | null; reversesMovementId: string | null; recordedAt: string };
 export type SaleInstallment = { id: string; number: number; paycode: string | null; paymentMethod: PaymentMethod;
   amount: string; dueOn: string | null; initialReceivedOn: string | null; receivableId: string | null; paidAmount: string; remainingAmount: string;
@@ -87,7 +95,7 @@ export type SaleInstallment = { id: string; number: number; paycode: string | nu
 export type SaleItem = { id: string; serviceId: string; position: number; serviceNameSnapshot: string; descriptionSnapshot: string | null;
   quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string; performedOn: string | null };
 export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[]; attachments: StoredFile[] };
-export type SaleList = { items: Sale[]; total: number; limit: number; offset: number };
+export type SaleList = { items: SaleListItem[]; total: number; limit: number; offset: number };
 export type FinanceSettlement = 'ALL' | 'PENDING' | 'PARTIAL' | 'PAID';
 export type FinanceDateBasis = 'SALE' | 'DUE' | 'RECEIPT';
 export type FinanceOverdue = 'ALL' | 'ONLY' | 'EXCLUDE';
@@ -280,6 +288,17 @@ export const api = {
   login: (email: string, password: string) => request('/auth/login', { method: 'POST', body: json({ email, password, client: 'web' }) }, { retryAuth: false }),
   register: (name: string, email: string, password: string) => request('/auth/register', { method: 'POST', body: json({ name, email, password, client: 'web' }) }, { retryAuth: false }),
   logout: () => request<void>('/auth/logout', { method: 'POST', body: '{}' }, { retryAuth: false }),
+  accounts: () => request<Account[]>('/accounts'),
+  managedUsers: (accountId: string, search: string, offset = 0, limit = 25) => request<ManagedUsersList>(`/accounts/${accountId}/users?${new URLSearchParams({ search, offset: String(offset), limit: String(limit) })}`),
+  userCapacity: (accountId: string) => request<UserCapacity[]>(`/accounts/${accountId}/users/capacity`),
+  inviteUser: (accountId: string, input: { name: string; email: string; companyIds: string[] }, key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }),
+  resendInvitation: (accountId: string, invitationId: string, version: number, key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations/${invitationId}/resend`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ version }) }),
+  changeInvitationCompanies: (accountId: string, invitationId: string, version: number, companyIds: string[], key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations/${invitationId}/companies`, { method: 'PATCH', headers: { 'Idempotency-Key': key }, body: json({ version, companyIds }) }),
+  revokeInvitation: (accountId: string, invitationId: string, version: number, key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations/${invitationId}/revoke`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ version }) }),
+  changeMemberCompanies: (accountId: string, userId: string, version: string, companyIds: string[], key: string) => request<{ userId: string; version: string }>(`/accounts/${accountId}/users/${userId}/companies`, { method: 'PATCH', headers: { 'Idempotency-Key': key }, body: json({ version, companyIds }) }),
+  previewInvitation: (token: string) => request<InvitationPreview>('/user-invitations/preview', { method: 'POST', body: json({ token }) }, { retryAuth: false }),
+  acceptNewInvitation: (token: string, password: string, passwordConfirmation: string) => request<{ user: User }>('/user-invitations/accept-new', { method: 'POST', body: json({ token, password, passwordConfirmation, client: 'web' }) }, { retryAuth: false }),
+  acceptExistingInvitation: (token: string) => request<{ accepted: boolean }>('/user-invitations/accept-existing', { method: 'POST', body: json({ token }) }),
   companies: () => request<Company[]>('/companies'),
   company: (companyId: string) => request<CompanyProfile>('/companies/current', {}, { companyId }),
   createCompany: (input: CompanyInput) => request<CompanyProfile>('/companies', { method: 'POST', body: json(input) }),

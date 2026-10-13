@@ -1,3 +1,4 @@
+import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { companies, companyUsers, users, crmContacts, crmOpportunities, crmLeadEntries, crmMeetings, services } from '@gestaonf/database/schema';
 import { and, eq, exists, or, sql } from 'drizzle-orm';
@@ -12,7 +13,7 @@ export class CrmPolicyService {
   async access(ctx: CrmContext, db: CrmDb = this.database.db): Promise<CrmAccess> {
     const [row] = await db.select({ role: companyUsers.role, timezone: companies.timezone }).from(companyUsers)
       .innerJoin(companies, eq(companies.id, companyUsers.companyId)).innerJoin(users, eq(users.id, companyUsers.userId))
-      .where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), eq(users.status, 'ACTIVE'))).limit(1);
+      .where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(users.status, 'ACTIVE'))).limit(1);
     if (!row) throw new ForbiddenException('Sem acesso ativo à empresa');
     return { ...ctx, manager: row.role !== 'COLLABORATOR', timezone: row.timezone };
   }

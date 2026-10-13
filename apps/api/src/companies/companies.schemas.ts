@@ -27,5 +27,5 @@ const fields = {
   specialTaxRegime: z.enum(['0', '1', '2', '3', '4', '5', '6']).nullable(),
 };
 
-export const createCompanySchema = z.strictObject(fields).partial().required({ name: true });
+export const createCompanySchema = z.strictObject({ ...fields, accountId: z.uuid() }).partial().required({ name: true });
 export const updateCompanySchema = z.strictObject(fields).partial().refine((value) => Object.keys(value).length > 0, 'Informe ao menos um campo');

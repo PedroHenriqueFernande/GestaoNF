@@ -41,8 +41,12 @@ export const emailMessages = pgTable('email_messages', {
   toAddress: varchar('to_address', { length: 254 }).notNull(),
   replyTo: varchar('reply_to', { length: 254 }),
   subject: varchar('subject', { length: 200 }).notNull(),
-  textBody: text('text_body').notNull(),
-  htmlBody: text('html_body').notNull(),
+  textBody: text('text_body'),
+  htmlBody: text('html_body'),
+  encryptedPayload: text('encrypted_payload'),
+  encryptionKeyId: varchar('encryption_key_id', { length: 40 }),
+  invitationId: uuid('invitation_id').references(() => userInvitations.id, { onDelete: 'restrict' }),
+  invitationVersion: integer('invitation_version'),
   testMode: boolean('test_mode').notNull(),
   sendStatus: varchar('send_status', { length: 16 }).default('QUEUED').notNull(),
   deliveryStatus: varchar('delivery_status', { length: 16 }).default('PENDING').notNull(),
@@ -65,11 +69,73 @@ export const emailMessages = pgTable('email_messages', {
   index('email_messages_company_created_idx').on(t.companyId, t.createdAt.desc(), t.id.desc()),
   index('email_messages_last_attempt_idx').on(t.lastAttemptAt.desc()),
   index('email_messages_recipient_idx').on(t.companyId, t.toAddress),
-  check('email_messages_send_status_chk', sql`${t.sendStatus} IN ('QUEUED','SENDING','RETRYING','ACCEPTED','FAILED','UNKNOWN')`),
+  check('email_messages_send_status_chk', sql`${t.sendStatus} IN ('QUEUED','SENDING','RETRYING','ACCEPTED','FAILED','UNKNOWN','CANCELED')`),
+  check('email_messages_content_chk', sql`(${t.invitationId} IS NULL AND ${t.textBody} IS NOT NULL AND ${t.htmlBody} IS NOT NULL AND ${t.encryptedPayload} IS NULL) OR (${t.invitationId} IS NOT NULL AND ${t.textBody} IS NULL AND ${t.htmlBody} IS NULL AND ((${t.encryptedPayload} IS NOT NULL AND ${t.encryptionKeyId} IS NOT NULL) OR ${t.sendStatus} IN ('ACCEPTED','FAILED','UNKNOWN','CANCELED')))`),
+  check('email_messages_invitation_chk', sql`(${t.invitationId} IS NULL) = (${t.invitationVersion} IS NULL)`),
   check('email_messages_delivery_status_chk', sql`${t.deliveryStatus} IN ('PENDING','SENT','DELAYED','DELIVERED','FAILED','SUPPRESSED','BOUNCED','COMPLAINED')`),
   check('email_messages_attempts_chk', sql`${t.attempts} >= 0`),
   check('email_messages_accepted_chk', sql`${t.sendStatus} <> 'ACCEPTED' OR (${t.providerEmailId} IS NOT NULL AND ${t.acceptedAt} IS NOT NULL)`),
 ]);
+
+export const accounts = pgTable('accounts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  ownerUserId: uuid('owner_user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  name: varchar('name', { length: 200 }).notNull(),
+  status: varchar('status', { length: 16 }).default('PENDING').notNull(),
+  requestKey: varchar('request_key', { length: 200 }).notNull(),
+  requestHash: char('request_hash', { length: 64 }).notNull(),
+  ...timestamps,
+}, t => [unique('accounts_owner_command_uq').on(t.ownerUserId, t.requestKey), index('accounts_owner_idx').on(t.ownerUserId), check('accounts_status_chk', sql`${t.status} IN ('PENDING','ACTIVE','SUSPENDED','CANCELED')`)]);
+
+export const invitationRequestLimits = pgTable('invitation_request_limits', { key: char('key', { length: 64 }).primaryKey(), startedAt: timestamp('started_at', { withTimezone: true }).notNull(), count: integer('count').notNull() }, t => [index('invitation_request_limits_started_idx').on(t.startedAt)]);
+
+export const accountSubscriptions = pgTable('account_subscriptions', {
+  accountId: uuid('account_id').primaryKey().references(() => accounts.id, { onDelete: 'restrict' }),
+  planCode: varchar('plan_code', { length: 40 }).default('BASE').notNull(),
+  status: varchar('status', { length: 16 }).default('PENDING').notNull(),
+  additionalUsersPerCompany: integer('additional_users_per_company').default(5).notNull(),
+  currentPeriodEndsAt: timestamp('current_period_ends_at', { withTimezone: true }),
+  source: varchar('source', { length: 16 }).default('PENDING').notNull(),
+  version: integer('version').default(1).notNull(),
+  ...timestamps,
+}, t => [check('account_subscriptions_status_chk', sql`${t.status} IN ('PENDING','ACTIVE','SUSPENDED','CANCELED')`), check('account_subscriptions_limit_chk', sql`${t.additionalUsersPerCompany} >= 0`), check('account_subscriptions_source_chk', sql`${t.source} IN ('PENDING','LEGACY_DEV','BILLING','MANUAL')`), check('account_subscriptions_period_chk', sql`${t.status} <> 'ACTIVE' OR ${t.source} = 'LEGACY_DEV' OR ${t.currentPeriodEndsAt} IS NOT NULL`)]);
+
+export const userInvitations = pgTable('user_invitations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'restrict' }),
+  invitedName: varchar('invited_name', { length: 200 }).notNull(),
+  emailNormalized: varchar('email_normalized', { length: 254 }).notNull(),
+  createdByUserId: uuid('created_by_user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  tokenHash: char('token_hash', { length: 64 }).notNull().unique(),
+  status: varchar('status', { length: 16 }).default('PENDING').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedByUserId: uuid('accepted_by_user_id').references(() => users.id, { onDelete: 'restrict' }),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  version: integer('version').default(1).notNull(),
+  resendCount: integer('resend_count').default(0).notNull(),
+  resendDay: date('resend_day'),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+  ...timestamps,
+}, t => [unique('user_invitations_account_id_uq').on(t.accountId, t.id), uniqueIndex('user_invitations_pending_email_uq').on(t.accountId, t.emailNormalized).where(sql`${t.status}='PENDING'`), index('user_invitations_account_idx').on(t.accountId, t.status, t.createdAt), index('user_invitations_expiry_idx').on(t.status, t.expiresAt), check('user_invitations_status_chk', sql`${t.status} IN ('PENDING','ACCEPTED','REVOKED','EXPIRED')`), check('user_invitations_email_chk', sql`${t.emailNormalized}=lower(btrim(${t.emailNormalized}))`), check('user_invitations_accepted_chk', sql`${t.status}<>'ACCEPTED' OR (${t.acceptedByUserId} IS NOT NULL AND ${t.acceptedAt} IS NOT NULL)`), check('user_invitations_revoked_chk', sql`${t.status}<>'REVOKED' OR ${t.revokedAt} IS NOT NULL`)]);
+
+export const userInvitationCompanies = pgTable('user_invitation_companies', {
+  invitationId: uuid('invitation_id').notNull(), accountId: uuid('account_id').notNull(), companyId: uuid('company_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, t => [primaryKey({ columns: [t.invitationId, t.companyId] }), foreignKey({ columns: [t.accountId, t.invitationId], foreignColumns: [userInvitations.accountId, userInvitations.id] }).onDelete('restrict'), foreignKey({ columns: [t.accountId, t.companyId], foreignColumns: [companies.accountId, companies.id] }).onDelete('restrict'), index('user_invitation_companies_company_idx').on(t.companyId, t.invitationId)]);
+
+export const userManagementCommands = pgTable('user_management_commands', {
+  id: uuid('id').defaultRandom().primaryKey(), accountId: uuid('account_id').notNull().references(() => accounts.id), actorUserId: uuid('actor_user_id').notNull().references(() => users.id),
+  requestKey: varchar('request_key', { length: 200 }).notNull(), requestHash: char('request_hash', { length: 64 }).notNull(), operation: varchar('operation', { length: 40 }).notNull(),
+  invitationId: uuid('invitation_id'), resultUserId: uuid('result_user_id').references(() => users.id), result: jsonb('result').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, t => [unique('user_management_commands_key_uq').on(t.accountId, t.actorUserId, t.requestKey), foreignKey({ columns: [t.accountId, t.invitationId], foreignColumns: [userInvitations.accountId, userInvitations.id] }).onDelete('restrict')]);
+
+export const userManagementEvents = pgTable('user_management_events', {
+  id: uuid('id').defaultRandom().primaryKey(), accountId: uuid('account_id').notNull().references(() => accounts.id), actorUserId: uuid('actor_user_id').references(() => users.id), targetUserId: uuid('target_user_id').references(() => users.id), invitationId: uuid('invitation_id'), companyId: uuid('company_id'),
+  eventType: varchar('event_type', { length: 40 }).notNull(), changes: jsonb('changes').$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, t => [foreignKey({ columns: [t.accountId, t.invitationId], foreignColumns: [userInvitations.accountId, userInvitations.id] }).onDelete('restrict'), foreignKey({ columns: [t.accountId, t.companyId], foreignColumns: [companies.accountId, companies.id] }).onDelete('restrict'), index('user_management_events_account_idx').on(t.accountId, t.createdAt), index('user_management_events_invitation_idx').on(t.invitationId, t.createdAt)]);
 
 // Only signed event metadata is retained, including events that arrive before the send response.
 export const emailEvents = pgTable('email_events', {
@@ -129,6 +195,7 @@ export const companies = pgTable(
   'companies',
   {
     id: uuid('id').defaultRandom().primaryKey(),
+    accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'restrict' }),
     name: varchar('name', { length: 200 }).notNull(),
     kind: varchar('kind', { length: 2 }).default('PJ').notNull(),
     legalName: varchar('legal_name', { length: 200 }),
@@ -157,6 +224,7 @@ export const companies = pgTable(
     ...timestamps,
   },
   (table) => [
+    unique('companies_account_id_id_uq').on(table.accountId, table.id),
     check('companies_name_nonblank_chk', sql`length(btrim(${table.name})) > 0`),
     check('companies_kind_chk', sql`${table.kind} IN ('PF', 'PJ')`),
     check('companies_trade_name_kind_chk', sql`${table.kind} = 'PJ' OR ${table.tradeName} IS NULL`),
@@ -179,6 +247,7 @@ export const users = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     name: varchar('name', { length: 200 }).notNull(),
     email: varchar('email', { length: 254 }).notNull(),
+    emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
     ...timestamps,
   },
@@ -215,11 +284,15 @@ export const companyUsers = pgTable(
     companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
     role: varchar('role', { length: 20 }).notNull(),
+    joinedViaInvitationId: uuid('joined_via_invitation_id'),
+    version: integer('version').default(1).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     primaryKey({ name: 'company_users_pk', columns: [table.companyId, table.userId] }),
+    foreignKey({ name: 'company_users_invitation_company_fk', columns: [table.joinedViaInvitationId, table.companyId], foreignColumns: [userInvitationCompanies.invitationId, userInvitationCompanies.companyId] }).onDelete('restrict'),
     check('company_users_role_chk', sql`${table.role} IN ('OWNER', 'ADMIN', 'MANAGER', 'COLLABORATOR')`),
     check('company_users_status_chk', sql`${table.status} IN ('ACTIVE', 'INACTIVE')`),
     index('company_users_user_id_idx').on(table.userId),

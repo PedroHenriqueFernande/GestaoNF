@@ -1,16 +1,18 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { companies, companyUsers, emailMessages } from '@gestaonf/database/schema';
+import { companies, companyUsers, emailMessages, userInvitations, userInvitationCompanies } from '@gestaonf/database/schema';
 import { and, asc, desc, eq, inArray, lte, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.module.js';
 import { allowedTestRecipient } from './emails.config.js';
 import { EmailsService } from './emails.service.js';
 import { EmailProviderError, ResendProviderService } from './resend-provider.service.js';
+import { EmailPayloadService } from './email-payload.service.js';
+import { companyAvailable } from '../accounts/account-policy.js';
 
 @Injectable()
 export class EmailDispatchService {
   private readonly logger = new Logger(EmailDispatchService.name);
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(ResendProviderService) private readonly provider: ResendProviderService, @Inject(EmailsService) private readonly emails: EmailsService) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(ResendProviderService) private readonly provider: ResendProviderService, @Inject(EmailsService) private readonly emails: EmailsService, @Inject(EmailPayloadService) private readonly payloads: EmailPayloadService) {}
 
   async dispatchOne() {
     if (!this.provider.config.enabled) return;
@@ -22,10 +24,18 @@ export class EmailDispatchService {
       if (last?.at && now.getTime() - last.at.getTime() < 1000) return null;
       const [row] = await tx.select().from(emailMessages).where(or(and(inArray(emailMessages.sendStatus, ['QUEUED', 'RETRYING']), lte(emailMessages.availableAt, now)), and(eq(emailMessages.sendStatus, 'SENDING'), lte(emailMessages.leaseUntil, now)))).orderBy(asc(emailMessages.availableAt), asc(emailMessages.createdAt)).limit(1).for('update', { skipLocked: true });
       if (!row) return null;
+      if (row.invitationId) {
+        const [invite] = await tx.select().from(userInvitations).where(eq(userInvitations.id, row.invitationId));
+        const targets = await tx.select({ id: userInvitationCompanies.companyId }).from(userInvitationCompanies).where(eq(userInvitationCompanies.invitationId, row.invitationId));
+        const usable = targets.length ? await tx.select({ id: companies.id }).from(companies).where(and(inArray(companies.id, targets.map(t => t.id)), companyAvailable(companies.id))) : [];
+        if (!invite || invite.status !== 'PENDING' || invite.version !== row.invitationVersion || invite.expiresAt <= now || !targets.length || usable.length !== targets.length) {
+          await tx.update(emailMessages).set({ sendStatus: 'CANCELED', encryptedPayload: null, encryptionKeyId: null, leaseToken: null, leaseUntil: null, updatedAt: now }).where(eq(emailMessages.id, row.id)); return null;
+        }
+      }
       const finish = async (code: string) => { await tx.update(emailMessages).set({ sendStatus: row.mayHaveSent ? 'UNKNOWN' : 'FAILED', lastErrorCode: code, leaseToken: null, leaseUntil: null, updatedAt: now }).where(eq(emailMessages.id, row.id)); return null; };
       if (row.firstAttemptAt && now.getTime() - row.firstAttemptAt.getTime() >= 23 * 60 * 60_000) return finish('idempotency_window_expired');
       if (row.attempts >= 8) return finish('attempts_exhausted');
-      const [member] = await tx.select({ id: companyUsers.userId, role: companyUsers.role }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companyUsers.companyId, row.companyId), eq(companyUsers.userId, row.createdByUserId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'))).limit(1);
+      const [member] = await tx.select({ id: companyUsers.userId, role: companyUsers.role }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companyUsers.companyId, row.companyId), eq(companyUsers.userId, row.createdByUserId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
       if (!member) return finish('company_access_revoked');
       if (['MESSAGE', 'TEST'].includes(row.purpose) && !['OWNER', 'ADMIN', 'MANAGER'].includes(member.role)) return finish('send_permission_revoked');
       const config = this.provider.config;
@@ -42,14 +52,19 @@ export class EmailDispatchService {
     if (!claimed) return;
     const { row, previouslyUncertain } = claimed;
     let providerId: string | null = null, failure: EmailProviderError | null = null;
-    try { providerId = await this.provider.send({ from: row.fromAddress, to: row.toAddress, subject: row.subject, text: row.textBody, html: row.htmlBody, ...(row.replyTo ? { reply_to: row.replyTo } : {}) }, `gestaonf-email/${row.id}`); }
+    try {
+      let content: { text: string; html: string };
+      try { content = row.invitationId ? this.payloads.decrypt(row.encryptedPayload!, row.encryptionKeyId!, `${row.invitationId}:${row.invitationVersion}`) : { text: row.textBody!, html: row.htmlBody! }; }
+      catch { throw new EmailProviderError('sensitive_payload_unavailable', false, false); }
+      providerId = await this.provider.send({ from: row.fromAddress, to: row.toAddress, subject: row.subject, ...content, ...(row.replyTo ? { reply_to: row.replyTo } : {}) }, `gestaonf-email/${row.id}`);
+    }
     catch (error) { failure = error instanceof EmailProviderError ? error : new EmailProviderError('network_error', true, true); }
     await this.database.db.transaction(async tx => {
       const [current] = await tx.select().from(emailMessages).where(and(eq(emailMessages.id, row.id), eq(emailMessages.leaseToken, row.leaseToken!))).for('update');
       if (!current) return;
       const now = new Date();
       if (providerId) {
-        const [accepted] = await tx.update(emailMessages).set({ sendStatus: 'ACCEPTED', providerEmailId: providerId, acceptedAt: now, lastErrorCode: null, leaseToken: null, leaseUntil: null, updatedAt: now }).where(eq(emailMessages.id, row.id)).returning();
+        const [accepted] = await tx.update(emailMessages).set({ sendStatus: 'ACCEPTED', providerEmailId: providerId, acceptedAt: now, lastErrorCode: null, leaseToken: null, leaseUntil: null, ...(row.invitationId ? { encryptedPayload: null, encryptionKeyId: null } : {}), updatedAt: now }).where(eq(emailMessages.id, row.id)).returning();
         await this.emails.applyEvents(tx, accepted);
       } else {
         const ambiguous = previouslyUncertain || failure!.ambiguous;

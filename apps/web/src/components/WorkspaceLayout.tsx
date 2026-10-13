@@ -17,6 +17,7 @@ const navigation = [
   { id: 'agenda', label: 'Agenda', path: '/agenda', icon: CalendarDays },
   { id: 'proposals', label: 'Propostas', path: '/propostas', icon: FileText },
   { id: 'nilo', label: 'Nero', path: '/nero', icon: Bot },
+  { id: 'users', label: 'Usuários', path: '/usuarios', icon: UsersRound },
 ] as const;
 
 export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, onboarding = false, className = '', children }: {
@@ -39,7 +40,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/propostas' ? 'proposals' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
+  const section = pathname === '/empresa' ? 'company' : pathname === '/usuarios' ? 'users' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/propostas' ? 'proposals' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
   const company = companies?.find((item) => item.id === companyId);
 
   useEffect(() => {
@@ -105,7 +106,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
       <div className="workspace-sidebar__navigation">
         {([
           { label: 'Gestão', items: [navigation[3], navigation[4], navigation[5], navigation[6], navigation[7], navigation[8]] },
-          { label: 'Cadastros', items: onboarding ? [navigation[2], navigation[0], navigation[1]] : [navigation[0], navigation[1], navigation[2]] },
+          { label: 'Cadastros', items: onboarding ? [navigation[2], navigation[0], navigation[1]] : [navigation[0], navigation[1], navigation[2], ...(companies?.some((item) => item.role === 'OWNER') ? [navigation[9]] : [])] },
         ] as const).map((group) => <div className="workspace-nav-group" key={group.label}>
         <p className="workspace-sidebar__label">{group.label}</p>
         <nav aria-label={group.label}>

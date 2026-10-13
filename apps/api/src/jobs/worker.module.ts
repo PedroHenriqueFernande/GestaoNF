@@ -10,10 +10,12 @@ import { FilesModule } from '../files/files.module.js';
 import { FileCleanupWorkerService } from './file-cleanup-worker.service.js';
 import { EmailsModule } from '../emails/emails.module.js';
 import { EmailWorkerService } from './email-worker.service.js';
+import { UsersModule } from '../users/users.module.js';
+import { InvitationExpiryWorkerService } from './invitation-expiry-worker.service.js';
 
 @Module({
-  imports: [DatabaseModule, WhatsAppModule, AssistantModule, CrmModule, FilesModule, EmailsModule],
-  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService, FileCleanupWorkerService, EmailWorkerService],
+  imports: [DatabaseModule, WhatsAppModule, AssistantModule, CrmModule, FilesModule, EmailsModule, UsersModule],
+  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService, FileCleanupWorkerService, EmailWorkerService, InvitationExpiryWorkerService],
 })
 export class WorkerModule {}
 

@@ -1,3 +1,4 @@
+import { companyAvailable } from '../accounts/account-policy.js';
 import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { companies, companyUsers } from '@gestaonf/database/schema';
 import { and, eq } from 'drizzle-orm';
@@ -35,7 +36,7 @@ export class CompanyGuard implements CanActivate {
     if (!companyId || Array.isArray(companyId) || !z.uuid().safeParse(companyId).success) throw new ForbiddenException('Informe X-Company-Id válido');
     const [membership] = await this.database.db.select({ companyId: companyUsers.companyId }).from(companyUsers)
       .innerJoin(companies, eq(companies.id, companyUsers.companyId))
-      .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, request.userId!), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'))).limit(1);
+      .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, request.userId!), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
     if (!membership) throw new ForbiddenException('Sem acesso à empresa');
     request.companyId = membership.companyId;
     return true;

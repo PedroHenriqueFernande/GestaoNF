@@ -1,3 +1,4 @@
+import { companyAvailable } from '../accounts/account-policy.js';
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { companies, companyUsers, crmMeetingReminderOccurrences as occurrences, crmMeetingReminders as rules, crmMeetings, userNotifications, users } from '@gestaonf/database/schema';
 import { and, asc, count, desc, eq, isNull, lte, sql } from 'drizzle-orm';
@@ -42,7 +43,7 @@ export class MeetingReminderService {
         const [occurrence] = await tx.select().from(occurrences).where(eq(occurrences.id, candidate.id)).for('update').limit(1);
         if (!meeting || !occurrence || occurrence.status !== 'PENDING') return null;
         const [member] = await tx.select({ id: users.id }).from(companyUsers).innerJoin(users, eq(users.id, companyUsers.userId)).innerJoin(companies, eq(companies.id, companyUsers.companyId))
-          .where(and(eq(companyUsers.companyId, meeting.companyId), eq(companyUsers.userId, occurrence.recipientUserId), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'))).for('share').limit(1);
+          .where(and(eq(companyUsers.companyId, meeting.companyId), eq(companyUsers.userId, occurrence.recipientUserId), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).for('share').limit(1);
         const [rule] = await tx.select({ active: rules.active, minutesBefore: rules.minutesBefore }).from(rules).where(eq(rules.id, occurrence.ruleId)).limit(1);
         let status: 'DELIVERED' | 'CANCELED' | 'EXPIRED' = 'DELIVERED';
         if (meeting.status !== 'SCHEDULED' || meeting.scheduleRevision !== occurrence.scheduleRevision || meeting.assignedUserId !== occurrence.recipientUserId || !member || !rule?.active) status = 'CANCELED';

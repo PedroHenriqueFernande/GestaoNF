@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { testAccount } from './account-fixture.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -84,7 +85,8 @@ afterAll(async () => {
 beforeEach(async () => {
   const users = await db.insert(s.users).values(['Gestor', 'Vendedor', 'Outro vendedor'].map((name) => ({ name, email: `${randomUUID()}@example.test` }))).returning();
   [owner, collaborator, otherCollaborator] = users.map((u) => u.id);
-  const companies = await db.insert(s.companies).values([{ name: 'Empresa A', timezone: 'America/Sao_Paulo' }, { name: 'Empresa B' }]).returning();
+  const accountId = await testAccount(db, owner);
+  const companies = await db.insert(s.companies).values([{ accountId, name: 'Empresa A', timezone: 'America/Sao_Paulo' }, { accountId, name: 'Empresa B' }]).returning();
   [companyA, companyB] = companies.map((c) => c.id);
   await db.insert(s.companyUsers).values([
     { companyId: companyA, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' },

@@ -1,6 +1,7 @@
+import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { companies, companyUsers, customers, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles } from '@gestaonf/database/schema';
+import { companies, companyUsers, customers, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
@@ -119,10 +120,15 @@ export class SalesService {
     }
     const where = and(...conditions);
     const [items, [total]] = await Promise.all([
-      this.database.db.select().from(sales).where(where).orderBy(desc(sales.createdAt), desc(sales.id)).limit(input.limit).offset(input.offset),
+      this.database.db.select({ sale: sales, createdByUserName: users.name }).from(sales)
+        .innerJoin(users, eq(sales.createdByUserId, users.id))
+        .where(where).orderBy(desc(sales.createdAt), desc(sales.id)).limit(input.limit).offset(input.offset),
       this.database.db.select({ count: count() }).from(sales).where(where),
     ]);
-    return { items: items.map(({ idempotencyKey: _key, requestHash: _hash, ...sale }) => sale), total: total.count, limit: input.limit, offset: input.offset };
+    return { items: items.map(({ sale, createdByUserName }) => {
+      const { idempotencyKey: _key, requestHash: _hash, ...publicSale } = sale;
+      return { ...publicSale, createdByUserName };
+    }), total: total.count, limit: input.limit, offset: input.offset };
   }
 
   async get(companyId: string, id: string) {
@@ -289,7 +295,7 @@ export class SalesService {
       if (!sale) throw new NotFoundException('Pedido não encontrado');
       if (sale.status !== 'DRAFT' || sale.version !== input.expectedVersion) throw new ConflictException('Pedido já confirmado ou versão desatualizada');
       const [membership] = await tx.select({ id: companyUsers.userId }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId))
-        .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'))).limit(1);
+        .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
       if (!membership) throw new ForbiddenException('Sem acesso à empresa');
       const [customer] = await tx.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, sale.customerId))).limit(1);
       if (!customer || customer.status !== 'ACTIVE') throw new BadRequestException('Cliente inativo ou indisponível');

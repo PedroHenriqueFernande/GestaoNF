@@ -85,7 +85,7 @@ export class AuthService {
       .where(and(eq(authSessions.tokenHash, this.hashToken(token)), isNull(authSessions.revokedAt)));
   }
 
-  private async issueTokens(userId: string, tx: Pick<DatabaseService['db'], 'insert'> = this.database.db) {
+  async issueTokens(userId: string, tx: Pick<DatabaseService['db'], 'insert'> = this.database.db) {
     const accessToken = await new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(userId)
       .setIssuer('gestaonf').setAudience('gestaonf-api').setIssuedAt().setExpirationTime(`${ACCESS_SECONDS}s`).sign(this.jwtKey);
     const refreshToken = randomBytes(48).toString('base64url');
@@ -95,7 +95,7 @@ export class AuthService {
 
   private hashToken(token: string) { return createHash('sha256').update(token).digest('hex'); }
 
-  private async hashPassword(password: string) {
+  async hashPassword(password: string) {
     const salt = randomBytes(16).toString('hex');
     const hash = await derivePassword(password, salt, 64);
     return `scrypt:${salt}:${hash.toString('hex')}`;

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { testAccount } from './account-fixture.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -75,7 +76,8 @@ afterAll(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 beforeEach(async () => {
   const users = await db.insert(s.users).values(['Gestor', 'Vendedor', 'Outro'].map(name => ({ name, email: `${randomUUID()}@example.test` }))).returning(); [owner, seller, other] = users.map(u => u.id);
-  const companies = await db.insert(s.companies).values([{ name: 'Empresa A' }, { name: 'Empresa B' }]).returning(); [company, companyB] = companies.map(c => c.id);
+  const accountId = await testAccount(db, owner);
+  const companies = await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning(); [company, companyB] = companies.map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' }, { companyId: company, userId: seller, role: 'COLLABORATOR' }, { companyId: company, userId: other, role: 'COLLABORATOR' }]);
   const [v] = await db.insert(s.services).values({ companyId: company, name: 'Venda de CRM', suggestedUnitPrice: '2500.00' }).returning(); service = v.id;
 });

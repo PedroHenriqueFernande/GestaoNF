@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:e2e": "vitest run tests/api.e2e.test.ts",
     "r2:check": "tsx scripts/check-r2.ts",
-    "email:check": "tsx scripts/check-resend.ts"
+    "email:check": "tsx scripts/check-resend.ts",
+    "users:preflight": "tsx scripts/users-preflight.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",

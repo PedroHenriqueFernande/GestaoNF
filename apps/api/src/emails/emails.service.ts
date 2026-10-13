@@ -1,3 +1,4 @@
+import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { companies, companyUsers, emailEvents, emailMessages } from '@gestaonf/database/schema';
 import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
@@ -9,6 +10,8 @@ import { allowedTestRecipient } from './emails.config.js';
 import { emailKeySchema, emailWebhookSchema, sendEmailSchema } from './emails.schemas.js';
 import { renderEmail } from './email-template.js';
 import { ResendProviderService } from './resend-provider.service.js';
+import { EmailPayloadService } from './email-payload.service.js';
+import { escapeEmailHtml } from './email-template.js';
 
 export type EmailContext = { companyId: string; userId: string };
 export type EmailTransaction = Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
@@ -22,9 +25,9 @@ export function publicEmail(row: EmailRow) {
 
 @Injectable()
 export class EmailsService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(ResendProviderService) readonly provider: ResendProviderService) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(ResendProviderService) readonly provider: ResendProviderService, @Inject(EmailPayloadService) private readonly payloads: EmailPayloadService) {}
   async member(ctx: EmailContext, tx: Pick<DatabaseService['db'], 'select'> = this.database.db) {
-    const [member] = await tx.select({ role: companyUsers.role, name: companies.name }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'))).limit(1);
+    const [member] = await tx.select({ role: companyUsers.role, name: companies.name }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
     if (!member) throw new ForbiddenException('Sem acesso à empresa');
     return member;
   }
@@ -48,12 +51,12 @@ export class EmailsService {
     return this.database.db.transaction(tx => this.enqueueInTx(tx, ctx, input, key, purpose));
   }
   // Future modules can call this inside the same transaction as their business change.
-  async enqueueInTx(tx: EmailTransaction, ctx: EmailContext, rawInput: z.output<typeof sendEmailSchema>, rawKey: string, rawPurpose: string) {
+  async enqueueInTx(tx: EmailTransaction, ctx: EmailContext, rawInput: z.output<typeof sendEmailSchema>, rawKey: string, rawPurpose: string, sensitive?: { id: string; version: number; html: string; text: string }) {
     const input = parseInput(sendEmailSchema, rawInput), key = parseInput(emailKeySchema, rawKey);
     const purpose = parseInput(z.string().regex(/^[A-Z0-9_]{1,64}$/), rawPurpose);
     const member = await this.member(ctx, tx);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`emails-admission:${ctx.companyId}`},0))`);
-    const hash = createHash('sha256').update(JSON.stringify({ ...input, purpose })).digest('hex');
+    const hash = createHash('sha256').update(JSON.stringify({ ...input, purpose, ...(sensitive ? { invitationId: sensitive.id, invitationVersion: sensitive.version } : {}) })).digest('hex');
     const [existing] = await tx.select().from(emailMessages).where(and(eq(emailMessages.companyId, ctx.companyId), eq(emailMessages.requestKey, key))).limit(1);
     if (existing) {
       if (existing.requestHash !== hash || existing.createdByUserId !== ctx.userId) throw new ConflictException('Chave de envio já usada em outra solicitação');
@@ -68,8 +71,20 @@ export class EmailsService {
     const [usage] = await tx.select({ value: count() }).from(emailMessages).where(and(eq(emailMessages.companyId, ctx.companyId), gte(emailMessages.createdAt, dayStart)));
     if (usage.value >= c.dailyLimit) throw new HttpException('Limite diário de e-mails desta empresa atingido', 429);
     const content = renderEmail(member.name, input.subject, input.message);
-    const [row] = await tx.insert(emailMessages).values({ companyId: ctx.companyId, createdByUserId: ctx.userId, requestKey: key, requestHash: hash, purpose, fromAddress: c.from, toAddress: input.to, replyTo: c.replyTo, subject: input.subject, textBody: content.text, htmlBody: content.html, testMode: c.testMode }).returning();
+    const encrypted = sensitive ? this.payloads.encrypt(sensitive, `${sensitive.id}:${sensitive.version}`) : {};
+    const [row] = await tx.insert(emailMessages).values({ companyId: ctx.companyId, createdByUserId: ctx.userId, requestKey: key, requestHash: hash, purpose, fromAddress: c.from, toAddress: input.to, replyTo: c.replyTo, subject: input.subject, textBody: sensitive ? null : content.text, htmlBody: sensitive ? null : content.html, testMode: c.testMode, ...encrypted, ...(sensitive ? { invitationId: sensitive.id, invitationVersion: sensitive.version } : {}) }).returning();
     return publicEmail(row);
+  }
+  async enqueueInvitationInTx(tx: EmailTransaction, ctx: EmailContext, invite: { id: string; version: number; email: string; name: string; accountName: string; companies: string[] }, token: string) {
+    this.payloads.requireKey();
+    const base = new URL(process.env.WEB_ORIGIN ?? 'http://localhost:5173');
+    if ((base.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(base.hostname))) || base.username || base.password) throw new ServiceUnavailableException('WEB_ORIGIN inválido para convites');
+    const link = new URL('/aceitar-convite', base); link.hash = `token=${token}`;
+    const subject = 'Convite para acessar o GestãoNF';
+    const message = `Olá, ${invite.name}.\nVocê foi convidado por ${invite.accountName} para acessar: ${invite.companies.join(', ')}.\nAceite em até 24 horas: ${link.href}`;
+    const content = renderEmail(invite.accountName, subject, message);
+    content.html = content.html.replace('</h1>', `</h1><p><a href="${escapeEmailHtml(link.href)}" style="display:inline-block;background:#126b82;color:white;padding:12px 20px;text-decoration:none;border-radius:4px">Aceitar convite</a></p>`);
+    return this.enqueueInTx(tx, ctx, { to: invite.email, subject, message }, `user-invitation/${invite.id}/${invite.version}`, 'USER_INVITATION', { id: invite.id, version: invite.version, ...content });
   }
   async list(ctx: EmailContext, input: { limit: number; offset: number }) {
     const member = await this.member(ctx);

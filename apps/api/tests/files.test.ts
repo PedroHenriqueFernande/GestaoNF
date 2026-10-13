@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { testAccount } from './account-fixture.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -76,7 +77,8 @@ beforeEach(async () => {
   vi.spyOn(storage, 'remove').mockImplementation(async (_bucket, key) => { objects.delete(key); });
   vi.spyOn(storage, 'signDownload').mockResolvedValue('https://download.example.test/private');
   const insertedUsers = await db.insert(s.users).values(['Gestor', 'Vendedor', 'Outro'].map(name => ({ name, email: `${randomUUID()}@example.test` }))).returning(); [owner, seller, other] = insertedUsers.map(u => u.id);
-  const insertedCompanies = await db.insert(s.companies).values([{ name: 'Empresa A' }, { name: 'Empresa B' }]).returning(); [company, companyB] = insertedCompanies.map(c => c.id);
+  const accountId = await testAccount(db, owner);
+  const insertedCompanies = await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning(); [company, companyB] = insertedCompanies.map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' }, { companyId: company, userId: seller, role: 'COLLABORATOR' }, { companyId: company, userId: other, role: 'COLLABORATOR' }]);
   [serviceId] = (await db.insert(s.services).values({ companyId: company, name: 'CRM' }).returning()).map(s => s.id);
   [customerId] = (await db.insert(s.customers).values({ companyId: company, kind: 'PF', name: 'Cliente' }).returning()).map(s => s.id);

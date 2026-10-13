@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { testAccount } from './account-fixture.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { config } from 'dotenv';
 import { randomUUID } from 'node:crypto';
@@ -68,7 +69,8 @@ afterAll(async () => {
 beforeEach(async () => {
   vi.restoreAllMocks();
   [ { id: userId } ] = await db.insert(schema.users).values({ name: 'Operador', email: `${randomUUID()}@example.test` }).returning();
-  const companies = await db.insert(schema.companies).values([{ name: 'Empresa A' }, { name: 'Empresa B' }, { name: 'Empresa C' }]).returning();
+  const accountId = await testAccount(db, userId);
+  const companies = await db.insert(schema.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }, { accountId, name: 'Empresa C' }]).returning();
   [companyA, companyB, companyC] = companies.map((company) => company.id);
   await db.insert(schema.companyUsers).values(companies.map((company) => ({ companyId: company.id, userId, role: 'OWNER' })));
 });

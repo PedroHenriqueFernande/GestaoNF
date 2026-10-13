@@ -86,7 +86,7 @@ export function CompanyPage({ user }: { user: User }) {
     onSuccess: async (result, { target }) => {
       queryClient.setQueryData(['company', result.id], result);
       queryClient.setQueryData<Company[]>(['companies'], (previous) => {
-        const summary = { id: result.id, name: result.name, role: result.role };
+        const summary = { id: result.id, name: result.name, role: result.role, accountId: result.accountId };
         return previous?.some((item) => item.id === result.id)
           ? previous.map((item) => item.id === result.id ? summary : item)
           : [...(previous ?? []), summary];

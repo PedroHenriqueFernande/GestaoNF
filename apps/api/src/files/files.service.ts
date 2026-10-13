@@ -1,3 +1,4 @@
+import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, ForbiddenException, GoneException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { companies, companyUsers, storedFiles, users } from '@gestaonf/database/schema';
 import { and, count, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
@@ -26,7 +27,7 @@ export class FilesService {
   private async access(ctx: FileContext, db: FileDb = this.database.db) {
     const [member] = await db.select({ role: companyUsers.role }).from(companyUsers)
       .innerJoin(companies, eq(companies.id, companyUsers.companyId)).innerJoin(users, eq(users.id, companyUsers.userId))
-      .where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), eq(users.status, 'ACTIVE'))).limit(1);
+      .where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(users.status, 'ACTIVE'))).limit(1);
     if (!member) throw new ForbiddenException('Sem acesso ativo à empresa');
     return { ...ctx, manager: ['OWNER', 'ADMIN', 'MANAGER'].includes(member.role) };
   }

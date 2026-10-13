@@ -148,6 +148,20 @@
       "when": 1791906987560,
       "tag": "0020_woozy_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791909761787,
+      "tag": "0021_famous_siren",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791910260149,
+      "tag": "0022_slimy_maverick",
+      "breakpoints": true
     }
   ]
 }

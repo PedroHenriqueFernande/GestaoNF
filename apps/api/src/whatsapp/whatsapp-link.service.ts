@@ -1,3 +1,4 @@
+import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { companies, companyUsers, users, whatsappConnections, whatsappConsentEvents, whatsappLinkChallenges, whatsappLinkCompanies, whatsappLinks, whatsappOutboundMessages, whatsappRequests, whatsappSessions } from '@gestaonf/database/schema';
@@ -41,7 +42,7 @@ export class WhatsAppLinkService {
       .innerJoin(companies, eq(companies.id, whatsappLinkCompanies.companyId))
       .innerJoin(companyUsers, and(eq(companyUsers.companyId, companies.id), eq(companyUsers.userId, whatsappLinkCompanies.userId)))
       .innerJoin(users, eq(users.id, companyUsers.userId))
-      .where(and(eq(whatsappLinkCompanies.linkId, linkId), eq(whatsappLinkCompanies.userId, userId), eq(whatsappLinkCompanies.status, 'ACTIVE'), eq(whatsappLinks.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE')))
+      .where(and(eq(whatsappLinkCompanies.linkId, linkId), eq(whatsappLinkCompanies.userId, userId), eq(whatsappLinkCompanies.status, 'ACTIVE'), eq(whatsappLinks.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE')))
       .orderBy(asc(companies.name), asc(companies.id));
   }
 
@@ -64,7 +65,7 @@ export class WhatsAppLinkService {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${connection.id + ':' + userId}, 0))`);
       const [company] = await tx.select({ name: companies.name }).from(companies)
         .innerJoin(companyUsers, and(eq(companyUsers.companyId, companies.id), eq(companyUsers.userId, userId))).innerJoin(users, eq(users.id, companyUsers.userId))
-        .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'))).limit(1);
+        .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'))).limit(1);
       if (!company) throw new NotFoundException('Empresa não encontrada ou acesso indisponível');
       const [association] = await tx.select({ id: whatsappLinkCompanies.id }).from(whatsappLinkCompanies)
         .where(and(eq(whatsappLinkCompanies.connectionId, connection.id), eq(whatsappLinkCompanies.userId, userId), eq(whatsappLinkCompanies.companyId, companyId), eq(whatsappLinkCompanies.status, 'ACTIVE'))).limit(1);
@@ -125,7 +126,7 @@ export class WhatsAppLinkService {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${initial.connectionId + ':' + userId}, 0))`);
         const [challenge] = await tx.select().from(whatsappLinkChallenges).where(eq(whatsappLinkChallenges.id, challengeId)).limit(1).for('update');
         const [membership] = await tx.select({ id: users.id }).from(companyUsers).innerJoin(users, eq(users.id, companyUsers.userId)).innerJoin(companies, eq(companies.id, companyUsers.companyId))
-          .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'))).limit(1);
+          .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
         if (!membership) throw new BadRequestException('Seu usuário não possui acesso ativo a esta empresa');
         if (challenge.status === 'CONFIRMED') {
           const [existing] = await tx.select({ phoneE164: whatsappLinks.phoneE164, verifiedAt: whatsappLinkCompanies.verifiedAt }).from(whatsappLinkCompanies).innerJoin(whatsappLinks, eq(whatsappLinks.id, whatsappLinkCompanies.linkId))
