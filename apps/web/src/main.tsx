@@ -15,12 +15,13 @@ const ServicesPage = lazy(() => import('./features/services/ServicesPage').then(
 const CompanyPage = lazy(() => import('./features/companies/CompanyPage').then((module) => ({ default: module.CompanyPage })));
 const SalesPage = lazy(() => import('./features/sales/SalesPage').then((module) => ({ default: module.SalesPage })));
 const FinancePage = lazy(() => import('./features/finance/FinancePage').then((module) => ({ default: module.FinancePage })));
+const CrmPage = lazy(() => import('./features/crm/CrmPage').then((module) => ({ default: module.CrmPage })));
 const NiloPage = lazy(() => import('./features/nilo/NiloPage').then((module) => ({ default: module.NiloPage })));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000, refetchOnWindowFocus: false } } });
 
-function SessionGate({ page }: { page: 'customers' | 'services' | 'company' | 'sales' | 'finance' | 'nilo' }) {
-  useEffect(() => { document.title = `GestãoNF · ${page === 'services' ? 'Serviços' : page === 'company' ? 'Empresa' : page === 'sales' ? 'Portal de Serviços' : page === 'finance' ? 'Financeiro' : page === 'nilo' ? 'Nero' : 'Clientes'}`; }, [page]);
+function SessionGate({ page }: { page: 'customers' | 'services' | 'company' | 'sales' | 'finance' | 'crm' | 'nilo' }) {
+  useEffect(() => { document.title = `GestãoNF · ${page === 'services' ? 'Serviços' : page === 'company' ? 'Empresa' : page === 'sales' ? 'Portal de Serviços' : page === 'finance' ? 'Financeiro' : page === 'crm' ? 'CRM' : page === 'nilo' ? 'Nero' : 'Clientes'}`; }, [page]);
   const session = useQuery({ queryKey: ['me'], queryFn: api.me });
   const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies, enabled: session.isSuccess });
   if (session.isPending) return <div className="startup"><Brand /><div className="loading-line" /><p>Carregando sua área de trabalho...</p></div>;
@@ -30,7 +31,7 @@ function SessionGate({ page }: { page: 'customers' | 'services' | 'company' | 's
   if (companies.isError) return <div className="startup"><Brand /><p>Não foi possível carregar suas empresas.</p><button className="button button--primary" onClick={() => companies.refetch()}><RefreshCw size={16} /> Tentar novamente</button></div>;
   if (page !== 'company' && companies.data.length === 0) return <Navigate to="/empresa" replace />;
   return <Suspense fallback={<div className="startup"><Brand /><div className="loading-line" /><p>Carregando sua área de trabalho...</p></div>}>
-    {page === 'services' ? <ServicesPage user={session.data} /> : page === 'company' ? <CompanyPage user={session.data} /> : page === 'sales' ? <SalesPage user={session.data} /> : page === 'finance' ? <FinancePage user={session.data} /> : page === 'nilo' ? <NiloPage user={session.data} /> : <CustomersPage user={session.data} />}
+    {page === 'services' ? <ServicesPage user={session.data} /> : page === 'company' ? <CompanyPage user={session.data} /> : page === 'sales' ? <SalesPage user={session.data} /> : page === 'finance' ? <FinancePage user={session.data} /> : page === 'crm' ? <CrmPage user={session.data} /> : page === 'nilo' ? <NiloPage user={session.data} /> : <CustomersPage user={session.data} />}
   </Suspense>;
 }
 
@@ -46,6 +47,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/empresa" element={<SessionGate page="company" />} />
           <Route path="/portal-de-servicos" element={<SessionGate page="sales" />} />
           <Route path="/financeiro" element={<SessionGate page="finance" />} />
+          <Route path="/crm" element={<SessionGate page="crm" />} />
           <Route path="/nero" element={<SessionGate page="nilo" />} />
           <Route path="/nilo" element={<Navigate to="/nero" replace />} />
           <Route path="*" element={<Navigate to="/Clientes" replace />} />

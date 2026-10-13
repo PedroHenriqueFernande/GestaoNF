@@ -121,6 +121,58 @@ export type WhatsAppLinkChallenge = {
 export type WhatsAppChallengeStatus = {
   id: string; status: 'PENDING' | 'CANDIDATE' | 'CONFIRMED' | 'EXPIRED' | 'CANCELED'; expiresAt: string; candidatePhoneE164: string | null;
 };
+export type CrmStatus = 'NEW' | 'CONTACTING' | 'QUALIFIED' | 'DISQUALIFIED' | 'LOST' | 'WON';
+export type CrmCapture = {
+  sourceLabel: string | null; utmSource: string | null; utmMedium: string | null; utmCampaign: string | null;
+  utmContent: string | null; utmTerm: string | null;
+};
+export type CrmLead = {
+  id: string; companyId: string; name: string; organizationName: string | null; email: string | null; phone: string | null;
+  taxId: string | null; taxIdKind: 'PF' | 'PJ' | null; notes: string | null; assignedUserId: string | null;
+  customerId: string | null; version: number; archivedAt: string | null; createdAt: string; updatedAt: string;
+};
+export type CrmEntry = CrmCapture & {
+  id: string; contactId: string; captureKind: 'MANUAL' | 'FORM' | 'META_ADS' | 'GOOGLE_ADS' | 'IMPORT' | 'NERO' | 'API';
+  sourceFormReference: string | null; primaryServiceId: string | null; interestDescription: string | null;
+  occurredAt: string; receivedAt: string;
+};
+export type CrmOpportunity = {
+  id: string; companyId: string; contactId: string; pipelineId: string; stageId: string; title: string;
+  primaryServiceId: string | null; estimatedAmount: string | null; expectedCloseOn: string | null;
+  commercialStatus: CrmStatus; assignedUserId: string | null; reasonCode: string | null; reasonText: string | null;
+  closedAt: string | null; lastActivityAt: string; createdAt: string; updatedAt: string; archivedAt: string | null; version: number;
+  lead: Pick<CrmLead, 'id' | 'name' | 'organizationName'>; origin: CrmEntry;
+};
+export type CrmOpportunityRecord = Omit<CrmOpportunity, 'lead' | 'origin'>;
+export type CrmOpportunityDetail = CrmOpportunityRecord & { lead: CrmLead; origin: CrmEntry };
+export type CrmOpportunityList = {
+  items: CrmOpportunity[]; total: number; limit: number; offset: number;
+  summary: { total: number; knownAmounts: number; estimatedAmount: string };
+};
+export type CrmLeadDetail = CrmLead & {
+  summary: { opportunities: number; knownAmounts: number; estimatedAmount: string };
+  firstVisibleEntry: CrmEntry | null; visibility: 'COMPANY' | 'ASSIGNED';
+};
+export type CrmActivity = {
+  id: string; contactId: string; opportunityId: string | null; entryId: string | null; kind: string; actorType: string;
+  note: string | null; changes: Record<string, unknown>; occurredAt: string; recordedAt: string;
+};
+export type CrmPipeline = {
+  id: string; name: string; isDefault: boolean; version: number;
+  stages: { id: string; pipelineId: string; name: string; position: number; isEntry: boolean; version: number }[];
+};
+export type CrmFilters = {
+  search?: string; status?: CrmStatus; pipelineId?: string; stageId?: string; primaryServiceId?: string;
+  sourceLabel?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string;
+  from?: string; to?: string; periodBy?: 'ENTRY_RECEIVED' | 'CONTACT_CREATED'; includeArchived?: boolean;
+};
+export type CrmLeadInput = {
+  lead: { name: string; organizationName?: string | null; email?: string | null; phone?: string | null; notes?: string | null };
+  interest?: { description?: string | null; primaryServiceId?: string | null; estimatedAmount?: string | null; expectedCloseOn?: string | null };
+  capture?: { sourceLabel?: string | null; utmSource?: string | null; utmMedium?: string | null; utmCampaign?: string | null; utmContent?: string | null; utmTerm?: string | null };
+  pipelineId?: string; title?: string;
+};
+export type CrmCreateResult = { leadId: string; entryId: string; opportunityId: string };
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
@@ -241,6 +293,26 @@ export const api = {
   financeDetail: (companyId: string, saleId: string) => request<FinanceDetail>(`/finance/receivables/${saleId}`, {}, { companyId }),
   updateFinanceDates: (companyId: string, saleId: string, installmentId: string, input: { expectedVersion: number; soldOn: string; dueOn: string | null }) =>
     request<FinanceDetail>(`/finance/receivables/${saleId}/payments/${installmentId}/dates`, { method: 'PATCH', body: json(input) }, { companyId }),
+  crmOpportunities: (companyId: string, filters: CrmFilters = {}, page = 0, limit = 20) => {
+    const query = new URLSearchParams({ offset: String(page * limit), limit: String(limit) });
+    for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== '' && value !== false) query.set(key, String(value));
+    return request<CrmOpportunityList>(`/crm/opportunities?${query}`, {}, { companyId });
+  },
+  crmLead: (companyId: string, id: string) => request<CrmLeadDetail>(`/crm/leads/${id}`, {}, { companyId }),
+  crmOpportunity: (companyId: string, id: string) => request<CrmOpportunityDetail>(`/crm/opportunities/${id}`, {}, { companyId }),
+  createCrmLead: (companyId: string, input: CrmLeadInput, key: string) =>
+    request<CrmCreateResult>('/crm/leads', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  updateCrmLead: (companyId: string, id: string, input: Partial<Omit<CrmLeadInput['lead'], 'taxId' | 'taxIdKind'>> & { expectedVersion: number }) =>
+    request<CrmLead>(`/crm/leads/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
+  updateCrmOpportunity: (companyId: string, id: string, input: { expectedVersion: number; title?: string; primaryServiceId?: string | null; estimatedAmount?: string | null; expectedCloseOn?: string | null }) =>
+    request<CrmOpportunityRecord>(`/crm/opportunities/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
+  updateCrmStatus: (companyId: string, id: string, input: { expectedVersion: number; status: CrmStatus; reasonText?: string | null }) =>
+    request<CrmOpportunityRecord>(`/crm/opportunities/${id}/status`, { method: 'PATCH', body: json(input) }, { companyId }),
+  crmHistory: (companyId: string, leadId: string, page = 0, limit = 50) =>
+    request<{ items: CrmActivity[]; total: number; limit: number; offset: number }>(`/crm/leads/${leadId}/history?offset=${page * limit}&limit=${limit}`, {}, { companyId }),
+  addCrmNote: (companyId: string, leadId: string, opportunityId: string, note: string, key: string) =>
+    request<{ id: string }>(`/crm/leads/${leadId}/notes`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ opportunityId, note }) }, { companyId }),
+  crmPipelines: (companyId: string) => request<{ items: CrmPipeline[] }>('/crm/pipelines', {}, { companyId }),
   whatsappLinkStatus: (companyId: string) => request<WhatsAppLinkStatus>('/integrations/whatsapp/link/status', {}, { companyId }),
   createWhatsAppChallenge: (companyId: string, input: { mode?: 'NEW_NUMBER' | 'EXISTING_NUMBER'; linkId?: string } = {}) => request<WhatsAppLinkChallenge>('/integrations/whatsapp/link/challenges', { method: 'POST', body: json(input) }, { companyId }),
   whatsappChallengeStatus: (companyId: string, challengeId: string) => request<WhatsAppChallengeStatus>(`/integrations/whatsapp/link/challenges/${challengeId}`, {}, { companyId }),
