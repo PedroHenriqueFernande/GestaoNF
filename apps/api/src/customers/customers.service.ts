@@ -16,14 +16,18 @@ export class CustomersService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async create(companyId: string, userId: string, input: CreateCustomer) {
-    validateCustomerTaxId(input.kind, input.taxId, input.tradeName);
     try {
-      const [customer] = await this.database.db.insert(customers).values({ ...input, companyId, createdByUserId: userId }).returning();
-      return customer;
+      return await this.createInTx(this.database.db, companyId, userId, input);
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('CPF/CNPJ já cadastrado nesta empresa');
       throw error;
     }
+  }
+
+  async createInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, input: CreateCustomer) {
+    validateCustomerTaxId(input.kind, input.taxId, input.tradeName);
+    const [customer] = await db.insert(customers).values({ ...input, companyId, createdByUserId: userId }).returning();
+    return customer;
   }
 
   async list(companyId: string, input: ListCustomers) {

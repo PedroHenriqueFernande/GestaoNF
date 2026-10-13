@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { AlertCircle, CalendarDays, Check, CircleDollarSign, Clock3, Mail, MessageSquarePlus, Phone, Tag, UserRound, X } from 'lucide-react';
+import { AlertCircle, CalendarDays, Check, CircleDollarSign, Clock3, FileText, Mail, MessageSquarePlus, Phone, Tag, UserRound, X } from 'lucide-react';
 import { api, ApiError, type CrmOpportunity, type CrmStatus } from '../../api/client';
 import { CRM_STATUSES, dateOnly, money, normalizeMoney, shortDateTime, statusLabel } from './crm-utils';
 
@@ -82,7 +82,7 @@ export function CrmOpportunityModal({ companyId, opportunity, onClose, onChanged
         </div>}
         {error && <div className="crm-modal__error" role="alert"><AlertCircle size={16} />{error}</div>}
       </div>
-      <footer className="crm-modal__footer"><span>{current ? `Atualizado ${shortDateTime(current.updatedAt)}` : ''}</span><div>{tab === 'DETAIL' && !edit && <><button type="button" className="button button--secondary" onClick={() => navigate(`/agenda?${new URLSearchParams({ contactId: opportunity.contactId, opportunityId: opportunity.id, name: opportunity.lead.name, title: opportunity.title })}`)}><CalendarDays size={15} /> Agendar reunião</button><button type="button" className="button button--secondary" onClick={() => { setEdit(true); setError(''); }}>Editar</button></>}{tab === 'DETAIL' && edit && <><button type="button" className="button button--secondary" onClick={() => { setEdit(false); setForm(null); setError(''); }} disabled={save.isPending}>Cancelar</button><button form="crm-edit-form" type="submit" className="button button--primary" disabled={save.isPending}>{save.isPending ? 'Salvando...' : 'Salvar alterações'}</button></>}<button type="button" className="button button--secondary" onClick={onClose}>Fechar</button></div></footer>
+      <footer className="crm-modal__footer"><span>{current ? `Atualizado ${shortDateTime(current.updatedAt)}` : ''}</span><div>{tab === 'DETAIL' && !edit && <><button type="button" className="button button--primary" onClick={() => navigate(`/propostas?negociacao=${opportunity.id}`)}><FileText size={15} /> Criar proposta</button><button type="button" className="button button--secondary" onClick={() => navigate(`/agenda?${new URLSearchParams({ contactId: opportunity.contactId, opportunityId: opportunity.id, name: opportunity.lead.name, title: opportunity.title })}`)}><CalendarDays size={15} /> Agendar reunião</button><button type="button" className="button button--secondary" onClick={() => { setEdit(true); setError(''); }}>Editar</button></>}{tab === 'DETAIL' && edit && <><button type="button" className="button button--secondary" onClick={() => { setEdit(false); setForm(null); setError(''); }} disabled={save.isPending}>Cancelar</button><button form="crm-edit-form" type="submit" className="button button--primary" disabled={save.isPending}>{save.isPending ? 'Salvando...' : 'Salvar alterações'}</button></>}<button type="button" className="button button--secondary" onClick={onClose}>Fechar</button></div></footer>
     </section>
   </div>;
 }

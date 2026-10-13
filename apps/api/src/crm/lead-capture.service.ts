@@ -31,9 +31,16 @@ export class LeadCaptureService {
     if (contactId) { contactId = parseInput(idSchema, contactId); input = parseInput(createEntrySchema, input); }
     else input = parseInput(createLeadSchema, input);
     if (source && (!source.namespace.trim() || source.namespace.length > 160 || !source.eventId.trim() || source.eventId.length > 200 || (source.formReference?.length ?? 0) > 200 || (source.externalAdId?.length ?? 0) > 200 || (source.externalCampaignId?.length ?? 0) > 200)) throw new BadRequestException('Referência de captação inválida');
+    const work = () => this.database.db.transaction((tx) => this.captureInTx(ctx, input, key, tx, contactId, source));
+    try { return await work(); } catch (error) {
+      if (isUniqueViolation(error)) return work();
+      throw error;
+    }
+  }
+  /** Internal composition boundary: caller owns the transaction and validates input. */
+  async captureInTx(ctx: CrmContext, input: CreateLead | CreateEntry, key: string, tx: CrmTx, contactId?: string, source?: VerifiedCaptureSource) {
     const namespace = `${source ? source.kind.toLowerCase() : 'manual'}:${contactId ? 'entry' : 'lead'}:${ctx.userId}`;
     const hash = commandHash({ contactId: contactId ?? null, input, source: source ?? null });
-    const work = () => this.database.db.transaction(async (tx) => {
       const a = await this.policy.access(ctx, tx);
       await lockKeys(tx, [`crm:command:${ctx.companyId}:${namespace}:${key}`, ...(source ? [`crm:event:${ctx.companyId}:${source.namespace}:${source.eventId}`] : [])]);
       const previous = await tx.select().from(crmLeadEntries).where(and(eq(crmLeadEntries.companyId, ctx.companyId), or(
@@ -87,12 +94,6 @@ export class LeadCaptureService {
       await this.history.record(tx, a, { contactId: contact.id, entryId: entry.id, opportunityId: card.id, kind: 'ENTRY_RECEIVED', changes: { captureKind: entry.captureKind } });
       await this.history.record(tx, a, { contactId: contact.id, entryId: entry.id, opportunityId: card.id, kind: 'OPPORTUNITY_CREATED', changes: { status: 'NEW', stageId: card.stageId } });
       return { leadId: contact.id, entryId: entry.id, opportunityId: card.id };
-    });
-    try { return await work(); } catch (error) {
-      // A database-level unique race must roll back every intermediate row before replay.
-      if (isUniqueViolation(error)) return work();
-      throw error;
-    }
   }
   private async destination(tx: CrmTx, a: CrmAccess, requestedId?: string) {
     await lockKeys(tx, [`crm:pipeline:${a.companyId}`]);

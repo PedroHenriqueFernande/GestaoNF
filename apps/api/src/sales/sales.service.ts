@@ -8,7 +8,7 @@ import { amount, cents, itemAmounts } from './sales-money.js';
 import { orderCode, paycodes } from './sales-codes.js';
 import type { ConfirmSaleInput, CreateSaleInput, ListSalesInput, UpdateConfirmedSaleInput, UpdateSaleInput } from './sales.schemas.js';
 
-function constraintName(error: unknown): string | null {
+export function constraintName(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null;
   if ('constraint_name' in error && typeof error.constraint_name === 'string') return error.constraint_name;
   if ('constraint' in error && typeof error.constraint === 'string') return error.constraint;
@@ -19,13 +19,13 @@ function constraintName(error: unknown): string | null {
 export class SalesService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  private async prepare(companyId: string, input: CreateSaleInput | UpdateConfirmedSaleInput, existing?: { customerId: string; serviceIds: Set<string>; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }) {
-    const [customer] = await this.database.db.select().from(customers)
+  private async prepare(companyId: string, input: CreateSaleInput | UpdateConfirmedSaleInput, existing?: { customerId: string; serviceIds: Set<string>; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }, db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0] = this.database.db) {
+    const [customer] = await db.select().from(customers)
       .where(and(eq(customers.companyId, companyId), eq(customers.id, input.customerId))).limit(1);
     if (!customer || (customer.status !== 'ACTIVE' && customer.id !== existing?.customerId)) throw new BadRequestException('Selecione um cliente ativo desta empresa');
     const itemRows = [];
     for (const [index, item] of input.items.entries()) {
-      const [service] = await this.database.db.select().from(services)
+      const [service] = await db.select().from(services)
         .where(and(eq(services.companyId, companyId), eq(services.id, item.serviceId))).limit(1);
       if (!service || (service.status !== 'ACTIVE' && !existing?.serviceIds.has(service.id))) throw new BadRequestException('Selecione apenas serviços ativos desta empresa');
       const calculated = itemAmounts(item.quantity, item.unitPrice, item.discountAmount);
@@ -65,21 +65,10 @@ export class SalesService {
       if (previous[0].requestHash !== hash) throw new ConflictException('Chave de criação já usada com dados diferentes');
       return this.get(companyId, previous[0].id);
     }
-    const prepared = await this.prepare(companyId, input);
     for (let attempt = 0; attempt < 128; attempt++) {
       try {
         const id = await this.database.db.transaction(async (tx) => {
-          const [sale] = await tx.insert(sales).values({
-            companyId, orderCode: orderCode(), customerId: prepared.customer.id,
-            customerKindSnapshot: prepared.customer.kind, customerNameSnapshot: prepared.customer.name,
-            customerTaxIdSnapshot: prepared.customer.taxId, workOrderNumber: input.workOrderNumber ?? null,
-            soldOn: input.soldOn ?? null, notes: input.notes ?? null, ...prepared.totals,
-            createdByUserId: userId, idempotencyKey: key, requestHash: hash,
-          }).returning({ id: sales.id });
-          if (prepared.itemRows.length) await tx.insert(saleItems).values(prepared.itemRows.map((row) => ({ ...row, saleId: sale.id })));
-          if (prepared.installmentRows.length) await tx.insert(saleInstallments).values(prepared.installmentRows.map((row) => ({ ...row, saleId: sale.id })));
-          await tx.insert(saleStatusHistory).values({ companyId, saleId: sale.id, fromStatus: null, toStatus: 'DRAFT', actorUserId: userId });
-          if (input.workOrderNumber) await tx.insert(saleReferenceHistory).values({ companyId, saleId: sale.id, oldWorkOrderNumber: null, newWorkOrderNumber: input.workOrderNumber, actorUserId: userId });
+          const sale = await this.createDraftInTx(tx, companyId, userId, key, input, { requestHash: hash });
           return sale.id;
         });
         return this.get(companyId, id);
@@ -95,6 +84,25 @@ export class SalesService {
       }
     }
     throw new ConflictException('Não foi possível reservar um código de pedido; tente novamente');
+  }
+
+  /** Internal only: composes a draft sale with another domain command atomically. */
+  async createDraftInTx(tx: Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, key: string, input: CreateSaleInput,
+    options: { requestHash: string; sourceProposalId?: string; frozenItems?: Array<Pick<typeof saleItems.$inferSelect, 'serviceId' | 'serviceNameSnapshot' | 'descriptionSnapshot' | 'unitLabelSnapshot' | 'nationalTaxCodeSnapshot' | 'nbsCodeSnapshot'>> }) {
+    const prepared = await this.prepare(companyId, input, undefined, tx);
+    if (options.frozenItems) for (const [i, snapshot] of options.frozenItems.entries()) {
+      if (!prepared.itemRows[i] || prepared.itemRows[i].serviceId !== snapshot.serviceId) throw new BadRequestException('Snapshot de proposta não corresponde ao serviço');
+      Object.assign(prepared.itemRows[i], snapshot);
+    }
+    const [sale] = await tx.insert(sales).values({ companyId, orderCode: orderCode(), customerId: prepared.customer.id,
+      customerKindSnapshot: prepared.customer.kind, customerNameSnapshot: prepared.customer.name, customerTaxIdSnapshot: prepared.customer.taxId,
+      workOrderNumber: input.workOrderNumber ?? null, soldOn: input.soldOn ?? null, notes: input.notes ?? null, ...prepared.totals,
+      createdByUserId: userId, idempotencyKey: key, requestHash: options.requestHash, sourceProposalId: options.sourceProposalId ?? null }).returning();
+    if (prepared.itemRows.length) await tx.insert(saleItems).values(prepared.itemRows.map(row => ({ ...row, saleId: sale.id })));
+    if (prepared.installmentRows.length) await tx.insert(saleInstallments).values(prepared.installmentRows.map(row => ({ ...row, saleId: sale.id })));
+    await tx.insert(saleStatusHistory).values({ companyId, saleId: sale.id, fromStatus: null, toStatus: 'DRAFT', actorUserId: userId });
+    if (input.workOrderNumber) await tx.insert(saleReferenceHistory).values({ companyId, saleId: sale.id, oldWorkOrderNumber: null, newWorkOrderNumber: input.workOrderNumber, actorUserId: userId });
+    return sale;
   }
 
   async list(companyId: string, input: ListSalesInput) {

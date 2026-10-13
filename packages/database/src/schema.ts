@@ -260,6 +260,7 @@ export const sales = pgTable(
     notes: text('notes'),
     createdByUserId: uuid('created_by_user_id').notNull(),
     idempotencyKey: uuid('idempotency_key').notNull(),
+    sourceProposalId: uuid('source_proposal_id'),
     requestHash: varchar('request_hash', { length: 64 }).notNull(),
     version: integer('version').default(1).notNull(),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
@@ -270,6 +271,8 @@ export const sales = pgTable(
     unique('sales_company_id_id_uq').on(table.companyId, table.id),
     unique('sales_company_order_code_uq').on(table.companyId, table.orderCode),
     unique('sales_company_idempotency_key_uq').on(table.companyId, table.idempotencyKey),
+    uniqueIndex('sales_source_proposal_uq').on(table.companyId, table.sourceProposalId).where(sql`${table.sourceProposalId} IS NOT NULL`),
+    foreignKey({ name: 'sales_source_proposal_fk', columns: [table.companyId, table.sourceProposalId], foreignColumns: [crmProposals.companyId, crmProposals.id] }).onDelete('restrict'),
     index('sales_company_status_date_id_idx').on(table.companyId, table.status, table.soldOn.desc(), table.id),
     index('sales_company_customer_date_id_idx').on(table.companyId, table.customerId, table.soldOn.desc(), table.id),
     index('sales_company_work_order_number_idx').on(table.companyId, table.workOrderNumber)
@@ -1017,9 +1020,12 @@ export const crmSettings = pgTable('crm_settings', {
   qualifyOpportunityOnMeeting: boolean('qualify_opportunity_on_meeting').default(true).notNull(),
   defaultReminderMinutes: integer('default_reminder_minutes').default(30),
   conflictPolicy: varchar('conflict_policy', { length: 16 }).default('WARN').notNull(),
+  winOpportunityOnProposalConversion: boolean('win_opportunity_on_proposal_conversion').default(true).notNull(),
+  proposalSentStageId: uuid('proposal_sent_stage_id'),
   ...timestamps,
   version: integer('version').default(1).notNull(),
 }, (t) => [
+  foreignKey({ name: 'crm_settings_proposal_stage_fk', columns: [t.companyId, t.proposalSentStageId], foreignColumns: [crmPipelineStages.companyId, crmPipelineStages.id] }).onDelete('restrict'),
   check('crm_settings_reminder_chk', sql`${t.defaultReminderMinutes} IS NULL OR (${t.defaultReminderMinutes} >= 0 AND ${t.defaultReminderMinutes} <= 10080)`),
   check('crm_settings_conflict_policy_chk', sql`${t.conflictPolicy} IN ('WARN','ALLOW')`),
   check('crm_settings_version_chk', sql`${t.version} >= 1`),
@@ -1178,12 +1184,99 @@ export const crmMeetingEvents = pgTable('crm_meeting_events', {
   index('crm_meeting_events_meeting_idx').on(t.companyId, t.meetingId, t.occurredAt.desc(), t.id.desc()),
 ]);
 
+export const crmProposalCounters = pgTable('crm_proposal_counters', {
+  companyId: uuid('company_id').primaryKey().references(() => companies.id, { onDelete: 'restrict' }),
+  nextNumber: integer('next_number').default(1).notNull(),
+}, (t) => [check('crm_proposal_counter_positive_chk', sql`${t.nextNumber} > 0`)]);
+
+export const crmProposals = pgTable('crm_proposals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+  proposalNumber: integer('proposal_number').notNull(),
+  contactId: uuid('contact_id').notNull(), opportunityId: uuid('opportunity_id').notNull(), customerId: uuid('customer_id').notNull(),
+  replacesProposalId: uuid('replaces_proposal_id'),
+  title: varchar('title', { length: 200 }).notNull(),
+  recipientName: varchar('recipient_name', { length: 200 }).notNull(),
+  recipientOrganization: varchar('recipient_organization', { length: 200 }),
+  recipientEmail: varchar('recipient_email', { length: 254 }), recipientTaxId: varchar('recipient_tax_id', { length: 14 }),
+  commercialDescription: text('commercial_description'), paymentTerms: text('payment_terms'), notes: text('notes'), terms: text('terms'),
+  validUntil: date('valid_until'),
+  subtotalAmount: numeric('subtotal_amount', { precision: 15, scale: 2 }).notNull(),
+  discountAmount: numeric('discount_amount', { precision: 15, scale: 2 }).notNull(),
+  totalAmount: numeric('total_amount', { precision: 15, scale: 2 }).notNull(),
+  status: varchar('status', { length: 16 }).default('DRAFT').notNull(), version: integer('version').default(1).notNull(),
+  issuedSnapshot: jsonb('issued_snapshot').$type<Record<string, unknown>>(), issuedHash: char('issued_hash', { length: 64 }),
+  sentAt: timestamp('sent_at', { withTimezone: true }), acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  declinedAt: timestamp('declined_at', { withTimezone: true }), declineReason: varchar('decline_reason', { length: 1000 }),
+  convertedAt: timestamp('converted_at', { withTimezone: true }),
+  createdByUserId: uuid('created_by_user_id').notNull(), ...timestamps,
+}, (t) => [
+  unique('crm_proposals_company_id_uq').on(t.companyId, t.id),
+  unique('crm_proposals_context_id_uq').on(t.companyId, t.contactId, t.opportunityId, t.id),
+  unique('crm_proposals_number_uq').on(t.companyId, t.proposalNumber),
+  foreignKey({ name: 'crm_proposals_opportunity_fk', columns: [t.companyId, t.contactId, t.opportunityId], foreignColumns: [crmOpportunities.companyId, crmOpportunities.contactId, crmOpportunities.id] }).onDelete('restrict'),
+  foreignKey({ name: 'crm_proposals_customer_fk', columns: [t.companyId, t.customerId], foreignColumns: [customers.companyId, customers.id] }).onDelete('restrict'),
+  foreignKey({ name: 'crm_proposals_previous_fk', columns: [t.companyId, t.replacesProposalId], foreignColumns: [t.companyId, t.id] }).onDelete('restrict'),
+  foreignKey({ name: 'crm_proposals_creator_fk', columns: [t.companyId, t.createdByUserId], foreignColumns: [companyUsers.companyId, companyUsers.userId] }).onDelete('restrict'),
+  check('crm_proposals_status_chk', sql`${t.status} IN ('DRAFT','SENT','ACCEPTED','DECLINED','CONVERTED')`),
+  check('crm_proposals_identity_chk', sql`${t.proposalNumber} > 0 AND ${t.version} > 0 AND length(btrim(${t.title})) > 0 AND length(btrim(${t.recipientName})) > 0`),
+  check('crm_proposals_totals_chk', sql`${t.subtotalAmount} >= 0 AND ${t.discountAmount} >= 0 AND ${t.discountAmount} <= ${t.subtotalAmount} AND ${t.totalAmount} = ${t.subtotalAmount} - ${t.discountAmount}`),
+  check('crm_proposals_issue_chk', sql`(${t.status} = 'DRAFT' AND ${t.issuedSnapshot} IS NULL AND ${t.issuedHash} IS NULL AND ${t.sentAt} IS NULL) OR (${t.status} <> 'DRAFT' AND ${t.issuedSnapshot} IS NOT NULL AND ${t.issuedHash} IS NOT NULL AND jsonb_typeof(${t.issuedSnapshot}) = 'object' AND ${t.issuedHash} ~ '^[a-f0-9]{64}$' AND ${t.sentAt} IS NOT NULL)`),
+  check('crm_proposals_dates_chk', sql`(${t.acceptedAt} IS NOT NULL) = (${t.status} IN ('ACCEPTED','CONVERTED')) AND (${t.declinedAt} IS NOT NULL) = (${t.status} = 'DECLINED') AND (${t.convertedAt} IS NOT NULL) = (${t.status} = 'CONVERTED')`),
+  index('crm_proposals_recent_idx').on(t.companyId, t.createdAt.desc(), t.id.desc()),
+  index('crm_proposals_opportunity_idx').on(t.companyId, t.opportunityId, t.createdAt.desc()),
+  index('crm_proposals_customer_idx').on(t.companyId, t.customerId, t.createdAt.desc()),
+  index('crm_proposals_expiry_idx').on(t.companyId, t.status, t.validUntil),
+]);
+
+export const crmProposalItems = pgTable('crm_proposal_items', {
+  id: uuid('id').defaultRandom().primaryKey(), companyId: uuid('company_id').notNull(), proposalId: uuid('proposal_id').notNull(),
+  serviceId: uuid('service_id').notNull(), position: integer('position').notNull(),
+  serviceNameSnapshot: varchar('service_name_snapshot', { length: 200 }).notNull(), descriptionSnapshot: text('description_snapshot'),
+  unitLabelSnapshot: varchar('unit_label_snapshot', { length: 16 }).notNull(),
+  nationalTaxCodeSnapshot: varchar('national_tax_code_snapshot', { length: 6 }), nbsCodeSnapshot: varchar('nbs_code_snapshot', { length: 9 }),
+  quantity: numeric('quantity', { precision: 15, scale: 4 }).notNull(), unitPrice: numeric('unit_price', { precision: 15, scale: 2 }).notNull(),
+  grossAmount: numeric('gross_amount', { precision: 15, scale: 2 }).notNull(),
+  discountType: varchar('discount_type', { length: 16 }).default('AMOUNT').notNull(),
+  discountInput: numeric('discount_input', { precision: 15, scale: 2 }).default('0.00').notNull(),
+  discountAmount: numeric('discount_amount', { precision: 15, scale: 2 }).notNull(), totalAmount: numeric('total_amount', { precision: 15, scale: 2 }).notNull(),
+}, (t) => [
+  unique('crm_proposal_items_position_uq').on(t.companyId, t.proposalId, t.position),
+  foreignKey({ name: 'crm_proposal_items_proposal_fk', columns: [t.companyId, t.proposalId], foreignColumns: [crmProposals.companyId, crmProposals.id] }).onDelete('restrict'),
+  foreignKey({ name: 'crm_proposal_items_service_fk', columns: [t.companyId, t.serviceId], foreignColumns: [services.companyId, services.id] }).onDelete('restrict'),
+  check('crm_proposal_items_totals_chk', sql`${t.position} > 0 AND ${t.quantity} > 0 AND ${t.unitPrice} >= 0 AND ${t.grossAmount} = round(${t.quantity} * ${t.unitPrice}, 2) AND ${t.discountAmount} >= 0 AND ${t.discountAmount} <= ${t.grossAmount} AND ${t.totalAmount} = ${t.grossAmount} - ${t.discountAmount}`),
+  check('crm_proposal_items_discount_chk', sql`${t.discountInput} >= 0 AND ((${t.discountType} = 'AMOUNT' AND ${t.discountAmount} = ${t.discountInput}) OR (${t.discountType} = 'PERCENT' AND ${t.discountInput} <= 100 AND ${t.discountAmount} = round(${t.grossAmount} * ${t.discountInput} / 100, 2)))`),
+]);
+
+export const crmProposalEvents = pgTable('crm_proposal_events', {
+  id: uuid('id').defaultRandom().primaryKey(), companyId: uuid('company_id').notNull(), proposalId: uuid('proposal_id').notNull(),
+  actorType: varchar('actor_type', { length: 20 }).notNull(), actorUserId: uuid('actor_user_id'), eventType: varchar('event_type', { length: 32 }).notNull(),
+  before: jsonb('before').$type<Record<string, unknown>>(), after: jsonb('after').$type<Record<string, unknown>>(), reason: text('reason'),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  foreignKey({ name: 'crm_proposal_events_proposal_fk', columns: [t.companyId, t.proposalId], foreignColumns: [crmProposals.companyId, crmProposals.id] }).onDelete('restrict'),
+  foreignKey({ name: 'crm_proposal_events_actor_fk', columns: [t.companyId, t.actorUserId], foreignColumns: [companyUsers.companyId, companyUsers.userId] }).onDelete('restrict'),
+  check('crm_proposal_events_actor_chk', sql`${t.actorType} IN ('USER','NERO','SYSTEM') AND (${t.actorType} = 'SYSTEM' OR ${t.actorUserId} IS NOT NULL)`),
+  index('crm_proposal_events_history_idx').on(t.companyId, t.proposalId, t.recordedAt.desc(), t.id.desc()),
+]);
+
+export const crmProposalCommands = pgTable('crm_proposal_commands', {
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }), namespace: varchar('namespace', { length: 160 }).notNull(),
+  idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(), requestHash: char('request_hash', { length: 64 }).notNull(),
+  proposalId: uuid('proposal_id').notNull(), result: jsonb('result').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.companyId, t.namespace, t.idempotencyKey] }),
+  foreignKey({ name: 'crm_proposal_commands_proposal_fk', columns: [t.companyId, t.proposalId], foreignColumns: [crmProposals.companyId, crmProposals.id] }).onDelete('restrict'),
+]);
+
 export const crmActivities = pgTable('crm_activities', {
   id: uuid('id').defaultRandom().primaryKey(),
   companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
   contactId: uuid('contact_id').notNull(),
   opportunityId: uuid('opportunity_id'),
   meetingId: uuid('meeting_id'),
+  proposalId: uuid('proposal_id'),
   entryId: uuid('entry_id'),
   kind: varchar('kind', { length: 40 }).notNull(),
   actorType: varchar('actor_type', { length: 20 }).notNull(),
@@ -1201,9 +1294,10 @@ export const crmActivities = pgTable('crm_activities', {
   foreignKey({ name: 'crm_activities_contact_fk', columns: [t.companyId, t.contactId], foreignColumns: [crmContacts.companyId, crmContacts.id] }).onDelete('restrict'),
   foreignKey({ name: 'crm_activities_opportunity_fk', columns: [t.companyId, t.contactId, t.opportunityId], foreignColumns: [crmOpportunities.companyId, crmOpportunities.contactId, crmOpportunities.id] }).onDelete('restrict'),
   foreignKey({ name: 'crm_activities_meeting_fk', columns: [t.companyId, t.contactId, t.meetingId], foreignColumns: [crmMeetings.companyId, crmMeetings.contactId, crmMeetings.id] }).onDelete('restrict'),
+  foreignKey({ name: 'crm_activities_proposal_fk', columns: [t.companyId, t.contactId, t.opportunityId, t.proposalId], foreignColumns: [crmProposals.companyId, crmProposals.contactId, crmProposals.opportunityId, crmProposals.id] }).onDelete('restrict'),
   foreignKey({ name: 'crm_activities_entry_fk', columns: [t.companyId, t.contactId, t.entryId], foreignColumns: [crmLeadEntries.companyId, crmLeadEntries.contactId, crmLeadEntries.id] }).onDelete('restrict'),
   foreignKey({ name: 'crm_activities_actor_fk', columns: [t.companyId, t.actorUserId], foreignColumns: [companyUsers.companyId, companyUsers.userId] }).onDelete('restrict'),
-  check('crm_activities_kind_chk', sql`${t.kind} IN ('CONTACT_CREATED','ENTRY_RECEIVED','OPPORTUNITY_CREATED','CONTACT_UPDATED','ASSIGNED','STAGE_CHANGED','STATUS_CHANGED','NOTE_ADDED','CUSTOMER_LINKED','ARCHIVED','RESTORED','MEETING_CREATED','MEETING_UPDATED','MEETING_RESCHEDULED','MEETING_STATUS_CHANGED')`),
+  check('crm_activities_kind_chk', sql`${t.kind} IN ('CONTACT_CREATED','ENTRY_RECEIVED','OPPORTUNITY_CREATED','CONTACT_UPDATED','ASSIGNED','STAGE_CHANGED','STATUS_CHANGED','NOTE_ADDED','CUSTOMER_LINKED','ARCHIVED','RESTORED','MEETING_CREATED','MEETING_UPDATED','MEETING_RESCHEDULED','MEETING_STATUS_CHANGED','PROPOSAL_CREATED','PROPOSAL_UPDATED','PROPOSAL_SENT','PROPOSAL_ACCEPTED','PROPOSAL_DECLINED','PROPOSAL_CONVERTED')`),
   check('crm_activities_actor_chk', sql`${t.actorType} IN ('USER','NERO','SYSTEM','INTEGRATION') AND (${t.actorType} NOT IN ('USER','NERO') OR ${t.actorUserId} IS NOT NULL)`),
   check('crm_activities_note_chk', sql`${t.note} IS NULL OR length(${t.note}) <= 10000`),
   check('crm_activities_changes_chk', sql`jsonb_typeof(${t.changes}) = 'object'`),

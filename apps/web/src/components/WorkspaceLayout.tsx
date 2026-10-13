@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { Bot, Building2, CalendarDays, ChevronDown, ChevronRight, ClipboardList, ContactRound, Landmark, LogOut, Menu, ReceiptText, UsersRound, X } from 'lucide-react';
+import { Bot, Building2, CalendarDays, ChevronDown, ChevronRight, ClipboardList, ContactRound, FileText, Landmark, LogOut, Menu, ReceiptText, UsersRound, X } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { initials } from '../utils/format';
 import { CompanyPicker } from './CompanyPicker';
@@ -15,6 +15,7 @@ const navigation = [
   { id: 'finance', label: 'Financeiro', path: '/financeiro', icon: Landmark },
   { id: 'crm', label: 'CRM', path: '/crm', icon: ContactRound },
   { id: 'agenda', label: 'Agenda', path: '/agenda', icon: CalendarDays },
+  { id: 'proposals', label: 'Propostas', path: '/propostas', icon: FileText },
   { id: 'nilo', label: 'Nero', path: '/nero', icon: Bot },
 ] as const;
 
@@ -38,7 +39,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
+  const section = pathname === '/empresa' ? 'company' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/propostas' ? 'proposals' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
   const company = companies?.find((item) => item.id === companyId);
 
   useEffect(() => {
@@ -103,7 +104,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
       </div>
       <div className="workspace-sidebar__navigation">
         {([
-          { label: 'Gestão', items: [navigation[3], navigation[4], navigation[5], navigation[6], navigation[7]] },
+          { label: 'Gestão', items: [navigation[3], navigation[4], navigation[5], navigation[6], navigation[7], navigation[8]] },
           { label: 'Cadastros', items: onboarding ? [navigation[2], navigation[0], navigation[1]] : [navigation[0], navigation[1], navigation[2]] },
         ] as const).map((group) => <div className="workspace-nav-group" key={group.label}>
         <p className="workspace-sidebar__label">{group.label}</p>

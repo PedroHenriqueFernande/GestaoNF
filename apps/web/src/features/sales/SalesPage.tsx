@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router';
 import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, FilePlus2, Plus, RefreshCw, Search } from 'lucide-react';
 import { api, type Sale, type SaleDetail, type SaleStatus, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
@@ -15,6 +16,7 @@ const statusLabel = (value: SaleStatus) => value === 'CONFIRMED' ? 'Confirmado' 
 
 export function SalesPage({ user }: { user: User }) {
   const queryClient = useQueryClient();
+  const [params, setParams] = useSearchParams();
   const [companyId, setCompanyId] = useState(() => sessionStorage.getItem('gestaonf.companyId') ?? '');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -26,6 +28,22 @@ export function SalesPage({ user }: { user: User }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies });
+  useEffect(() => {
+    const id = params.get('editar');
+    if (!id || !companies.data) return;
+    const requestedCompany = params.get('empresa') ?? companyId;
+    const clear = () => { const next = new URLSearchParams(params); next.delete('editar'); next.delete('empresa'); setParams(next, { replace: true }); };
+    if (!companies.data.some(c => c.id === requestedCompany) || !/^[a-f0-9-]{36}$/i.test(id)) { setToast('Pedido ou empresa inválidos.'); clear(); return; }
+    if (companyId !== requestedCompany) { setCompanyId(requestedCompany); return; }
+    let active = true;
+    void api.sale(requestedCompany, id).then(detail => {
+      if (!active) return;
+      if (detail.status === 'CANCELED') setSelectedId(detail.id);
+      else { setEditingDraft(detail); setEditing(true); setSelectedId(null); }
+      clear();
+    }).catch(() => { if (active) { setToast('Não foi possível abrir o pedido. Tente novamente.'); clear(); } });
+    return () => { active = false; };
+  }, [params, setParams, companyId, companies.data]);
   useEffect(() => { if (companies.data && !companies.data.some((company) => company.id === companyId)) setCompanyId(companies.data[0]?.id ?? ''); }, [companies.data, companyId]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 5000); return () => clearTimeout(timer); }, [toast]);

@@ -190,6 +190,18 @@ export type MeetingFilters = { from: string; to: string; assignedUserId?: string
 export type MeetingCreateInput = { contactId: string; opportunityId?: string | null; title: string; assignedUserId?: string; startsAt: string; endsAt: string; timezone: string; modality: Meeting['modality']; location?: string | null; meetingUrl?: string | null; description?: string | null; notes?: string | null; participants: MeetingParticipant[]; reminderMinutes?: number[]; allowConflict: boolean };
 export type MeetingSettings = { companyId: string; qualifyOpportunityOnMeeting: boolean; defaultReminderMinutes: number | null; conflictPolicy: 'WARN' | 'ALLOW'; version: number };
 export type MeetingNotification = { id: string; meetingId: string; title: string; body: string; createdAt: string; readAt: string | null };
+export type ProposalStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'CONVERTED';
+export type ProposalItemInput = { serviceId: string; quantity: string; unitPrice: string; description?: string | null; discountType: 'AMOUNT' | 'PERCENT'; discountInput: string };
+export type ProposalInput = { opportunityId?: string; customerId?: string; contactId?: string; createOpportunity?: boolean; newCustomer?: Partial<CustomerInput>; title: string; commercialDescription?: string | null; paymentTerms?: string | null; notes?: string | null; terms?: string | null; validUntil?: string | null; items: ProposalItemInput[] };
+export type Proposal = { id: string; companyId: string; proposalNumber: number; proposalCode: string; contactId: string; opportunityId: string; customerId: string; title: string; recipientName: string; recipientOrganization: string | null; recipientEmail: string | null; recipientTaxId: string | null; commercialDescription: string | null; paymentTerms: string | null; notes: string | null; terms: string | null; validUntil: string | null; subtotalAmount: string; discountAmount: string; totalAmount: string; status: Exclude<ProposalStatus, 'EXPIRED'>; effectiveStatus: ProposalStatus; version: number; createdAt: string; updatedAt: string; sentAt: string | null; acceptedAt: string | null; declinedAt: string | null; convertedAt: string | null; declineReason: string | null; contactName?: string; assignedUserId?: string | null };
+export type ProposalItem = ProposalItemInput & { id: string; proposalId: string; serviceNameSnapshot: string; descriptionSnapshot: string | null; unitLabelSnapshot: string; grossAmount: string; discountAmount: string; totalAmount: string; position: number };
+export type ProposalDetail = Proposal & { items: ProposalItem[]; sale: { id: string; orderCode: string; status: SaleStatus } | null };
+export type ProposalResult = { proposalId: string; proposalCode: string; customerId: string; status: Proposal['status']; version: number; totalAmount: string; saleId?: string; orderCode?: string; reviewUrl?: string };
+export type ProposalFilters = { search?: string; status?: ProposalStatus | 'ALL'; contactId?: string; customerId?: string; opportunityId?: string; serviceId?: string; from?: string; to?: string; validFrom?: string; validTo?: string };
+export type ProposalList = { items: Proposal[]; total: number; limit: number; offset: number; summary: { total: number; totalAmount: string; sent: number; expired: number; accepted: number; converted: number } };
+export type ProposalPrefill = { contact?: CrmLead; opportunity?: CrmOpportunityRecord; customer?: Customer | null; customerCandidates?: Pick<Customer, 'id' | 'name' | 'kind' | 'taxId' | 'status'>[]; customerDraft?: { kind: 'PF' | 'PJ' | null; name: string; taxId: string | null; email: string | null; phone: string | null }; service?: Service | null; interestDescription?: string | null; suggestedItems?: ProposalItemInput[]; requiresCustomerDetails?: boolean; requiresServiceSelection?: boolean; opportunities?: CrmOpportunityRecord[]; contacts?: { id: string; name: string }[]; requiresOpportunitySelection?: boolean; requiresOpportunityCreation?: boolean };
+export type ProposalEvent = { id: string; eventType: string; actorType: string; reason: string | null; recordedAt: string };
+export type ProposalSettings = { companyId: string; winOpportunityOnProposalConversion: boolean; proposalSentStageId: string | null; version: number };
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
@@ -240,6 +252,14 @@ async function request<T>(path: string, init: RequestInit = {}, options: { retry
   if (!response.ok) throw await readError(response);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+async function requestBlob(path: string, companyId: string): Promise<Blob> {
+  const execute = () => fetch(`${API_URL}${path}`, { credentials: 'include', headers: { 'X-Company-Id': companyId } });
+  let response = await execute();
+  if (response.status === 401) { await refreshSession(); response = await execute(); }
+  if (!response.ok) throw await readError(response);
+  return response.blob();
 }
 
 const json = (value: unknown) => JSON.stringify(value);
@@ -331,6 +351,20 @@ export const api = {
   addCrmNote: (companyId: string, leadId: string, opportunityId: string, note: string, key: string) =>
     request<{ id: string }>(`/crm/leads/${leadId}/notes`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ opportunityId, note }) }, { companyId }),
   crmPipelines: (companyId: string) => request<{ items: CrmPipeline[] }>('/crm/pipelines', {}, { companyId }),
+  proposals: (companyId: string, filters: ProposalFilters = {}, page = 0, limit = 20) => {
+    const query = new URLSearchParams({ offset: String(page * limit), limit: String(limit) });
+    for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+    return request<ProposalList>(`/crm/proposals?${query}`, {}, { companyId });
+  },
+  proposal: (companyId: string, id: string) => request<ProposalDetail>(`/crm/proposals/${id}`, {}, { companyId }),
+  proposalPrefill: (companyId: string, input: { opportunityId?: string; customerId?: string; contactId?: string }) => request<ProposalPrefill>(`/crm/proposals/prefill?${new URLSearchParams(input as Record<string, string>)}`, {}, { companyId }),
+  createProposal: (companyId: string, input: ProposalInput, key: string) => request<ProposalResult>('/crm/proposals', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  updateProposal: (companyId: string, id: string, input: Partial<Omit<ProposalInput, 'opportunityId' | 'customerId' | 'contactId' | 'createOpportunity' | 'newCustomer'>> & { expectedVersion: number }) => request<ProposalResult>(`/crm/proposals/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
+  proposalAction: (companyId: string, id: string, action: 'send' | 'accept' | 'decline' | 'duplicate' | 'convert', input: { expectedVersion: number; reason?: string | null; validUntil?: string | null }, key: string) => request<ProposalResult>(`/crm/proposals/${id}/${action}`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  proposalHistory: (companyId: string, id: string) => request<{ items: ProposalEvent[]; total: number }>(`/crm/proposals/${id}/history?limit=50&offset=0`, {}, { companyId }),
+  proposalPdf: (companyId: string, id: string) => requestBlob(`/crm/proposals/${id}/pdf`, companyId),
+  proposalSettings: (companyId: string) => request<ProposalSettings>('/crm/proposal-settings', {}, { companyId }),
+  updateProposalSettings: (companyId: string, input: { expectedVersion: number; winOpportunityOnProposalConversion?: boolean; proposalSentStageId?: string | null }) => request<ProposalSettings>('/crm/proposal-settings', { method: 'PATCH', body: json(input) }, { companyId }),
   meetings: (companyId: string, filters: MeetingFilters, offset = 0, limit = 100) => {
     const query = new URLSearchParams({ from: filters.from, to: filters.to, offset: String(offset), limit: String(limit) });
     for (const [key, value] of Object.entries(filters)) if (key !== 'from' && key !== 'to' && value) query.set(key, value);
