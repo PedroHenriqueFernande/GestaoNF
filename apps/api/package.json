@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run tests/api.e2e.test.ts",
-    "r2:check": "tsx scripts/check-r2.ts"
+    "r2:check": "tsx scripts/check-r2.ts",
+    "email:check": "tsx scripts/check-resend.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
@@ -35,6 +36,7 @@
     "pdfkit": "^0.20.2",
     "postgres": "3.4.9",
     "reflect-metadata": "0.2.2",
+    "resend": "^6.32.1",
     "sharp": "^0.35.5",
     "zod": "4.6.5"
   },

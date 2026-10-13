@@ -30,6 +30,57 @@ const crmMaintenance = {
   version: integer('version').default(1).notNull(),
 };
 
+export const emailMessages = pgTable('email_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  requestKey: varchar('request_key', { length: 200 }).notNull(),
+  requestHash: char('request_hash', { length: 64 }).notNull(),
+  purpose: varchar('purpose', { length: 64 }).notNull(),
+  fromAddress: varchar('from_address', { length: 320 }).notNull(),
+  toAddress: varchar('to_address', { length: 254 }).notNull(),
+  replyTo: varchar('reply_to', { length: 254 }),
+  subject: varchar('subject', { length: 200 }).notNull(),
+  textBody: text('text_body').notNull(),
+  htmlBody: text('html_body').notNull(),
+  testMode: boolean('test_mode').notNull(),
+  sendStatus: varchar('send_status', { length: 16 }).default('QUEUED').notNull(),
+  deliveryStatus: varchar('delivery_status', { length: 16 }).default('PENDING').notNull(),
+  providerEmailId: uuid('provider_email_id'),
+  attempts: integer('attempts').default(0).notNull(),
+  availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+  firstAttemptAt: timestamp('first_attempt_at', { withTimezone: true }),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  leaseToken: uuid('lease_token'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  mayHaveSent: boolean('may_have_sent').default(false).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  lastErrorCode: varchar('last_error_code', { length: 80 }),
+  ...timestamps,
+}, (t) => [
+  foreignKey({ name: 'email_messages_company_user_fk', columns: [t.companyId, t.createdByUserId], foreignColumns: [companyUsers.companyId, companyUsers.userId] }).onDelete('restrict'),
+  unique('email_messages_company_request_uq').on(t.companyId, t.requestKey),
+  unique('email_messages_provider_uq').on(t.providerEmailId),
+  index('email_messages_due_idx').on(t.sendStatus, t.availableAt),
+  index('email_messages_company_created_idx').on(t.companyId, t.createdAt.desc(), t.id.desc()),
+  index('email_messages_last_attempt_idx').on(t.lastAttemptAt.desc()),
+  index('email_messages_recipient_idx').on(t.companyId, t.toAddress),
+  check('email_messages_send_status_chk', sql`${t.sendStatus} IN ('QUEUED','SENDING','RETRYING','ACCEPTED','FAILED','UNKNOWN')`),
+  check('email_messages_delivery_status_chk', sql`${t.deliveryStatus} IN ('PENDING','SENT','DELAYED','DELIVERED','FAILED','SUPPRESSED','BOUNCED','COMPLAINED')`),
+  check('email_messages_attempts_chk', sql`${t.attempts} >= 0`),
+  check('email_messages_accepted_chk', sql`${t.sendStatus} <> 'ACCEPTED' OR (${t.providerEmailId} IS NOT NULL AND ${t.acceptedAt} IS NOT NULL)`),
+]);
+
+// Only signed event metadata is retained, including events that arrive before the send response.
+export const emailEvents = pgTable('email_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  providerEventId: varchar('provider_event_id', { length: 200 }).notNull().unique(),
+  providerEmailId: uuid('provider_email_id').notNull(),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index('email_events_provider_idx').on(t.providerEmailId, t.occurredAt)]);
+
 export const storedFiles = pgTable('stored_files', {
   id: uuid('id').defaultRandom().primaryKey(),
   companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
