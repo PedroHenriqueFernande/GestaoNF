@@ -6,10 +6,12 @@ import { OutboxDispatcherService } from './outbox-dispatcher.service.js';
 import { WhatsAppWorkersService } from './whatsapp-workers.service.js';
 import { CrmModule } from '../crm/crm.module.js';
 import { MeetingReminderWorkerService } from './meeting-reminder-worker.service.js';
+import { FilesModule } from '../files/files.module.js';
+import { FileCleanupWorkerService } from './file-cleanup-worker.service.js';
 
 @Module({
-  imports: [DatabaseModule, WhatsAppModule, AssistantModule, CrmModule],
-  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService],
+  imports: [DatabaseModule, WhatsAppModule, AssistantModule, CrmModule, FilesModule],
+  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService, FileCleanupWorkerService],
 })
 export class WorkerModule {}
 

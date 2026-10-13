@@ -30,6 +30,7 @@ const saleFields = {
   soldOn: date.nullable().optional(),
   workOrderNumber: optionalText(40),
   notes: optionalText(2000),
+  attachmentIds: z.array(z.uuid()).max(10).refine(ids => new Set(ids).size === ids.length, 'Anexos repetidos').optional(),
   items: z.array(item).max(100).default([]),
   installments: z.array(installment).max(100).default([]),
 };

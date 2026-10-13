@@ -63,10 +63,16 @@ export type MunicipalTaxCode = {
   updatedAt: string;
 };
 export type PaymentMethod = 'PIX' | 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'BOLETO' | 'TRANSFER' | 'OTHER';
+export type StoredFile = {
+  id: string; companyId: string; saleId: string | null; fileName: string; mimeType: 'image/jpeg' | 'image/png' | 'application/pdf'; sizeBytes: number;
+  status: 'PENDING' | 'READY' | 'REJECTED' | 'EXPIRED' | 'DELETING' | 'DELETED'; width: number | null; height: number | null; pageCount: number | null; createdAt: string; readyAt: string | null;
+};
+export type UploadCapabilities = { enabled: boolean; mimeTypes: StoredFile['mimeType'][]; imageMaxBytes: number; pdfMaxBytes: number; maxAttachments: number; uploadTtlSeconds: number };
+export type UploadSession = { file: StoredFile; upload: { url: string; method: 'PUT'; headers: Record<string, string>; expiresAt: string } | null };
 export type SaleStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELED';
 export type SaleItemInput = { serviceId: string; quantity: string; unitPrice: string; discountAmount: string; description?: string | null; performedOn?: string | null };
 export type SaleInstallmentInput = { paymentMethod: PaymentMethod; amount: string } & ({ dueOn: string; receivedOn?: never } | { receivedOn: string; dueOn?: never });
-export type SaleInput = { customerId: string; soldOn: string; workOrderNumber?: string | null; notes?: string | null; items: SaleItemInput[]; installments: SaleInstallmentInput[] };
+export type SaleInput = { customerId: string; soldOn: string; workOrderNumber?: string | null; notes?: string | null; attachmentIds?: string[]; items: SaleItemInput[]; installments: SaleInstallmentInput[] };
 export type ConfirmedSaleInput = Omit<SaleInput, 'items' | 'installments'> & { items: (SaleItemInput & { id?: string })[]; installments: (SaleInstallmentInput & { id?: string })[] };
 export type Sale = {
   id: string; companyId: string; orderCode: string; workOrderNumber: string | null; customerId: string;
@@ -80,7 +86,7 @@ export type SaleInstallment = { id: string; number: number; paycode: string | nu
   paymentStatus: 'DRAFT' | 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE'; movements: SaleMovement[] };
 export type SaleItem = { id: string; serviceId: string; position: number; serviceNameSnapshot: string; descriptionSnapshot: string | null;
   quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string; performedOn: string | null };
-export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[] };
+export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[]; attachments: StoredFile[] };
 export type SaleList = { items: Sale[]; total: number; limit: number; offset: number };
 export type FinanceSettlement = 'ALL' | 'PENDING' | 'PARTIAL' | 'PAID';
 export type FinanceDateBasis = 'SALE' | 'DUE' | 'RECEIPT';
@@ -265,6 +271,11 @@ async function requestBlob(path: string, companyId: string): Promise<Blob> {
 const json = (value: unknown) => JSON.stringify(value);
 
 export const api = {
+  fileCapabilities: (companyId: string) => request<UploadCapabilities>('/files/capabilities', {}, { companyId }),
+  beginFileUpload: (companyId: string, input: { fileName: string; mimeType: StoredFile['mimeType']; sizeBytes: number }, key: string) => request<UploadSession>('/files/uploads', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  completeFileUpload: (companyId: string, id: string) => request<StoredFile>(`/files/${id}/complete`, { method: 'POST', body: '{}' }, { companyId }),
+  fileAccess: (companyId: string, id: string) => request<{ url: string; expiresAt: string; fileName: string }>(`/files/${id}/access?disposition=attachment`, {}, { companyId }),
+  removeFile: (companyId: string, id: string) => request<void>(`/files/${id}`, { method: 'DELETE' }, { companyId }),
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) => request('/auth/login', { method: 'POST', body: json({ email, password, client: 'web' }) }, { retryAuth: false }),
   register: (name: string, email: string, password: string) => request('/auth/register', { method: 'POST', body: json({ name, email, password, client: 'web' }) }, { retryAuth: false }),

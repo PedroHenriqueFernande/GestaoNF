@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { companies, companyUsers, customers, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services } from '@gestaonf/database/schema';
+import { companies, companyUsers, customers, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles } from '@gestaonf/database/schema';
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
+import { FilesService, publicFile } from '../files/files.service.js';
 import { amount, cents, itemAmounts } from './sales-money.js';
 import { orderCode, paycodes } from './sales-codes.js';
 import type { ConfirmSaleInput, CreateSaleInput, ListSalesInput, UpdateConfirmedSaleInput, UpdateSaleInput } from './sales.schemas.js';
@@ -17,7 +18,7 @@ export function constraintName(error: unknown): string | null {
 
 @Injectable()
 export class SalesService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(FilesService) private readonly files: FilesService) {}
 
   private async prepare(companyId: string, input: CreateSaleInput | UpdateConfirmedSaleInput, existing?: { customerId: string; serviceIds: Set<string>; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }, db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0] = this.database.db) {
     const [customer] = await db.select().from(customers)
@@ -100,6 +101,7 @@ export class SalesService {
       createdByUserId: userId, idempotencyKey: key, requestHash: options.requestHash, sourceProposalId: options.sourceProposalId ?? null }).returning();
     if (prepared.itemRows.length) await tx.insert(saleItems).values(prepared.itemRows.map(row => ({ ...row, saleId: sale.id })));
     if (prepared.installmentRows.length) await tx.insert(saleInstallments).values(prepared.installmentRows.map(row => ({ ...row, saleId: sale.id })));
+    await this.files.syncSaleInTx(tx, { companyId, userId }, sale.id, input.attachmentIds);
     await tx.insert(saleStatusHistory).values({ companyId, saleId: sale.id, fromStatus: null, toStatus: 'DRAFT', actorUserId: userId });
     if (input.workOrderNumber) await tx.insert(saleReferenceHistory).values({ companyId, saleId: sale.id, oldWorkOrderNumber: null, newWorkOrderNumber: input.workOrderNumber, actorUserId: userId });
     return sale;
@@ -126,11 +128,12 @@ export class SalesService {
   async get(companyId: string, id: string) {
     const [sale] = await this.database.db.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).limit(1);
     if (!sale) throw new NotFoundException('Pedido não encontrado');
-    const [items, installments, openReceivables, [company]] = await Promise.all([
+    const [items, installments, openReceivables, [company], attachments] = await Promise.all([
       this.database.db.select().from(saleItems).where(and(eq(saleItems.companyId, companyId), eq(saleItems.saleId, id))).orderBy(saleItems.position),
       this.database.db.select().from(saleInstallments).where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, id))).orderBy(saleInstallments.number),
       this.database.db.select().from(receivables).where(and(eq(receivables.companyId, companyId), eq(receivables.saleId, id))),
       this.database.db.select({ timezone: companies.timezone }).from(companies).where(eq(companies.id, companyId)).limit(1),
+      this.database.db.select().from(storedFiles).where(and(eq(storedFiles.companyId, companyId), eq(storedFiles.saleId, id), eq(storedFiles.status, 'READY'))).orderBy(storedFiles.createdAt, storedFiles.id),
     ]);
     const movements = openReceivables.length ? await this.database.db.select().from(receivableMovements)
       .where(and(eq(receivableMovements.companyId, companyId), inArray(receivableMovements.receivableId, openReceivables.map((entry) => entry.id))))
@@ -138,7 +141,7 @@ export class SalesService {
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: company?.timezone ?? 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const { idempotencyKey: _key, requestHash: _hash, ...publicSale } = sale;
     return {
-      ...publicSale, items,
+      ...publicSale, items, attachments: attachments.map(publicFile),
       installments: installments.map((part) => {
         const receivable = openReceivables.find((entry) => entry.saleInstallmentId === part.id);
         const partMovements = receivable ? movements.filter((entry) => entry.receivableId === receivable.id) : [];
@@ -163,6 +166,7 @@ export class SalesService {
       await tx.delete(saleInstallments).where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, id)));
       if (prepared.itemRows.length) await tx.insert(saleItems).values(prepared.itemRows.map((row) => ({ ...row, saleId: id })));
       if (prepared.installmentRows.length) await tx.insert(saleInstallments).values(prepared.installmentRows.map((row) => ({ ...row, saleId: id })));
+      await this.files.syncSaleInTx(tx, { companyId, userId }, id, input.attachmentIds);
       await tx.update(sales).set({
         customerId: prepared.customer.id, customerKindSnapshot: prepared.customer.kind, customerNameSnapshot: prepared.customer.name,
         customerTaxIdSnapshot: prepared.customer.taxId, workOrderNumber: input.workOrderNumber ?? null,
@@ -264,6 +268,7 @@ export class SalesService {
 
       await tx.delete(saleItems).where(and(eq(saleItems.companyId, companyId), eq(saleItems.saleId, id)));
       await tx.insert(saleItems).values(prepared.itemRows.map((row) => ({ ...row, saleId: id })));
+      await this.files.syncSaleInTx(tx, { companyId, userId }, id, input.attachmentIds);
       await tx.update(sales).set({
         customerId: prepared.customer.id, customerKindSnapshot: prepared.customer.kind,
         customerNameSnapshot: prepared.customer.name, customerTaxIdSnapshot: prepared.customer.taxId,

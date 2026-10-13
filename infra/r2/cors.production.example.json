@@ -1,0 +1,9 @@
+[
+  {
+    "AllowedOrigins": ["https://SEU-DOMINIO.com.br"],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["Content-Type", "Cache-Control", "Content-Length"],
+    "ExposeHeaders": ["ETag", "Content-Length", "Content-Disposition"],
+    "MaxAgeSeconds": 3600
+  }
+]

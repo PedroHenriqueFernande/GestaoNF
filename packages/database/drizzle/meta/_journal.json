@@ -134,6 +134,13 @@
       "when": 1791871580498,
       "tag": "0018_crm_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791904143603,
+      "tag": "0019_private_files",
+      "breakpoints": true
     }
   ]
 }

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service } from '../../api/client';
+import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service, type StoredFile } from '../../api/client';
 import { CustomerForm } from '../customers/CustomerForm';
 import { SaleDropdown } from './SaleDropdown';
+import { SaleAttachments } from '../files/SaleAttachments';
 
 type ItemLine = { key: string; id?: string; serviceId: string; name: string; description?: string | null; performedOn?: string | null; quantity: string; unitPrice: string; discountAmount: string; discountPercent: string; discountBasis: 'AMOUNT' | 'PERCENT' };
 type PaymentLine = { key: string; id?: string; paycode?: string | null; hasHistory?: boolean; initiallyPaid?: boolean; paidAmount?: string; paymentMethod: PaymentMethod; amount: string; dueOn: string; state: 'PAID' | 'PENDING'; receivedOn: string };
@@ -64,6 +65,8 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [notes, setNotes] = useState(draft?.notes ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [attachments, setAttachments] = useState<StoredFile[]>(draft?.attachments ?? []);
+  const [uploading, setUploading] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<SaleDetail | null>(draft ?? null);
   const createKey = useRef(crypto.randomUUID());
   const paymentRef = useRef<HTMLElement>(null);
@@ -155,6 +158,8 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   function changeCompany(id: string) {
     if (id === companyId) return;
+    if (uploading) { setError('Aguarde o envio do arquivo antes de trocar a empresa.'); return; }
+    setAttachments([]);
     onCompanyChange(id);
     setCustomerId(''); setCustomerTerm(''); setCustomerInput(''); setCustomerOpen(false); setCustomerHighlight(0); setServiceTerm(''); setServiceInput('');
     setSelectedService(null); setServiceDraft(null); setServiceOpen(false); setServiceHighlight(0); setItems([]); setPendingDraft(null); createKey.current = crypto.randomUUID();
@@ -181,6 +186,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (uploading) { setError('Aguarde o envio e a validação dos anexos antes de salvar.'); return; }
     const saveDraftOnly = draft?.status === 'DRAFT' && (event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-action') === 'save-draft';
     setError('');
     if (!companyId || !customerId || !items.length || !soldOn) { setError('Selecione a empresa e o cliente e adicione ao menos um serviço.'); return; }
@@ -192,7 +198,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
       setError('A soma das formas de pagamento precisa ser igual ao total dos serviços.'); paymentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
     }
     const payload: SaleInput = {
-      customerId, soldOn, workOrderNumber: workOrderNumber.trim() || null, notes: notes.trim() || null,
+      customerId, soldOn, workOrderNumber: workOrderNumber.trim() || null, notes: notes.trim() || null, attachmentIds: attachments.map(file => file.id),
       items: items.map((line) => ({ serviceId: line.serviceId, quantity: fixed(line.quantity, 4)!, unitPrice: fixed(line.unitPrice, 2)!, discountAmount: fixed(line.discountAmount || '0', 2)!, ...(line.description !== undefined ? { description: line.description } : {}), ...(line.performedOn !== undefined ? { performedOn: line.performedOn } : {}) })),
       installments: payments.map((line) => ({ paymentMethod: line.paymentMethod, amount: fixed(line.amount, 2)!, ...(line.state === 'PAID' ? { receivedOn: line.receivedOn } : { dueOn: line.dueOn }) })),
     };
@@ -223,8 +229,8 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   }
 
   return <main id="workspace-main" className="sale-editor-page" tabIndex={-1}>
-    <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving}><ArrowLeft size={17} /> Portal de Serviços</button><span>{confirmedEdit ? `EDITAR PEDIDO #${draft.orderCode}` : draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
-    <div className="sale-editor-heading"><div><span className="sale-eyebrow">GESTÃO DE SERVIÇOS</span><h1>{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1><p>{confirmedEdit ? 'Atualize cliente, serviços, valores, vencimentos e demais dados do pedido.' : 'Registre o serviço, combine os recebimentos e marque o que já foi recebido.'}</p>{onDetails && <button type="button" className="sale-editor-details" onClick={onDetails} disabled={saving}>Ver detalhes, baixas e histórico</button>}</div><div className="sale-editor-heading__total"><span>TOTAL DA VENDA</span><strong>{brl(total)}</strong></div></div>
+    <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving || uploading}><ArrowLeft size={17} /> Portal de Serviços</button><span>{confirmedEdit ? `EDITAR PEDIDO #${draft.orderCode}` : draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
+    <div className="sale-editor-heading"><div><span className="sale-eyebrow">GESTÃO DE SERVIÇOS</span><h1>{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1><p>{confirmedEdit ? 'Atualize cliente, serviços, valores, vencimentos e demais dados do pedido.' : 'Registre o serviço, combine os recebimentos e marque o que já foi recebido.'}</p>{onDetails && <button type="button" className="sale-editor-details" onClick={onDetails} disabled={saving || uploading}>Ver detalhes, baixas e histórico</button>}</div><div className="sale-editor-heading__actions"><SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} /><div className="sale-editor-heading__total"><span>TOTAL DA VENDA</span><strong>{brl(total)}</strong></div></div></div>
     <form onSubmit={submit} className="sale-editor-form">
       <section className="sale-editor-section sale-editor-section--identity"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2>Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div></div>
         <div className="sale-identity-grid">
@@ -295,7 +301,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
       <section className="sale-editor-section sale-editor-section--notes"><label className="sale-field"><span>Observações da venda</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Informações úteis para acompanhar este serviço" rows={3} /></label></section>
       {error && <div className="sale-form-error" role="alert">{error}{pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
-      <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>{confirmedEdit ? 'Os códigos e o histórico dos pagamentos serão preservados.' : 'Pedido e recebimentos serão registrados na empresa selecionada.'}</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving}>Cancelar</button>{draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving}>Salvar alterações</button>}<button type="submit" className="button button--primary" disabled={saving}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
+      <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>{confirmedEdit ? 'Os códigos e o histórico dos pagamentos serão preservados.' : 'Pedido e recebimentos serão registrados na empresa selecionada.'}</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving || uploading}>Cancelar</button>{draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving || uploading}>Salvar alterações</button>}<button type="submit" className="button button--primary" disabled={saving || uploading}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
     </form>
     {selectedService && serviceDraft && <SaleServiceModal
       service={selectedService}
