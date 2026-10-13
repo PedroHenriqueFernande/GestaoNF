@@ -1,0 +1,1 @@
+ALTER TABLE "whatsapp_connections" ALTER COLUMN "graph_api_version" SET DEFAULT 'v26.0';

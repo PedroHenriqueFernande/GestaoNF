@@ -7,6 +7,7 @@ import { CustomersModule } from './customers/customers.module.js';
 import { ServicesModule } from './services/services.module.js';
 import { SalesModule } from './sales/sales.module.js';
 import { FinanceModule } from './finance/finance.module.js';
+import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
 
 @Controller('health')
 class HealthController {
@@ -18,5 +19,5 @@ class HealthController {
   }
 }
 
-@Module({ imports: [DatabaseModule, AuthModule, CompaniesModule, CustomersModule, ServicesModule, SalesModule, FinanceModule], controllers: [HealthController] })
+@Module({ imports: [DatabaseModule, AuthModule, CompaniesModule, CustomersModule, ServicesModule, SalesModule, FinanceModule, WhatsAppModule], controllers: [HealthController] })
 export class AppModule {}

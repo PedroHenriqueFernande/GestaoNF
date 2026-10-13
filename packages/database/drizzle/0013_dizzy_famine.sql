@@ -1,0 +1,2 @@
+ALTER TABLE "assistant_actions" ADD CONSTRAINT "assistant_actions_company_user_fk" FOREIGN KEY ("company_id","user_id") REFERENCES "public"."company_users"("company_id","user_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "assistant_runs" ADD CONSTRAINT "assistant_runs_company_user_fk" FOREIGN KEY ("company_id","user_id") REFERENCES "public"."company_users"("company_id","user_id") ON DELETE restrict ON UPDATE no action;

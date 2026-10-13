@@ -19,6 +19,18 @@ services:
       retries: 12
       start_period: 10s
 
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
   api:
     build:
       context: .
@@ -30,6 +42,17 @@ services:
       API_PORT: 3000
       API_ORIGIN: ${API_ORIGIN:-http://localhost:3000}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+      META_WHATSAPP_ENABLED: ${META_WHATSAPP_ENABLED:-false}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_BUSINESS_PORTFOLIO_ID: ${META_BUSINESS_PORTFOLIO_ID:-}
+      META_WABA_ID: ${META_WABA_ID:-}
+      META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:-}
+      META_WHATSAPP_ACCOUNT_ID: ${META_WHATSAPP_ACCOUNT_ID:-}
+      META_DISPLAY_PHONE_NUMBER: ${META_DISPLAY_PHONE_NUMBER:-}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v26.0}
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"
     depends_on:
@@ -41,6 +64,37 @@ services:
       timeout: 3s
       retries: 12
       start_period: 15s
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["corepack", "pnpm", "--filter", "@gestaonf/api", "worker:start"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      REDIS_URL: redis://redis:6379
+      META_WHATSAPP_ENABLED: ${META_WHATSAPP_ENABLED:-false}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_BUSINESS_PORTFOLIO_ID: ${META_BUSINESS_PORTFOLIO_ID:-}
+      META_WABA_ID: ${META_WABA_ID:-}
+      META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:-}
+      META_WHATSAPP_ACCOUNT_ID: ${META_WHATSAPP_ACCOUNT_ID:-}
+      META_DISPLAY_PHONE_NUMBER: ${META_DISPLAY_PHONE_NUMBER:-}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v26.0}
+      NILO_ENABLED: ${NILO_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
+      NILO_WORKER_CONCURRENCY: ${NILO_WORKER_CONCURRENCY:-4}
+      WHATSAPP_SEND_CONCURRENCY: ${WHATSAPP_SEND_CONCURRENCY:-8}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   web:
     build:
@@ -55,3 +109,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

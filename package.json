@@ -9,6 +9,7 @@
     "web:build": "corepack pnpm --filter @gestaonf/web build",
     "web:test:e2e": "corepack pnpm --filter @gestaonf/web test:e2e",
     "api:dev": "corepack pnpm --filter @gestaonf/api dev",
+    "worker:dev": "corepack pnpm --filter @gestaonf/api worker:dev",
     "api:typecheck": "corepack pnpm --filter @gestaonf/api typecheck",
     "api:test": "corepack pnpm --filter @gestaonf/api test",
     "api:test:e2e": "corepack pnpm --filter @gestaonf/api test:e2e",

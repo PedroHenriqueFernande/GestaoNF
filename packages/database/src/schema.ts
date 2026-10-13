@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   primaryKey,
@@ -499,5 +500,356 @@ export const saleReferenceHistory = pgTable(
     check('sale_reference_history_changed_chk', sql`${table.oldWorkOrderNumber} IS DISTINCT FROM ${table.newWorkOrderNumber}`),
     check('sale_reference_history_old_chk', sql`${table.oldWorkOrderNumber} IS NULL OR length(btrim(${table.oldWorkOrderNumber})) > 0`),
     check('sale_reference_history_new_chk', sql`${table.newWorkOrderNumber} IS NULL OR length(btrim(${table.newWorkOrderNumber})) > 0`),
+  ],
+);
+
+export const whatsappConnections = pgTable(
+  'whatsapp_connections',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    ownership: varchar('ownership', { length: 16 }).default('PLATFORM').notNull(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'restrict' }),
+    environment: varchar('environment', { length: 16 }).default('DEVELOPMENT').notNull(),
+    metaAppId: varchar('meta_app_id', { length: 80 }).notNull(),
+    businessPortfolioId: varchar('business_portfolio_id', { length: 80 }),
+    messagingAccountId: varchar('messaging_account_id', { length: 80 }).notNull(),
+    phoneNumberId: varchar('phone_number_id', { length: 80 }).notNull(),
+    whatsappAccountId: varchar('whatsapp_account_id', { length: 80 }),
+    displayPhoneNumber: varchar('display_phone_number', { length: 32 }).notNull(),
+    graphApiVersion: varchar('graph_api_version', { length: 16 }).default('v26.0').notNull(),
+    status: varchar('status', { length: 20 }).default('ACTIVE').notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    unique('whatsapp_connections_environment_phone_uq').on(table.environment, table.phoneNumberId),
+    index('whatsapp_connections_company_status_idx').on(table.companyId, table.status),
+    check('whatsapp_connections_ownership_chk', sql`${table.ownership} IN ('PLATFORM', 'COMPANY')`),
+    check('whatsapp_connections_environment_chk', sql`${table.environment} IN ('DEVELOPMENT', 'PRODUCTION')`),
+    check('whatsapp_connections_status_chk', sql`${table.status} IN ('ACTIVE', 'INACTIVE', 'ERROR')`),
+    check('whatsapp_connections_owner_chk', sql`(${table.ownership} = 'PLATFORM' AND ${table.companyId} IS NULL) OR (${table.ownership} = 'COMPANY' AND ${table.companyId} IS NOT NULL)`),
+  ],
+);
+
+export const whatsappLinks = pgTable(
+  'whatsapp_links',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    connectionId: uuid('connection_id').notNull().references(() => whatsappConnections.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    senderId: varchar('sender_id', { length: 80 }).notNull(),
+    senderIdKind: varchar('sender_id_kind', { length: 16 }).default('WA_ID').notNull(),
+    phoneE164: varchar('phone_e164', { length: 20 }),
+    status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }).defaultNow().notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('whatsapp_links_connection_sender_active_uq').on(table.connectionId, table.senderId)
+      .where(sql`${table.status} = 'ACTIVE'`),
+    unique('whatsapp_links_identity_owner_uq').on(table.id, table.connectionId, table.userId),
+    index('whatsapp_links_user_status_idx').on(table.userId, table.status),
+    check('whatsapp_links_sender_kind_chk', sql`${table.senderIdKind} IN ('WA_ID', 'PHONE')`),
+    check('whatsapp_links_status_chk', sql`${table.status} IN ('ACTIVE', 'REVOKED')`),
+    check('whatsapp_links_revoked_chk', sql`(${table.status} = 'REVOKED') = (${table.revokedAt} IS NOT NULL)`),
+  ],
+);
+
+export const whatsappLinkChallenges = pgTable(
+  'whatsapp_link_challenges',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    connectionId: uuid('connection_id').notNull().references(() => whatsappConnections.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    companyId: uuid('company_id').notNull(),
+    tokenHash: char('token_hash', { length: 64 }).notNull(),
+    mode: varchar('mode', { length: 20 }).default('NEW_NUMBER').notNull(),
+    expectedLinkId: uuid('expected_link_id').references(() => whatsappLinks.id, { onDelete: 'restrict' }),
+    candidateSenderId: varchar('candidate_sender_id', { length: 80 }),
+    candidatePhoneE164: varchar('candidate_phone_e164', { length: 20 }),
+    attempts: integer('attempts').default(0).notNull(),
+    status: varchar('status', { length: 16 }).default('PENDING').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('whatsapp_link_challenges_token_uq').on(table.tokenHash),
+    index('whatsapp_link_challenges_user_status_idx').on(table.userId, table.status, table.expiresAt),
+    foreignKey({
+      name: 'whatsapp_link_challenges_company_user_fk',
+      columns: [table.companyId, table.userId],
+      foreignColumns: [companyUsers.companyId, companyUsers.userId],
+    }).onDelete('restrict'),
+    check('whatsapp_link_challenges_attempts_chk', sql`${table.attempts} >= 0`),
+    check('whatsapp_link_challenges_mode_chk', sql`(${table.mode} = 'NEW_NUMBER' AND ${table.expectedLinkId} IS NULL) OR (${table.mode} = 'EXISTING_NUMBER' AND ${table.expectedLinkId} IS NOT NULL)`),
+    check('whatsapp_link_challenges_status_chk', sql`${table.status} IN ('PENDING', 'CANDIDATE', 'CONFIRMED', 'EXPIRED', 'CANCELED')`),
+  ],
+);
+
+export const whatsappLinkCompanies = pgTable('whatsapp_link_companies', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  linkId: uuid('link_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  challengeId: uuid('challenge_id').notNull().references(() => whatsappLinkChallenges.id, { onDelete: 'restrict' }),
+  status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  foreignKey({ name: 'whatsapp_link_companies_identity_fk', columns: [table.linkId, table.connectionId, table.userId], foreignColumns: [whatsappLinks.id, whatsappLinks.connectionId, whatsappLinks.userId] }).onDelete('restrict'),
+  foreignKey({ name: 'whatsapp_link_companies_membership_fk', columns: [table.companyId, table.userId], foreignColumns: [companyUsers.companyId, companyUsers.userId] }).onDelete('restrict'),
+  unique('whatsapp_link_companies_context_uq').on(table.id, table.linkId, table.companyId, table.userId),
+  uniqueIndex('whatsapp_link_companies_user_company_active_uq').on(table.connectionId, table.userId, table.companyId).where(sql`${table.status} = 'ACTIVE'`),
+  uniqueIndex('whatsapp_link_companies_link_company_active_uq').on(table.linkId, table.companyId).where(sql`${table.status} = 'ACTIVE'`),
+  check('whatsapp_link_companies_status_chk', sql`${table.status} IN ('ACTIVE', 'REVOKED')`),
+  check('whatsapp_link_companies_revoked_chk', sql`(${table.status} = 'REVOKED') = (${table.revokedAt} IS NOT NULL)`),
+]);
+
+export const whatsappSessions = pgTable(
+  'whatsapp_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    linkId: uuid('link_id').notNull().references(() => whatsappLinks.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    activeCompanyId: uuid('active_company_id'),
+    mode: varchar('mode', { length: 16 }).default('NORMAL').notNull(),
+    contextVersion: integer('context_version').default(1).notNull(),
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+    lastOutboundAt: timestamp('last_outbound_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    unique('whatsapp_sessions_link_uq').on(table.linkId),
+    foreignKey({
+      name: 'whatsapp_sessions_active_company_user_fk',
+      columns: [table.activeCompanyId, table.userId],
+      foreignColumns: [companyUsers.companyId, companyUsers.userId],
+    }).onDelete('restrict'),
+    check('whatsapp_sessions_mode_chk', sql`${table.mode} IN ('NORMAL', 'AWAITING_CONFIRMATION', 'PAUSED')`),
+    check('whatsapp_sessions_context_version_chk', sql`${table.contextVersion} > 0`),
+  ],
+);
+
+export const whatsappConsentEvents = pgTable(
+  'whatsapp_consent_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    linkId: uuid('link_id').notNull().references(() => whatsappLinks.id, { onDelete: 'restrict' }),
+    companyLinkId: uuid('company_link_id').references(() => whatsappLinkCompanies.id, { onDelete: 'restrict' }),
+    event: varchar('event', { length: 16 }).notNull(),
+    source: varchar('source', { length: 20 }).notNull(),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('whatsapp_consent_events_link_date_idx').on(table.linkId, table.occurredAt),
+    check('whatsapp_consent_events_event_chk', sql`${table.event} IN ('GRANTED', 'REVOKED')`),
+    check('whatsapp_consent_events_source_chk', sql`${table.source} IN ('WEB', 'WHATSAPP', 'ADMIN')`),
+  ],
+);
+
+export const whatsappInboxEvents = pgTable(
+  'whatsapp_inbox_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    connectionId: uuid('connection_id').notNull().references(() => whatsappConnections.id, { onDelete: 'restrict' }),
+    providerMessageId: varchar('provider_message_id', { length: 160 }).notNull(),
+    senderId: varchar('sender_id', { length: 80 }).notNull(),
+    eventType: varchar('event_type', { length: 32 }).notNull(),
+    messageType: varchar('message_type', { length: 24 }),
+    messageText: text('message_text'),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    processingError: text('processing_error'),
+  },
+  (table) => [
+    unique('whatsapp_inbox_events_connection_message_uq').on(table.connectionId, table.providerMessageId),
+    index('whatsapp_inbox_events_processing_idx').on(table.processedAt, table.receivedAt),
+  ],
+);
+
+export type WhatsAppCompanyOption = { companyLinkId: string; companyId: string; name: string };
+
+export const whatsappRequests = pgTable('whatsapp_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  linkId: uuid('link_id').notNull().references(() => whatsappLinks.id, { onDelete: 'restrict' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  sourceInboxEventId: uuid('source_inbox_event_id').notNull().references(() => whatsappInboxEvents.id, { onDelete: 'restrict' }),
+  companyLinkId: uuid('company_link_id'),
+  companyId: uuid('company_id'),
+  messageText: text('message_text').notNull(),
+  selectionCode: varchar('selection_code', { length: 16 }).notNull(),
+  options: jsonb('options').$type<WhatsAppCompanyOption[]>().notNull(),
+  conversation: jsonb('conversation').$type<unknown[]>().default([]).notNull(),
+  status: varchar('status', { length: 24 }).default('AWAITING_COMPANY').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  selectedAt: timestamp('selected_at', { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  unique('whatsapp_requests_source_event_uq').on(table.sourceInboxEventId),
+  unique('whatsapp_requests_selection_code_uq').on(table.selectionCode),
+  index('whatsapp_requests_link_state_idx').on(table.linkId, table.status, table.createdAt),
+  foreignKey({ name: 'whatsapp_requests_company_context_fk', columns: [table.companyLinkId, table.linkId, table.companyId, table.userId], foreignColumns: [whatsappLinkCompanies.id, whatsappLinkCompanies.linkId, whatsappLinkCompanies.companyId, whatsappLinkCompanies.userId] }).onDelete('restrict'),
+  check('whatsapp_requests_context_chk', sql`(${table.companyLinkId} IS NULL) = (${table.companyId} IS NULL)`),
+  check('whatsapp_requests_status_chk', sql`${table.status} IN ('AWAITING_COMPANY', 'AWAITING_REPLY', 'READY', 'PROCESSING', 'COMPLETED', 'CANCELED', 'EXPIRED', 'FAILED')`),
+  check('whatsapp_requests_selected_chk', sql`${table.status} NOT IN ('AWAITING_REPLY', 'READY', 'PROCESSING', 'COMPLETED', 'FAILED') OR ${table.companyLinkId} IS NOT NULL`),
+]);
+
+export const integrationOutbox = pgTable(
+  'integration_outbox',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    topic: varchar('topic', { length: 80 }).notNull(),
+    aggregateId: uuid('aggregate_id'),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    state: varchar('state', { length: 16 }).default('PENDING').notNull(),
+    attempts: integer('attempts').default(0).notNull(),
+    availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('integration_outbox_dispatch_idx').on(table.state, table.availableAt, table.createdAt),
+    check('integration_outbox_state_chk', sql`${table.state} IN ('PENDING', 'PUBLISHED', 'COMPLETED', 'FAILED')`),
+    check('integration_outbox_attempts_chk', sql`${table.attempts} >= 0`),
+  ],
+);
+
+export const whatsappOutboundMessages = pgTable(
+  'whatsapp_outbound_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    connectionId: uuid('connection_id').notNull().references(() => whatsappConnections.id, { onDelete: 'restrict' }),
+    linkId: uuid('link_id').references(() => whatsappLinks.id, { onDelete: 'restrict' }),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'restrict' }),
+    companyLinkId: uuid('company_link_id').references(() => whatsappLinkCompanies.id, { onDelete: 'restrict' }),
+    requestId: uuid('request_id').references(() => whatsappRequests.id, { onDelete: 'restrict' }),
+    recipientId: varchar('recipient_id', { length: 80 }).notNull(),
+    messageType: varchar('message_type', { length: 24 }).default('TEXT').notNull(),
+    body: text('body').notNull(),
+    logicalKey: varchar('logical_key', { length: 160 }).notNull(),
+    providerMessageId: varchar('provider_message_id', { length: 160 }),
+    status: varchar('status', { length: 20 }).default('QUEUED').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+    failureReason: text('failure_reason'),
+    ...timestamps,
+  },
+  (table) => [
+    unique('whatsapp_outbound_messages_logical_key_uq').on(table.logicalKey),
+    uniqueIndex('whatsapp_outbound_messages_provider_id_uq').on(table.connectionId, table.providerMessageId)
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
+    index('whatsapp_outbound_messages_link_date_idx').on(table.linkId, table.createdAt),
+    check('whatsapp_outbound_messages_type_chk', sql`${table.messageType} IN ('TEXT', 'TEMPLATE', 'DOCUMENT')`),
+    check('whatsapp_outbound_messages_status_chk', sql`${table.status} IN ('QUEUED', 'SENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'CANCELED')`),
+    check('whatsapp_outbound_messages_body_chk', sql`length(btrim(${table.body})) > 0`),
+  ],
+);
+
+export const whatsappSendAttempts = pgTable(
+  'whatsapp_send_attempts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    outboundMessageId: uuid('outbound_message_id').notNull().references(() => whatsappOutboundMessages.id, { onDelete: 'restrict' }),
+    attempt: integer('attempt').notNull(),
+    httpStatus: integer('http_status'),
+    providerErrorCode: varchar('provider_error_code', { length: 80 }),
+    errorMessage: text('error_message'),
+    attemptedAt: timestamp('attempted_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique('whatsapp_send_attempts_message_attempt_uq').on(table.outboundMessageId, table.attempt),
+    check('whatsapp_send_attempts_attempt_chk', sql`${table.attempt} > 0`),
+  ],
+);
+
+export const whatsappStatusEvents = pgTable(
+  'whatsapp_status_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    connectionId: uuid('connection_id').notNull().references(() => whatsappConnections.id, { onDelete: 'restrict' }),
+    providerMessageId: varchar('provider_message_id', { length: 160 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique('whatsapp_status_events_message_status_date_uq').on(table.connectionId, table.providerMessageId, table.status, table.occurredAt),
+    index('whatsapp_status_events_message_idx').on(table.connectionId, table.providerMessageId),
+  ],
+);
+
+export const assistantRuns = pgTable(
+  'assistant_runs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    inboxEventId: uuid('inbox_event_id').notNull().references(() => whatsappInboxEvents.id, { onDelete: 'restrict' }),
+    linkId: uuid('link_id').notNull().references(() => whatsappLinks.id, { onDelete: 'restrict' }),
+    companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    companyLinkId: uuid('company_link_id').references(() => whatsappLinkCompanies.id, { onDelete: 'restrict' }),
+    requestId: uuid('request_id').references(() => whatsappRequests.id, { onDelete: 'restrict' }),
+    provider: varchar('provider', { length: 24 }).default('OPENAI').notNull(),
+    model: varchar('model', { length: 80 }).notNull(),
+    status: varchar('status', { length: 20 }).default('RUNNING').notNull(),
+    toolCallCount: integer('tool_call_count').default(0).notNull(),
+    responseText: text('response_text'),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    errorCode: varchar('error_code', { length: 80 }),
+    errorMessage: text('error_message'),
+    startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (table) => [
+    unique('assistant_runs_inbox_event_uq').on(table.inboxEventId),
+    index('assistant_runs_company_date_idx').on(table.companyId, table.startedAt),
+    foreignKey({
+      name: 'assistant_runs_company_user_fk',
+      columns: [table.companyId, table.userId],
+      foreignColumns: [companyUsers.companyId, companyUsers.userId],
+    }).onDelete('restrict'),
+    check('assistant_runs_status_chk', sql`${table.status} IN ('RUNNING', 'COMPLETED', 'FAILED')`),
+    check('assistant_runs_tokens_chk', sql`(${table.inputTokens} IS NULL OR ${table.inputTokens} >= 0) AND (${table.outputTokens} IS NULL OR ${table.outputTokens} >= 0)`),
+  ],
+);
+
+export const assistantActions = pgTable(
+  'assistant_actions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    assistantRunId: uuid('assistant_run_id').notNull().references(() => assistantRuns.id, { onDelete: 'restrict' }),
+    companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    toolName: varchar('tool_name', { length: 80 }).notNull(),
+    riskLevel: varchar('risk_level', { length: 16 }).default('READ').notNull(),
+    status: varchar('status', { length: 20 }).default('REQUESTED').notNull(),
+    arguments: jsonb('arguments').$type<Record<string, unknown>>().notNull(),
+    result: jsonb('result').$type<Record<string, unknown>>(),
+    confirmationTokenHash: char('confirmation_token_hash', { length: 64 }),
+    confirmationExpiresAt: timestamp('confirmation_expires_at', { withTimezone: true }),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    executedAt: timestamp('executed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index('assistant_actions_run_idx').on(table.assistantRunId, table.createdAt),
+    index('assistant_actions_confirmation_idx').on(table.confirmationTokenHash, table.confirmationExpiresAt),
+    foreignKey({
+      name: 'assistant_actions_company_user_fk',
+      columns: [table.companyId, table.userId],
+      foreignColumns: [companyUsers.companyId, companyUsers.userId],
+    }).onDelete('restrict'),
+    check('assistant_actions_risk_chk', sql`${table.riskLevel} IN ('READ', 'WRITE', 'SENSITIVE')`),
+    check('assistant_actions_status_chk', sql`${table.status} IN ('REQUESTED', 'AWAITING_CONFIRMATION', 'CONFIRMED', 'EXECUTED', 'REJECTED', 'FAILED')`),
   ],
 );

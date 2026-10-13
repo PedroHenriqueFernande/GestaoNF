@@ -108,6 +108,19 @@ export type FinanceSummary = {
   paymentCount: number; saleCount: number; originalAmount: string; paidAmount: string;
   remainingAmount: string; overdueAmount: string;
 };
+export type WhatsAppLinkStatus = {
+  configured: boolean;
+  linked: boolean;
+  connection: { displayPhoneNumber: string; environment: string } | null;
+  link: { id: string; linkId: string; companyId: string; phoneE164: string | null; verifiedAt: string } | null;
+  verifiedNumbers: { id: string; phoneE164: string | null; verifiedAt: string }[];
+};
+export type WhatsAppLinkChallenge = {
+  challengeId: string; expiresAt: string; waLink: string; displayPhoneNumber: string; instruction: string;
+};
+export type WhatsAppChallengeStatus = {
+  id: string; status: 'PENDING' | 'CANDIDATE' | 'CONFIRMED' | 'EXPIRED' | 'CANCELED'; expiresAt: string; candidatePhoneE164: string | null;
+};
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
@@ -228,4 +241,9 @@ export const api = {
   financeDetail: (companyId: string, saleId: string) => request<FinanceDetail>(`/finance/receivables/${saleId}`, {}, { companyId }),
   updateFinanceDates: (companyId: string, saleId: string, installmentId: string, input: { expectedVersion: number; soldOn: string; dueOn: string | null }) =>
     request<FinanceDetail>(`/finance/receivables/${saleId}/payments/${installmentId}/dates`, { method: 'PATCH', body: json(input) }, { companyId }),
+  whatsappLinkStatus: (companyId: string) => request<WhatsAppLinkStatus>('/integrations/whatsapp/link/status', {}, { companyId }),
+  createWhatsAppChallenge: (companyId: string, input: { mode?: 'NEW_NUMBER' | 'EXISTING_NUMBER'; linkId?: string } = {}) => request<WhatsAppLinkChallenge>('/integrations/whatsapp/link/challenges', { method: 'POST', body: json(input) }, { companyId }),
+  whatsappChallengeStatus: (companyId: string, challengeId: string) => request<WhatsAppChallengeStatus>(`/integrations/whatsapp/link/challenges/${challengeId}`, {}, { companyId }),
+  confirmWhatsAppLink: (companyId: string, challengeId: string) => request<{ linked: true; phoneE164: string | null; verifiedAt: string }>(`/integrations/whatsapp/link/challenges/${challengeId}/confirm`, { method: 'POST', body: '{}' }, { companyId }),
+  disconnectWhatsApp: (companyId: string) => request<void>('/integrations/whatsapp/link', { method: 'DELETE' }, { companyId }),
 };
