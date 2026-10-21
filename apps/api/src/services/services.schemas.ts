@@ -7,11 +7,12 @@ const price = z.string().regex(/^(?:0|[1-9]\d{0,12})(?:\.\d{1,2})?$/).nullable()
 const fields = {
   internalCode: nullableText(20),
   name: z.string().trim().min(1).max(200),
-  description: nullableText(1000),
+  description: nullableText(2000),
   unitLabel: z.string().trim().min(1).max(16),
   suggestedUnitPrice: price,
   nationalTaxCode: nullableCode(6),
   nbsCode: nullableCode(9),
+  simplesActivityCode: z.enum(['07', '08', '09', '10', '11', '12', '13', '14', '90']).nullable(),
   status: z.enum(['ACTIVE', 'INACTIVE']),
 };
 

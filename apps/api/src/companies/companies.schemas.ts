@@ -24,7 +24,9 @@ const fields = {
   cnaeCode: z.string().transform((value) => value.replace(/[.\-/\s]/g, '')).pipe(z.string().regex(/^\d{7}$/)).nullable(),
   simplesNationalOption: z.enum(['1', '2', '3', '4']).nullable(),
   simplesTaxationRegime: z.enum(['1', '2', '3']).nullable(),
-  specialTaxRegime: z.enum(['0', '1', '2', '3', '4', '5', '6']).nullable(),
+  simplesIbsCbsRegime: z.enum(['1', '2', '3']).nullable(),
+  caepfCode: z.string().trim().regex(/^\d{14}$/, 'Informe os 14 dígitos do registro de atividade da pessoa física.').nullable(),
+  specialTaxRegime: z.enum(['0', '1', '2', '3', '4', '5', '6', '9']).nullable(),
 };
 
 export const createCompanySchema = z.strictObject({ ...fields, accountId: z.uuid() }).partial().required({ name: true });

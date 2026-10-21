@@ -1,11 +1,12 @@
 import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { companies, companyUsers, customers, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
+import { companies, companyUsers, customers, nfseSeries, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
 import { FilesService, publicFile } from '../files/files.service.js';
+import { FiscalService } from '../fiscal/fiscal.service.js';
 import { amount, cents, itemAmounts } from './sales-money.js';
 import { orderCode, paycodes } from './sales-codes.js';
 import type { ConfirmSaleInput, CreateSaleInput, ListSalesInput, UpdateConfirmedSaleInput, UpdateSaleInput } from './sales.schemas.js';
@@ -19,12 +20,22 @@ export function constraintName(error: unknown): string | null {
 
 @Injectable()
 export class SalesService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(FilesService) private readonly files: FilesService) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(FilesService) private readonly files: FilesService,
+    @Inject(FiscalService) private readonly fiscal: FiscalService) {}
 
-  private async prepare(companyId: string, input: CreateSaleInput | UpdateConfirmedSaleInput, existing?: { customerId: string; serviceIds: Set<string>; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }, db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0] = this.database.db) {
+  private async prepare(companyId: string, input: CreateSaleInput | UpdateConfirmedSaleInput, existing?: { customerId: string; serviceIds: Set<string>; fiscalSeriesId?: string | null; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }, db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0] = this.database.db) {
     const [customer] = await db.select().from(customers)
       .where(and(eq(customers.companyId, companyId), eq(customers.id, input.customerId))).limit(1);
     if (!customer || (customer.status !== 'ACTIVE' && customer.id !== existing?.customerId)) throw new BadRequestException('Selecione um cliente ativo desta empresa');
+    const [company] = await db.select({ taxId: companies.taxId, city: companies.cityIbgeCode }).from(companies).where(eq(companies.id, companyId)).limit(1);
+    const seriesRows = input.fiscalSeriesId === null || !company?.taxId || !company.city ? [] : await db.select().from(nfseSeries).where(and(
+      eq(nfseSeries.companyId, companyId), eq(nfseSeries.environment, 'PRODUCTION'),
+      input.fiscalSeriesId && input.fiscalSeriesId === existing?.fiscalSeriesId ? undefined : eq(nfseSeries.status, 'ACTIVE'),
+      input.fiscalSeriesId ? eq(nfseSeries.id, input.fiscalSeriesId) : undefined,
+      eq(nfseSeries.issuerTaxIdSnapshot, company.taxId), eq(nfseSeries.municipalityIbgeCode, company.city),
+    ));
+    const series = input.fiscalSeriesId ? seriesRows[0] : seriesRows.find(row => row.isDefault) ?? (seriesRows.length === 1 ? seriesRows[0] : undefined);
+    if (input.fiscalSeriesId && !series) throw new BadRequestException('Série fiscal inválida, inativa ou incompatível com a empresa');
     const itemRows = [];
     for (const [index, item] of input.items.entries()) {
       const [service] = await db.select().from(services)
@@ -33,6 +44,8 @@ export class SalesService {
       const calculated = itemAmounts(item.quantity, item.unitPrice, item.discountAmount);
       const original = 'id' in item && typeof item.id === 'string' ? existing?.itemSnapshots?.get(item.id) : undefined;
       if (original && original.serviceId !== item.serviceId) throw new BadRequestException('Serviço original do item não corresponde ao cadastro');
+      const tax = original && item.taxProfileId === undefined ? null : await this.fiscal.resolveTax(companyId, service.id,
+        input.soldOn ?? new Date().toISOString().slice(0, 10), company?.city ?? null, db, item.taxProfileId);
       itemRows.push({
         companyId, serviceId: service.id, position: index + 1,
         serviceNameSnapshot: original?.serviceNameSnapshot ?? service.name,
@@ -40,6 +53,8 @@ export class SalesService {
         unitLabelSnapshot: original?.unitLabelSnapshot ?? service.unitLabel,
         nationalTaxCodeSnapshot: original ? original.nationalTaxCodeSnapshot : service.nationalTaxCode,
         nbsCodeSnapshot: original ? original.nbsCodeSnapshot : service.nbsCode,
+        taxProfileRevisionId: original && item.taxProfileId === undefined ? original.taxProfileRevisionId : tax?.revisionId ?? null,
+        taxSnapshot: original && item.taxProfileId === undefined ? original.taxSnapshot : tax?.snapshot ?? null,
         quantity: item.quantity, unitPrice: item.unitPrice, grossAmount: calculated.grossAmount,
         discountAmount: item.discountAmount, totalAmount: calculated.totalAmount,
         performedOn: item.performedOn === undefined ? original?.performedOn ?? null : item.performedOn,
@@ -49,6 +64,7 @@ export class SalesService {
     const discount = itemRows.reduce((sum, row) => sum + cents(row.discountAmount), 0n);
     return {
       customer,
+      fiscalSeriesId: series?.id ?? null,
       itemRows,
       totals: { subtotalAmount: amount(subtotal), discountAmount: amount(discount), totalAmount: amount(subtotal - discount) },
       installmentRows: input.installments.map((part, index) => ({
@@ -98,7 +114,8 @@ export class SalesService {
     }
     const [sale] = await tx.insert(sales).values({ companyId, orderCode: orderCode(), customerId: prepared.customer.id,
       customerKindSnapshot: prepared.customer.kind, customerNameSnapshot: prepared.customer.name, customerTaxIdSnapshot: prepared.customer.taxId,
-      workOrderNumber: input.workOrderNumber ?? null, soldOn: input.soldOn ?? null, notes: input.notes ?? null, ...prepared.totals,
+      workOrderNumber: input.workOrderNumber ?? null, soldOn: input.soldOn ?? null, notes: input.notes ?? null,
+      fiscalSeriesId: prepared.fiscalSeriesId, ...prepared.totals,
       createdByUserId: userId, idempotencyKey: key, requestHash: options.requestHash, sourceProposalId: options.sourceProposalId ?? null }).returning();
     if (prepared.itemRows.length) await tx.insert(saleItems).values(prepared.itemRows.map(row => ({ ...row, saleId: sale.id })));
     if (prepared.installmentRows.length) await tx.insert(saleInstallments).values(prepared.installmentRows.map(row => ({ ...row, saleId: sale.id })));
@@ -163,7 +180,9 @@ export class SalesService {
   }
 
   async update(companyId: string, id: string, userId: string, input: UpdateSaleInput) {
-    const prepared = await this.prepare(companyId, input);
+    const [previous] = await this.database.db.select({ customerId: sales.customerId, fiscalSeriesId: sales.fiscalSeriesId })
+      .from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).limit(1);
+    const prepared = await this.prepare(companyId, input, previous ? { customerId: previous.customerId, fiscalSeriesId: previous.fiscalSeriesId, serviceIds: new Set() } : undefined);
     await this.database.db.transaction(async (tx) => {
       const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
       if (!sale) throw new NotFoundException('Pedido não encontrado');
@@ -176,7 +195,8 @@ export class SalesService {
       await tx.update(sales).set({
         customerId: prepared.customer.id, customerKindSnapshot: prepared.customer.kind, customerNameSnapshot: prepared.customer.name,
         customerTaxIdSnapshot: prepared.customer.taxId, workOrderNumber: input.workOrderNumber ?? null,
-        soldOn: input.soldOn ?? null, notes: input.notes ?? null, ...prepared.totals, version: sale.version + 1, updatedAt: new Date(),
+        soldOn: input.soldOn ?? null, notes: input.notes ?? null, fiscalSeriesId: prepared.fiscalSeriesId,
+        ...prepared.totals, version: sale.version + 1, updatedAt: new Date(),
       }).where(and(eq(sales.companyId, companyId), eq(sales.id, id)));
       if (sale.workOrderNumber !== (input.workOrderNumber ?? null)) await tx.insert(saleReferenceHistory).values({
         companyId, saleId: id, oldWorkOrderNumber: sale.workOrderNumber, newWorkOrderNumber: input.workOrderNumber ?? null, actorUserId: userId,
@@ -194,6 +214,7 @@ export class SalesService {
     }
     const prepared = await this.prepare(companyId, input, {
       customerId: current.customerId,
+      fiscalSeriesId: current.fiscalSeriesId,
       serviceIds: new Set(current.items.map((item) => item.serviceId)),
       itemSnapshots: new Map(current.items.map((item) => [item.id, item])),
     });
@@ -279,7 +300,8 @@ export class SalesService {
         customerId: prepared.customer.id, customerKindSnapshot: prepared.customer.kind,
         customerNameSnapshot: prepared.customer.name, customerTaxIdSnapshot: prepared.customer.taxId,
         workOrderNumber: input.workOrderNumber ?? null, soldOn: input.soldOn,
-        notes: input.notes ?? null, ...prepared.totals, version: sale.version + 1, updatedAt: new Date(),
+        notes: input.notes ?? null, fiscalSeriesId: prepared.fiscalSeriesId,
+        ...prepared.totals, version: sale.version + 1, updatedAt: new Date(),
       }).where(eq(sales.id, id));
       if (sale.workOrderNumber !== (input.workOrderNumber ?? null)) await tx.insert(saleReferenceHistory).values({
         companyId, saleId: id, oldWorkOrderNumber: sale.workOrderNumber,

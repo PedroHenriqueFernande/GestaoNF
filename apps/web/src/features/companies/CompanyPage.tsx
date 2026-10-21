@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Building2, ChevronRight, FileCheck2, MapPin, Plus, Save, UserRound, X } from 'lucide-react';
 import { api, type Company, type CompanyInput, type CompanyProfile, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
+import { CountryOptions } from '../../components/CountryOptions';
 
 type FormState = Record<keyof CompanyInput, string>;
 type FormKey = keyof FormState;
@@ -13,6 +14,7 @@ const emptyForm: FormState = {
   street: '', number: '', complement: '', district: '', postalCode: '', cityName: '',
   cityIbgeCode: '', stateCode: '', countryCode: 'BR', municipalRegistration: '',
   stateRegistration: '', cnaeCode: '', simplesNationalOption: '', simplesTaxationRegime: '', specialTaxRegime: '',
+  simplesIbsCbsRegime: '', caepfCode: '',
 };
 
 function toForm(company: CompanyProfile): FormState {
@@ -28,11 +30,13 @@ function toInput(form: FormState): CompanyInput {
     complement: optional('complement'), district: optional('district'),
     postalCode: optional('postalCode')?.replace(/\D/g, '') ?? null,
     cityName: optional('cityName'), cityIbgeCode: optional('cityIbgeCode'), stateCode: optional('stateCode')?.toUpperCase() ?? null,
-    countryCode: 'BR', municipalRegistration: optional('municipalRegistration'), stateRegistration: optional('stateRegistration'),
+    countryCode: form.countryCode, municipalRegistration: optional('municipalRegistration'), stateRegistration: optional('stateRegistration'),
     cnaeCode: optional('cnaeCode')?.replace(/\D/g, '') ?? null,
     simplesNationalOption: optional('simplesNationalOption') as CompanyInput['simplesNationalOption'],
     simplesTaxationRegime: optional('simplesTaxationRegime') as CompanyInput['simplesTaxationRegime'],
     specialTaxRegime: optional('specialTaxRegime') as CompanyInput['specialTaxRegime'],
+    simplesIbsCbsRegime: optional('simplesIbsCbsRegime') as CompanyInput['simplesIbsCbsRegime'],
+    caepfCode: optional('caepfCode'),
   };
 }
 
@@ -111,14 +115,14 @@ export function CompanyPage({ user }: { user: User }) {
       <input value={form[key]} onChange={(event) => set(key, event.target.value)} placeholder={options.placeholder} required={options.required} type={options.type ?? 'text'} disabled={!editable || save.isPending} />
       {options.hint && <small className="field-hint">{options.hint}</small>}
     </label>;
-  const select = (key: FormKey, label: string, options: [string, string][]) =>
+  const select = (key: FormKey, label: string, options: [string, string][], hint?: string) =>
     <label className="field" key={key}><span>{label}</span><select value={form[key]} onChange={(event) => {
-      if (key === 'simplesNationalOption') setForm((current) => ({ ...current, simplesNationalOption: event.target.value, simplesTaxationRegime: event.target.value === '3' ? current.simplesTaxationRegime : '' }));
+      if (key === 'simplesNationalOption') setForm((current) => ({ ...current, simplesNationalOption: event.target.value, simplesTaxationRegime: ['3', '4'].includes(event.target.value) ? current.simplesTaxationRegime : '', simplesIbsCbsRegime: ['3', '4'].includes(event.target.value) ? current.simplesIbsCbsRegime : '' }));
       else set(key, event.target.value);
       save.reset();
-    }} disabled={!editable || save.isPending || (key === 'simplesTaxationRegime' && form.simplesNationalOption !== '3')}>
+    }} disabled={!editable || save.isPending || (['simplesTaxationRegime', 'simplesIbsCbsRegime'].includes(key) && !['3', '4'].includes(form.simplesNationalOption))}>
       <option value="">Não informado</option>{options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-    </select></label>;
+    </select>{hint && <small className="field-hint">{hint}</small>}</label>;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -163,7 +167,7 @@ export function CompanyPage({ user }: { user: User }) {
         <section className="company-form__section"><div className="company-form__section-title"><UserRound size={19} /><div><h2>Identificação</h2><p>Identidade e contato da empresa</p></div></div>
           <div className="company-form__grid company-form__grid--two">
             {field('name', 'Nome de exibição', { required: true, placeholder: 'Como a empresa aparecerá no sistema' })}
-            <label className="field"><span>Tipo de prestadora</span><select value={form.kind} onChange={(event) => { setForm((current) => ({ ...current, kind: event.target.value, taxId: '', tradeName: event.target.value === 'PF' ? '' : current.tradeName })); save.reset(); }} disabled={!editable || save.isPending}><option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option></select></label>
+            <label className="field"><span>Tipo de prestadora</span><select value={form.kind} onChange={(event) => { setForm((current) => ({ ...current, kind: event.target.value, taxId: '', caepfCode: event.target.value === 'PJ' ? '' : current.caepfCode, tradeName: event.target.value === 'PF' ? '' : current.tradeName })); save.reset(); }} disabled={!editable || save.isPending}><option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option></select></label>
             {field('legalName', form.kind === 'PF' ? 'Nome civil' : 'Razão social', { placeholder: 'Nome legal da prestadora' })}
             {form.kind === 'PJ' && field('tradeName', 'Nome fantasia', { placeholder: 'Nome comercial da empresa' })}
             <label className="field"><span>{form.kind === 'PF' ? 'CPF' : 'CNPJ'}</span><input value={form.taxId} onChange={(event) => set('taxId', event.target.value)} placeholder={form.kind === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'} disabled={!editable || save.isPending} /><small className="field-hint">Opcional no cadastro; quando informado, validamos o número.</small></label>
@@ -173,6 +177,7 @@ export function CompanyPage({ user }: { user: User }) {
         </section>
         <section className="company-form__section"><div className="company-form__section-title"><MapPin size={19} /><div><h2>Endereço</h2><p>Localização e município da prestadora</p></div></div>
           <div className="company-form__grid company-form__grid--address">
+            <label className="field"><span>País</span><select value={form.countryCode} onChange={(event) => set('countryCode', event.target.value)} disabled={!editable || save.isPending}><CountryOptions value={form.countryCode} /></select><small className="field-hint">O endereço nacional abaixo usa CEP, UF e município brasileiro.</small></label>
             {field('postalCode', 'CEP', { placeholder: '00000-000' })}{field('street', 'Logradouro', { placeholder: 'Rua, avenida...' })}
             {field('number', 'Número')}{field('complement', 'Complemento')}{field('district', 'Bairro')}
             {field('cityName', 'Cidade')}{field('stateCode', 'UF', { placeholder: 'SP' })}{field('cityIbgeCode', 'Código IBGE do município', { placeholder: '7 dígitos' })}
@@ -183,9 +188,11 @@ export function CompanyPage({ user }: { user: User }) {
             {field('municipalRegistration', 'Inscrição municipal', { hint: 'Preencha quando aplicável ao seu município.' })}
             {field('stateRegistration', 'Inscrição estadual', { hint: 'Usada quando houver operações sujeitas à inscrição estadual.' })}
             {field('cnaeCode', 'CNAE principal', { placeholder: '7 dígitos' })}
+            {form.kind === 'PF' && field('caepfCode', 'Registro de atividade da pessoa física (CAEPF)', { placeholder: '14 dígitos', hint: 'Opcional. Informe se a prestadora possui esse registro de atividade econômica.' })}
             {select('simplesNationalOption', 'Opção pelo Simples Nacional', [['1', '1 — Não optante'], ['2', '2 — MEI'], ['3', '3 — ME/EPP'], ['4', '4 — Optante pendente']])}
             {select('simplesTaxationRegime', 'Regime de apuração no Simples', [['1', '1 — Federais e ISS pelo Simples'], ['2', '2 — Federais pelo Simples; ISS fora'], ['3', '3 — Federais e ISS fora do Simples']])}
-            {select('specialTaxRegime', 'Regime especial de tributação', [['0', '0 — Nenhum'], ['1', '1 — Ato cooperado'], ['2', '2 — Estimativa'], ['3', '3 — Microempresa municipal'], ['4', '4 — Notário ou registrador'], ['5', '5 — Profissional autônomo'], ['6', '6 — Sociedade de profissionais']])}
+            {select('simplesIbsCbsRegime', 'Como apura os novos impostos (IBS e CBS)', [['1', 'Ambos pelo Simples Nacional'], ['2', 'CBS pelo Simples; IBS pelo regime regular'], ['3', 'Ambos pelo regime regular']], 'Opcional. Confirme o enquadramento com seu contador; esta escolha é separada da apuração do ISS.')}
+            {select('specialTaxRegime', 'Regime especial de tributação', [['0', '0 — Nenhum'], ['1', '1 — Ato cooperado'], ['2', '2 — Estimativa'], ['3', '3 — Microempresa municipal'], ['4', '4 — Notário ou registrador'], ['5', '5 — Profissional autônomo'], ['6', '6 — Sociedade de profissionais'], ['9', '9 — Outros']])}
           </div>
           <p className="company-form__hint">Preencher o cadastro não habilita automaticamente a emissão. As exigências fiscais serão conferidas ao emitir a nota.</p>
         </section>

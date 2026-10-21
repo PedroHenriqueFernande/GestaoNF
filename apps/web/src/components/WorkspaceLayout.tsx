@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { BarChart3, Bot, Building2, CalendarDays, ChevronDown, ChevronRight, ClipboardList, ContactRound, FileText, Landmark, LogOut, Menu, ReceiptText, UsersRound, X } from 'lucide-react';
+import { BarChart3, Bot, Building2, CalendarDays, ChevronDown, ChevronRight, ClipboardList, ContactRound, FileText, Hash, Landmark, LogOut, Menu, ReceiptText, Calculator, UsersRound, X } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { initials } from '../utils/format';
 import { CompanyPicker } from './CompanyPicker';
@@ -19,6 +19,8 @@ const navigation = [
   { id: 'nilo', label: 'Nero', path: '/nero', icon: Bot },
   { id: 'users', label: 'Usuários', path: '/usuarios', icon: UsersRound },
   { id: 'reports', label: 'Relatórios', path: '/relatorios', icon: BarChart3 },
+  { id: 'fiscal-series', label: 'Séries e numeração', path: '/fiscal/series', icon: Hash },
+  { id: 'fiscal-tax', label: 'Controle de tributação', path: '/fiscal/tributacao', icon: Calculator },
 ] as const;
 
 export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, onboarding = false, className = '', children }: {
@@ -41,7 +43,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = pathname === '/empresa' ? 'company' : pathname === '/usuarios' ? 'users' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/relatorios' || pathname.startsWith('/relatorios/') ? 'reports' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/propostas' ? 'proposals' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
+  const section = pathname === '/fiscal/series' ? 'fiscal-series' : pathname === '/fiscal/tributacao' ? 'fiscal-tax' : pathname === '/empresa' ? 'company' : pathname === '/usuarios' ? 'users' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/relatorios' || pathname.startsWith('/relatorios/') ? 'reports' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/propostas' ? 'proposals' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
   const company = companies?.find((item) => item.id === companyId);
 
   useEffect(() => {
@@ -108,6 +110,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
         {([
           { label: 'Gestão', items: [navigation[3], navigation[4], navigation[10], navigation[5], navigation[6], navigation[7], navigation[8]] },
           { label: 'Cadastros', items: onboarding ? [navigation[2], navigation[0], navigation[1]] : [navigation[0], navigation[1], navigation[2], ...(companies?.some((item) => item.role === 'OWNER') ? [navigation[9]] : [])] },
+          { label: 'Fiscal', items: [navigation[11], navigation[12]] },
         ] as const).map((group) => <div className="workspace-nav-group" key={group.label}>
         <p className="workspace-sidebar__label">{group.label}</p>
         <nav aria-label={group.label}>

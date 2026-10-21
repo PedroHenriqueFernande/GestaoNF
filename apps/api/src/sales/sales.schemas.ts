@@ -9,10 +9,11 @@ const optionalText = (max: number) => z.string().trim().min(1).max(max).nullable
 
 const item = z.strictObject({
   serviceId: z.uuid(),
+  taxProfileId: z.uuid().nullable().optional(),
   quantity,
   unitPrice: money,
   discountAmount: money.default('0.00'),
-  description: optionalText(1000),
+  description: optionalText(2000),
   performedOn: date.nullable().optional(),
 });
 
@@ -27,6 +28,7 @@ const installment = z.union([
 
 const saleFields = {
   customerId: z.uuid(),
+  fiscalSeriesId: z.uuid().nullable().optional(),
   soldOn: date.nullable().optional(),
   workOrderNumber: optionalText(40),
   notes: optionalText(2000),

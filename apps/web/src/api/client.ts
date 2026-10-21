@@ -15,10 +15,11 @@ export type CompanyProfile = Company & {
   postalCode: string | null; cityName: string | null; cityIbgeCode: string | null; stateCode: string | null;
   countryCode: string; municipalRegistration: string | null; stateRegistration: string | null; cnaeCode: string | null;
   simplesNationalOption: '1' | '2' | '3' | '4' | null;
-  simplesTaxationRegime: '1' | '2' | '3' | null; specialTaxRegime: '0' | '1' | '2' | '3' | '4' | '5' | '6' | null;
+  simplesTaxationRegime: '1' | '2' | '3' | null; simplesIbsCbsRegime: '1' | '2' | '3' | null; caepfCode: string | null;
+  specialTaxRegime: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '9' | null;
   timezone: string; locale: string; status: 'ACTIVE' | 'INACTIVE'; createdAt: string; updatedAt: string;
 };
-export type CompanyInput = Pick<CompanyProfile, 'name' | 'kind' | 'legalName' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode' | 'municipalRegistration' | 'stateRegistration' | 'cnaeCode' | 'simplesNationalOption' | 'simplesTaxationRegime' | 'specialTaxRegime'>;
+export type CompanyInput = Pick<CompanyProfile, 'name' | 'kind' | 'legalName' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode' | 'municipalRegistration' | 'stateRegistration' | 'cnaeCode' | 'simplesNationalOption' | 'simplesTaxationRegime' | 'specialTaxRegime'> & Partial<Pick<CompanyProfile, 'simplesIbsCbsRegime' | 'caepfCode'>>;
 export type Customer = {
   id: string;
   companyId: string;
@@ -39,10 +40,16 @@ export type Customer = {
   cityIbgeCode: string | null;
   stateCode: string | null;
   countryCode: string;
+  municipalRegistration: string | null;
+  caepfCode: string | null;
+  foreignTaxId: string | null;
+  noForeignTaxIdReason: '1' | '2' | null;
+  foreignPostalCode: string | null;
+  foreignStateProvince: string | null;
   createdAt: string;
   updatedAt: string;
 };
-export type CustomerInput = Pick<Customer, 'kind' | 'name' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'notes' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode'>;
+export type CustomerInput = Pick<Customer, 'kind' | 'name' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'notes' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode'> & Partial<Pick<Customer, 'municipalRegistration' | 'caepfCode' | 'foreignTaxId' | 'noForeignTaxIdReason' | 'foreignPostalCode' | 'foreignStateProvince'>>;
 export type CustomerList = { items: Customer[]; total: number; limit: number; offset: number };
 export type Service = {
   id: string;
@@ -54,12 +61,13 @@ export type Service = {
   suggestedUnitPrice: string | null;
   nationalTaxCode: string | null;
   nbsCode: string | null;
+  simplesActivityCode: '07' | '08' | '09' | '10' | '11' | '12' | '13' | '14' | '90' | null;
   status: 'ACTIVE' | 'INACTIVE';
   fiscalClassificationStatus: 'PENDING_NATIONAL_CODE' | 'NATIONAL_CODE_PROVIDED';
   createdAt: string;
   updatedAt: string;
 };
-export type ServiceInput = Pick<Service, 'name' | 'internalCode' | 'description' | 'unitLabel' | 'suggestedUnitPrice' | 'nationalTaxCode' | 'nbsCode'>;
+export type ServiceInput = Pick<Service, 'name' | 'internalCode' | 'description' | 'unitLabel' | 'suggestedUnitPrice' | 'nationalTaxCode' | 'nbsCode'> & Partial<Pick<Service, 'simplesActivityCode'>>;
 export type ServiceList = { items: Service[]; total: number; limit: number; offset: number };
 export type MunicipalTaxCode = {
   companyId: string;
@@ -77,15 +85,30 @@ export type StoredFile = {
 export type UploadCapabilities = { enabled: boolean; mimeTypes: StoredFile['mimeType'][]; imageMaxBytes: number; pdfMaxBytes: number; maxAttachments: number; uploadTtlSeconds: number };
 export type UploadSession = { file: StoredFile; upload: { url: string; method: 'PUT'; headers: Record<string, string>; expiresAt: string } | null };
 export type SaleStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELED';
-export type SaleItemInput = { serviceId: string; quantity: string; unitPrice: string; discountAmount: string; description?: string | null; performedOn?: string | null };
+export type FiscalSeries = { id: string; companyId: string; environment: 'HOMOLOGATION' | 'PRODUCTION'; issuerTaxIdSnapshot: string;
+  municipalityIbgeCode: string; seriesNumber: number; initialNumber: string; nextNumber: string;
+  status: 'ACTIVE' | 'INACTIVE'; isDefault: boolean; version: number; createdAt: string };
+export type FiscalSeriesAdjustment = { id: string; oldNextNumber: string; newNextNumber: string;
+  reason: string; actorName: string; createdAt: string };
+export type TaxRates = { issRatePercent: string | null; pisRatePercent: string | null; cofinsRatePercent: string | null;
+  csllRatePercent: string | null; irRatePercent: string | null; inssRatePercent: string | null;
+  issWithholdingSuggestion: boolean | null };
+export type TaxRevisionInput = TaxRates & { effectiveFrom: string; notes: string | null };
+export type TaxProfile = { id: string; companyId: string; name: string; scope: 'COMPANY' | 'SERVICE' | 'SERVICE_MUNICIPALITY';
+  serviceId: string | null; municipalityIbgeCode: string | null; status: 'ACTIVE' | 'INACTIVE'; isDefault: boolean;
+  version: number; revisions: Array<TaxRevisionInput & { id: string; revision: number; createdAt: string }> };
+export type TaxSnapshot = TaxRates & { profileId?: string; profileName: string; effectiveFrom: string };
+export type TaxPreview = { items: Array<{ serviceId: string; taxProfileId?: string | null; revisionId?: string; snapshot?: TaxSnapshot }>;
+  municipalityIbgeCode: string | null; notice: string };
+export type SaleItemInput = { serviceId: string; taxProfileId?: string | null; quantity: string; unitPrice: string; discountAmount: string; description?: string | null; performedOn?: string | null };
 export type SaleInstallmentInput = { paymentMethod: PaymentMethod; amount: string } & ({ dueOn: string; receivedOn?: never } | { receivedOn: string; dueOn?: never });
-export type SaleInput = { customerId: string; soldOn: string; workOrderNumber?: string | null; notes?: string | null; attachmentIds?: string[]; items: SaleItemInput[]; installments: SaleInstallmentInput[] };
+export type SaleInput = { customerId: string; soldOn: string; fiscalSeriesId?: string | null; workOrderNumber?: string | null; notes?: string | null; attachmentIds?: string[]; items: SaleItemInput[]; installments: SaleInstallmentInput[] };
 export type ConfirmedSaleInput = Omit<SaleInput, 'items' | 'installments'> & { items: (SaleItemInput & { id?: string })[]; installments: (SaleInstallmentInput & { id?: string })[] };
 export type Sale = {
   id: string; companyId: string; orderCode: string; workOrderNumber: string | null; customerId: string;
   customerNameSnapshot: string; customerKindSnapshot: 'PF' | 'PJ'; customerTaxIdSnapshot: string | null;
   status: SaleStatus; soldOn: string | null; subtotalAmount: string; discountAmount: string; totalAmount: string;
-  notes: string | null; version: number; createdAt: string; confirmedAt: string | null;
+  notes: string | null; fiscalSeriesId: string | null; version: number; createdAt: string; confirmedAt: string | null;
 };
 export type SaleListItem = Sale & { createdByUserName: string };
 export type SaleMovement = { id: string; kind: 'RECEIPT' | 'REVERSAL'; amount: string; effectiveOn: string; paymentMethod: PaymentMethod | null; reference: string | null; reversesMovementId: string | null; recordedAt: string };
@@ -93,7 +116,8 @@ export type SaleInstallment = { id: string; number: number; paycode: string | nu
   amount: string; dueOn: string | null; initialReceivedOn: string | null; receivableId: string | null; paidAmount: string; remainingAmount: string;
   paymentStatus: 'DRAFT' | 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE'; movements: SaleMovement[] };
 export type SaleItem = { id: string; serviceId: string; position: number; serviceNameSnapshot: string; descriptionSnapshot: string | null;
-  quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string; performedOn: string | null };
+  quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string; performedOn: string | null;
+  taxProfileRevisionId: string | null; taxSnapshot: TaxSnapshot | null };
 export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[]; attachments: StoredFile[] };
 export type SaleList = { items: SaleListItem[]; total: number; limit: number; offset: number };
 export type FinanceSettlement = 'ALL' | 'PENDING' | 'PARTIAL' | 'PAID';
@@ -286,6 +310,23 @@ function reportQuery(filters: ReportFilters) {
 }
 
 export const api = {
+  fiscalSeries: (companyId: string, environment?: FiscalSeries['environment']) => request<FiscalSeries[]>(`/fiscal/series${environment ? `?environment=${environment}` : ''}`, {}, { companyId }),
+  fiscalSeriesAdjustments: (companyId: string, id: string) => request<FiscalSeriesAdjustment[]>(`/fiscal/series/${id}/adjustments`, {}, { companyId }),
+  createFiscalSeries: (companyId: string, input: { environment: FiscalSeries['environment']; seriesNumber: number; nextNumber: string; isDefault: boolean }) =>
+    request<FiscalSeries>('/fiscal/series', { method: 'POST', body: json(input) }, { companyId }),
+  updateFiscalSeries: (companyId: string, id: string, input: { expectedVersion: number; status?: FiscalSeries['status']; isDefault?: boolean }) =>
+    request<FiscalSeries>(`/fiscal/series/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
+  advanceFiscalSeries: (companyId: string, id: string, input: { expectedVersion: number; nextNumber: string; reason: string }) =>
+    request<FiscalSeries>(`/fiscal/series/${id}/advance`, { method: 'POST', body: json(input) }, { companyId }),
+  taxProfiles: (companyId: string) => request<TaxProfile[]>('/fiscal/tax-profiles', {}, { companyId }),
+  createTaxProfile: (companyId: string, input: { name: string; scope: TaxProfile['scope']; serviceId: string | null; municipalityIbgeCode: string | null; isDefault: boolean; revision: TaxRevisionInput }) =>
+    request<TaxProfile>('/fiscal/tax-profiles', { method: 'POST', body: json(input) }, { companyId }),
+  updateTaxProfile: (companyId: string, id: string, input: { expectedVersion: number; name?: string; status?: TaxProfile['status']; isDefault?: boolean }) =>
+    request<TaxProfile>(`/fiscal/tax-profiles/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
+  addTaxRevision: (companyId: string, id: string, input: TaxRevisionInput & { expectedVersion: number }) =>
+    request<TaxProfile>(`/fiscal/tax-profiles/${id}/revisions`, { method: 'POST', body: json(input) }, { companyId }),
+  previewTax: (companyId: string, input: { items: Array<{ serviceId: string; taxProfileId?: string | null }>; competence: string; municipalityIbgeCode?: string | null }) =>
+    request<TaxPreview>('/fiscal/tax-profiles/preview', { method: 'POST', body: json(input) }, { companyId }),
   report: (companyId: string, type: ReportType, filters: ReportFilters) => request<ReportResult>(`/reports/${type}?${reportQuery(filters)}`, {}, { companyId }),
   reportOptions: (companyId: string, field: 'customerId' | 'serviceId' | 'assignedUserId', search = '') => request<{ items: Array<{ id: string; name: string }> }>(`/reports/options?${new URLSearchParams({ field, search, limit: '100' })}`, {}, { companyId }),
   reportCsv: (companyId: string, type: 'customers' | 'service-catalog', filters: ReportFilters) => requestBlob(`/reports/${type}.csv?${reportQuery(filters)}`, companyId),

@@ -22,6 +22,12 @@ const fields = {
   cityIbgeCode: z.string().regex(/^\d{7}$/).nullable(),
   stateCode: z.string().toUpperCase().regex(/^[A-Z]{2}$/).nullable(),
   countryCode: z.string().toUpperCase().regex(/^[A-Z]{2}$/),
+  municipalRegistration: nullableText(15),
+  caepfCode: z.string().trim().regex(/^\d{14}$/, 'Informe os 14 dígitos do registro de atividade da pessoa física.').nullable(),
+  foreignTaxId: nullableText(40),
+  noForeignTaxIdReason: z.enum(['1', '2']).nullable(),
+  foreignPostalCode: nullableText(11),
+  foreignStateProvince: nullableText(60),
 };
 
 export const createCustomerSchema = z.strictObject({ ...fields, kind: fields.kind, name: fields.name }).partial()

@@ -29,7 +29,8 @@ export class CompaniesService {
   async create(userId: string, input: z.output<typeof createCompanySchema>) {
     this.validateTaxId(input.kind ?? 'PJ', input.taxId);
     this.validateTradeName(input.kind ?? 'PJ', input.tradeName);
-    this.validateTaxRegime(input.simplesNationalOption, input.simplesTaxationRegime);
+    this.validateTaxRegime(input.simplesNationalOption, input.simplesTaxationRegime, input.simplesIbsCbsRegime);
+    this.validateCaepf(input.kind ?? 'PJ', input.caepfCode);
     const company = await this.database.db.transaction(async (tx) => {
       const accountId = await this.accounts.companyAccount(tx, userId, input.name, input.accountId);
       const [created] = await tx.insert(companies).values({ ...input, accountId, kind: input.kind ?? 'PJ' }).returning();
@@ -47,7 +48,9 @@ export class CompaniesService {
     this.validateTaxRegime(
       input.simplesNationalOption === undefined ? current.simplesNationalOption : input.simplesNationalOption,
       input.simplesTaxationRegime === undefined ? current.simplesTaxationRegime : input.simplesTaxationRegime,
+      input.simplesIbsCbsRegime === undefined ? current.simplesIbsCbsRegime : input.simplesIbsCbsRegime,
     );
+    this.validateCaepf(input.kind ?? current.kind, input.caepfCode === undefined ? current.caepfCode : input.caepfCode);
     const allowed = this.database.db.select({ userId: companyUsers.userId }).from(companyUsers)
       .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), inArray(companyUsers.role, ['OWNER', 'ADMIN'])));
     const [updated] = await this.database.db.update(companies).set({ ...input, updatedAt: new Date() })
@@ -62,8 +65,12 @@ export class CompaniesService {
     }
   }
 
-  private validateTaxRegime(option: string | null | undefined, regime: string | null | undefined) {
-    if (regime && option !== '3') throw new BadRequestException('Regime de apuração do Simples exige opção ME/EPP');
+  private validateTaxRegime(option: string | null | undefined, regime: string | null | undefined, ibsCbsRegime: string | null | undefined) {
+    if ((regime || ibsCbsRegime) && option !== '3' && option !== '4') throw new BadRequestException('A apuração pelo Simples exige enquadramento de microempresa/empresa de pequeno porte ou opção pendente.');
+  }
+
+  private validateCaepf(kind: string, caepf: string | null | undefined) {
+    if (caepf && kind !== 'PF') throw new BadRequestException('O registro de atividade da pessoa física só pode ser informado para prestadora pessoa física.');
   }
 
   private validateTradeName(kind: 'PF' | 'PJ', tradeName: string | null | undefined) {

@@ -4,6 +4,7 @@ import { SalesController } from './sales.controller.js';
 import { SalesPaymentsService } from './sales-payments.service.js';
 import { SalesService } from './sales.service.js';
 import { FilesModule } from '../files/files.module.js';
+import { FiscalModule } from '../fiscal/fiscal.module.js';
 
-@Module({ imports: [AuthModule, FilesModule], controllers: [SalesController], providers: [SalesService, SalesPaymentsService], exports: [SalesService] })
+@Module({ imports: [AuthModule, FilesModule, FiscalModule], controllers: [SalesController], providers: [SalesService, SalesPaymentsService], exports: [SalesService] })
 export class SalesModule {}

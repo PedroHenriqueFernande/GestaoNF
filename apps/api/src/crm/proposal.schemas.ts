@@ -6,7 +6,7 @@ const text = (max: number) => z.string().trim().max(max).transform(v => v || nul
 const money = z.string().regex(/^(?:0|[1-9]\d{0,12})\.\d{2}$/);
 const quantity = z.string().regex(/^(?:0|[1-9]\d{0,10})\.\d{4}$/).refine(v => v !== '0.0000');
 export const proposalItemSchema = z.strictObject({
-  serviceId: idSchema, quantity, unitPrice: money, description: text(1000),
+  serviceId: idSchema, quantity, unitPrice: money, description: text(2000),
   discountType: z.enum(['AMOUNT', 'PERCENT']).default('AMOUNT'), discountInput: money.default('0.00'),
 }).refine(v => v.discountType !== 'PERCENT' || Number(v.discountInput) <= 100, 'Percentual deve estar entre 0 e 100');
 const fields = {

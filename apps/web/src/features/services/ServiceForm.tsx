@@ -10,11 +10,12 @@ import { api, ApiError, type MunicipalTaxCode, type Service, type ServiceInput }
 const serviceSchema = z.object({
   name: z.string().trim().min(1, 'Informe o nome do serviço.').max(200, 'Limite de 200 caracteres.'),
   internalCode: z.string().max(20, 'Limite de 20 caracteres.'),
-  description: z.string().max(1000, 'Limite de 1.000 caracteres.'),
+  description: z.string().max(2000, 'Limite de 2.000 caracteres.'),
   unitLabel: z.string().trim().min(1, 'Informe a unidade.').max(16, 'Limite de 16 caracteres.'),
   suggestedUnitPrice: z.string().refine((value) => !value.trim() || /^(?:0|[1-9]\d{0,12})(?:[.,]\d{1,2})?$/.test(value.trim()), 'Use um valor positivo com até 2 casas decimais.'),
   nationalTaxCode: z.string().refine((value) => !value || /^\d{6}$/.test(value), 'Informe os 6 dígitos do cTribNac.'),
   nbsCode: z.string().refine((value) => !value || /^\d{9}$/.test(value), 'Informe os 9 dígitos da NBS.'),
+  simplesActivityCode: z.enum(['', '07', '08', '09', '10', '11', '12', '13', '14', '90']),
 });
 
 type Values = z.infer<typeof serviceSchema>;
@@ -29,6 +30,7 @@ function defaults(service?: Service): Values {
     suggestedUnitPrice: service?.suggestedUnitPrice?.replace('.', ',') ?? '',
     nationalTaxCode: service?.nationalTaxCode ?? '',
     nbsCode: service?.nbsCode ?? '',
+    simplesActivityCode: service?.simplesActivityCode ?? '',
   };
 }
 
@@ -42,6 +44,7 @@ function payload(values: Values): ServiceInput {
     suggestedUnitPrice: nullable(values.suggestedUnitPrice.replace(',', '.')),
     nationalTaxCode: nullable(values.nationalTaxCode),
     nbsCode: nullable(values.nbsCode),
+    simplesActivityCode: values.simplesActivityCode || null,
   };
 }
 
@@ -156,7 +159,7 @@ export function ServiceForm({ companyId, service, onClose, onSave, saving, saveE
               <Field label="Unidade comercial" required error={errors.unitLabel?.message}><input placeholder="UN, H, DIÁRIA..." aria-invalid={!!errors.unitLabel} {...form.register('unitLabel')} /></Field>
             </div>
             <Field label="Valor unitário sugerido" error={errors.suggestedUnitPrice?.message} hint="Valor de referência. O total da NFS-e será definido na prestação."><input placeholder="0,00" inputMode="decimal" aria-invalid={!!errors.suggestedUnitPrice} {...form.register('suggestedUnitPrice')} /></Field>
-            <Field label="Descrição" error={errors.description?.message} hint="Até 1.000 caracteres. Ajuste o texto na emissão para descrever o serviço prestado."><textarea rows={3} placeholder="Descreva o serviço..." aria-invalid={!!errors.description} {...form.register('description')} /></Field>
+            <Field label="Descrição" error={errors.description?.message} hint="Até 2.000 caracteres. A descrição final será conferida conforme o ambiente de emissão."><textarea rows={3} maxLength={2000} placeholder="Descreva o serviço..." aria-invalid={!!errors.description} {...form.register('description')} /></Field>
           </div>
           <div className="form-section-heading"><BookOpenText size={17} /><div><h3>Classificação fiscal</h3><p>Códigos de referência para a NFS-e</p></div></div>
           <div className="service-fiscal-note"><AlertCircle size={16} /><span>O cadastro pode ser salvo sem classificação. O código nacional e os dados da operação serão verificados antes da emissão.</span></div>
@@ -164,6 +167,19 @@ export function ServiceForm({ companyId, service, onClose, onSave, saving, saveE
             <Field label="Código de tributação nacional (cTribNac)" error={errors.nationalTaxCode?.message} hint="6 dígitos, sem pontuação."><input placeholder="000000" inputMode="numeric" maxLength={6} aria-invalid={!!errors.nationalTaxCode} {...form.register('nationalTaxCode', { onChange: (event) => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 6); } })} /></Field>
             <Field label="Código NBS" error={errors.nbsCode?.message} hint="9 dígitos, quando aplicável."><input placeholder="000000000" inputMode="numeric" maxLength={9} aria-invalid={!!errors.nbsCode} {...form.register('nbsCode', { onChange: (event) => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 9); } })} /></Field>
           </div>
+          <Field label="Categoria da atividade no Simples Nacional" error={errors.simplesActivityCode?.message} hint="Opcional. Indica como este serviço se enquadra no Simples. Confirme a categoria com seu contador.">
+            <select {...form.register('simplesActivityCode')}><option value="">Não informado</option>
+              <option value="07">Serviços tributados exclusivamente pelo Anexo III</option>
+              <option value="08">Contabilidade com ISS fixo no município — Anexo III</option>
+              <option value="09">Serviços sujeitos ao Fator R — Anexo III ou V</option>
+              <option value="10">Transporte municipal de passageiros — Anexo III</option>
+              <option value="11">Locação e operações sem incidência de ISS — Anexo III</option>
+              <option value="12">Construção civil — Anexo III</option>
+              <option value="13">Construção civil — Anexo IV</option>
+              <option value="14">Serviços tributados pelo Anexo IV</option>
+              <option value="90">Operações não tributadas</option>
+            </select>
+          </Field>
           {service ? <MunicipalCodes companyId={companyId} serviceId={service.id} /> : <div className="service-municipal-pending"><CircleCheck size={16} /> Após cadastrar, abra o serviço para configurar os códigos municipais.</div>}
         </div>
         {saveFeedback && <div className="drawer__save-feedback" role="alert">{saveFeedback}</div>}

@@ -26,6 +26,7 @@ export class CustomersService {
 
   async createInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, input: CreateCustomer) {
     validateCustomerTaxId(input.kind, input.taxId, input.tradeName);
+    this.validateFiscalData(input);
     const [customer] = await db.insert(customers).values({ ...input, companyId, createdByUserId: userId }).returning();
     return customer;
   }
@@ -60,19 +61,27 @@ export class CustomersService {
   }
 
   async update(companyId: string, id: string, input: UpdateCustomer) {
-    const existing = await this.get(companyId, id);
-    const kind = input.kind ?? existing.kind;
-    if (kind !== 'PF' && kind !== 'PJ') throw new BadRequestException('Tipo inválido');
-    validateCustomerTaxId(kind, input.taxId === undefined ? existing.taxId : input.taxId, input.tradeName === undefined ? existing.tradeName : input.tradeName);
     try {
-      const [customer] = await this.database.db.update(customers).set({ ...input, updatedAt: new Date() })
-        .where(and(eq(customers.companyId, companyId), eq(customers.id, id))).returning();
-      if (!customer) throw new NotFoundException('Cliente não encontrado');
-      return customer;
+      return await this.database.db.transaction(async (tx) => {
+        const [existing] = await tx.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, id))).for('update');
+        if (!existing) throw new NotFoundException('Cliente não encontrado');
+        const merged = { ...existing, ...input };
+        if (merged.kind !== 'PF' && merged.kind !== 'PJ') throw new BadRequestException('Tipo inválido');
+        validateCustomerTaxId(merged.kind, merged.taxId, merged.tradeName);
+        this.validateFiscalData(merged);
+        const [customer] = await tx.update(customers).set({ ...input, updatedAt: new Date() })
+          .where(and(eq(customers.companyId, companyId), eq(customers.id, id))).returning();
+        return customer;
+      });
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('CPF/CNPJ já cadastrado nesta empresa');
       throw error;
     }
+  }
+
+  private validateFiscalData(input: { kind: string; caepfCode?: string | null; foreignTaxId?: string | null; noForeignTaxIdReason?: string | null }) {
+    if (input.caepfCode && input.kind !== 'PF') throw new BadRequestException('O registro de atividade da pessoa física só pode ser informado para cliente pessoa física.');
+    if (input.foreignTaxId && input.noForeignTaxIdReason) throw new BadRequestException('Informe o documento fiscal estrangeiro ou o motivo da ausência, nunca os dois ao mesmo tempo.');
   }
 
   async remove(companyId: string, id: string) {

@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service, type StoredFile } from '../../api/client';
+import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service, type StoredFile, type TaxSnapshot } from '../../api/client';
 import { CustomerForm } from '../customers/CustomerForm';
 import { SaleDropdown } from './SaleDropdown';
 import { SaleAttachments } from '../files/SaleAttachments';
 
-type ItemLine = { key: string; id?: string; serviceId: string; name: string; description?: string | null; performedOn?: string | null; quantity: string; unitPrice: string; discountAmount: string; discountPercent: string; discountBasis: 'AMOUNT' | 'PERCENT' };
+type ItemLine = { key: string; id?: string; serviceId: string; name: string; taxProfileId?: string | null; taxSnapshot?: TaxSnapshot | null; description?: string | null; performedOn?: string | null; quantity: string; unitPrice: string; discountAmount: string; discountPercent: string; discountBasis: 'AMOUNT' | 'PERCENT' };
 type PaymentLine = { key: string; id?: string; paycode?: string | null; hasHistory?: boolean; initiallyPaid?: boolean; paidAmount?: string; paymentMethod: PaymentMethod; amount: string; dueOn: string; state: 'PAID' | 'PENDING'; receivedOn: string };
 const methods: { value: PaymentMethod; label: string }[] = [
   { value: 'PIX', label: 'PIX' }, { value: 'CASH', label: 'Dinheiro' }, { value: 'CREDIT_CARD', label: 'Cartão de crédito' },
@@ -57,7 +57,12 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [serviceHighlight, setServiceHighlight] = useState(0);
-  const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), id: item.id, serviceId: item.serviceId, name: item.serviceNameSnapshot, description: item.descriptionSnapshot, performedOn: item.performedOn, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT' })) ?? []);
+  const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), id: item.id, serviceId: item.serviceId, name: item.serviceNameSnapshot, taxProfileId: draft.status === 'DRAFT' ? item.taxSnapshot?.profileId ?? null : undefined, taxSnapshot: item.taxSnapshot, description: item.descriptionSnapshot, performedOn: item.performedOn, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT' })) ?? []);
+  const [selectedTaxProfileId, setSelectedTaxProfileId] = useState<string>(() => {
+    const profiles = new Set(draft?.items.map(item => item.taxSnapshot?.profileId ?? '') ?? []);
+    return profiles.size > 1 ? '__mixed__' : [...profiles][0] ?? '';
+  });
+  const [ruleChanged, setRuleChanged] = useState(false);
   const [serviceDraft, setServiceDraft] = useState<ItemLine | null>(null);
   const [payments, setPayments] = useState<PaymentLine[]>(draft?.installments.map((part) => ({ key: crypto.randomUUID(), id: part.id, paycode: part.paycode, hasHistory: part.movements.length > 0, initiallyPaid: !!part.initialReceivedOn, paidAmount: part.paidAmount, paymentMethod: part.paymentMethod, amount: part.amount, dueOn: part.dueOn ?? today(), state: part.initialReceivedOn ? 'PAID' : 'PENDING', receivedOn: part.initialReceivedOn ?? today() })) ?? [{ key: crypto.randomUUID(), paymentMethod: 'PIX', amount: '', dueOn: today(), state: 'PENDING', receivedOn: today() }]);
   const [soldOn, setSoldOn] = useState(draft?.soldOn ?? today());
@@ -78,6 +83,17 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   const customers = useQuery({ queryKey: ['sales-customers', companyId, customerTerm], queryFn: () => api.customers(companyId, { search: customerTerm, status: 'ACTIVE', page: 0, limit: 100 }), enabled: !!companyId });
   const services = useQuery({ queryKey: ['sales-services', companyId, serviceTerm], queryFn: () => api.services(companyId, { search: serviceTerm, status: 'ACTIVE', page: 0, limit: 100 }), enabled: !!companyId });
+  const taxRules = useQuery({ queryKey: ['fiscal-tax', companyId], queryFn: () => api.taxProfiles(companyId), enabled: !!companyId });
+  const companyProfile = useQuery({ queryKey: ['company', companyId], queryFn: () => api.company(companyId), enabled: !!companyId });
+  const availableRules = taxRules.data?.filter(rule => rule.status === 'ACTIVE' && rule.revisions.some(revision => revision.effectiveFrom <= soldOn) &&
+    (items.length ? items.every(line => rule.scope === 'COMPANY' || rule.serviceId === line.serviceId &&
+      (rule.scope === 'SERVICE' || rule.municipalityIbgeCode === companyProfile.data?.cityIbgeCode))
+      : rule.scope === 'COMPANY')) ?? [];
+  const selectedRuleMissing = selectedTaxProfileId !== '' && selectedTaxProfileId !== '__mixed__' &&
+    !availableRules.some(rule => rule.id === selectedTaxProfileId);
+  const selectedRuleUnavailable = selectedTaxProfileId !== '' && selectedTaxProfileId !== '__mixed__' &&
+    (!draft || ruleChanged || items.some(line => !line.id)) &&
+    items.length > 0 && !taxRules.isPending && !companyProfile.isPending && selectedRuleMissing;
   const serviceOptions = services.data?.items ?? [];
   const customerOptions = customers.data?.items ?? [];
   const total = items.reduce((sum, line) => sum + lineTotalCents(line), 0) / 100;
@@ -136,7 +152,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   function chooseService(service: Service) {
     setSelectedService(service);
-    setServiceDraft({ key: crypto.randomUUID(), serviceId: service.id, name: service.name, quantity: '1', unitPrice: service.suggestedUnitPrice ?? '0.00', discountAmount: '0.00', discountPercent: '0.00', discountBasis: 'AMOUNT' });
+    setServiceDraft({ key: crypto.randomUUID(), serviceId: service.id, name: service.name, taxProfileId: selectedTaxProfileId && selectedTaxProfileId !== '__mixed__' ? selectedTaxProfileId : null, quantity: '1', unitPrice: service.suggestedUnitPrice ?? '0.00', discountAmount: '0.00', discountPercent: '0.00', discountBasis: 'AMOUNT' });
     setServiceInput(service.name);
     setServiceTerm('');
     setServiceOpen(false);
@@ -162,7 +178,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     setAttachments([]);
     onCompanyChange(id);
     setCustomerId(''); setCustomerTerm(''); setCustomerInput(''); setCustomerOpen(false); setCustomerHighlight(0); setServiceTerm(''); setServiceInput('');
-    setSelectedService(null); setServiceDraft(null); setServiceOpen(false); setServiceHighlight(0); setItems([]); setPendingDraft(null); createKey.current = crypto.randomUUID();
+    setSelectedService(null); setServiceDraft(null); setServiceOpen(false); setServiceHighlight(0); setItems([]); setSelectedTaxProfileId(''); setRuleChanged(false); setPendingDraft(null); createKey.current = crypto.randomUUID();
   }
 
   function closeServiceModal() {
@@ -190,6 +206,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     const saveDraftOnly = draft?.status === 'DRAFT' && (event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-action') === 'save-draft';
     setError('');
     if (!companyId || !customerId || !items.length || !soldOn) { setError('Selecione a empresa e o cliente e adicione ao menos um serviço.'); return; }
+    if (selectedRuleUnavailable) { setError('A regra tributária selecionada não atende todos os serviços desta venda. Escolha outra regra ou Sem regra.'); return; }
     if (!payments.length || items.some((line) => !validItem(line)) ||
       payments.some((line) => !fixed(line.amount, 2) || money(line.amount) <= 0 || (line.state === 'PENDING' ? !line.dueOn : !line.receivedOn))) {
       setError('Revise quantidade, valores e datas dos serviços e dos recebimentos.'); return;
@@ -199,7 +216,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     }
     const payload: SaleInput = {
       customerId, soldOn, workOrderNumber: workOrderNumber.trim() || null, notes: notes.trim() || null, attachmentIds: attachments.map(file => file.id),
-      items: items.map((line) => ({ serviceId: line.serviceId, quantity: fixed(line.quantity, 4)!, unitPrice: fixed(line.unitPrice, 2)!, discountAmount: fixed(line.discountAmount || '0', 2)!, ...(line.description !== undefined ? { description: line.description } : {}), ...(line.performedOn !== undefined ? { performedOn: line.performedOn } : {}) })),
+      items: items.map((line) => ({ serviceId: line.serviceId, ...(line.taxProfileId !== undefined ? { taxProfileId: line.taxProfileId } : {}), quantity: fixed(line.quantity, 4)!, unitPrice: fixed(line.unitPrice, 2)!, discountAmount: fixed(line.discountAmount || '0', 2)!, ...(line.description !== undefined ? { description: line.description } : {}), ...(line.performedOn !== undefined ? { performedOn: line.performedOn } : {}) })),
       installments: payments.map((line) => ({ paymentMethod: line.paymentMethod, amount: fixed(line.amount, 2)!, ...(line.state === 'PAID' ? { receivedOn: line.receivedOn } : { dueOn: line.dueOn }) })),
     };
     setSaving(true);
@@ -249,9 +266,23 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
               </div>}
             </div>
           </div>
+          <label className="sale-field"><span>Regra de tributação</span><select value={selectedTaxProfileId} disabled={saving || taxRules.isPending || companyProfile.isPending}
+            onChange={event => {
+              const profileId = event.target.value;
+              setSelectedTaxProfileId(profileId);
+              setRuleChanged(true);
+              setItems(current => current.map(item => ({ ...item, taxProfileId: profileId || null })));
+            }}>
+            <option value="">Sem regra</option>
+            {selectedTaxProfileId === '__mixed__' && <option value="__mixed__">Manter regras registradas</option>}
+            {selectedRuleMissing && <option value={selectedTaxProfileId} disabled>Regra registrada indisponível</option>}
+            {availableRules.map(rule => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
+          </select></label>
           <label className="sale-field"><span><CalendarDays size={14} /> Data da venda</span><input type="date" value={soldOn} onChange={(event) => setSoldOn(event.target.value)} required /></label>
           <label className="sale-field"><span>Número da OS</span><input value={workOrderNumber} onChange={(event) => setWorkOrderNumber(event.target.value)} maxLength={40} placeholder="Opcional · Ex.: OS-0021" /></label>
         </div>
+        {selectedRuleUnavailable && <p className="sale-rule-warning" role="alert">A regra selecionada não atende todos os serviços. Escolha outra regra ou Sem regra.</p>}
+        {taxRules.isError && <p className="sale-rule-warning" role="alert">Não foi possível carregar as regras de tributação.</p>}
         <div className="sale-identity-continue"><span>Os demais campos já estão disponíveis para preenchimento.</span></div>
       </section>
 
