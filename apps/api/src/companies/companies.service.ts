@@ -1,6 +1,6 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, companyUsers } from '@gestaonf/database/schema';
-import { and, eq, exists, inArray } from 'drizzle-orm';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { companies, companyFiscalCertificates, companyUsers } from '@gestaonf/database/schema';
+import { and, eq, exists, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { isValidCpf, isValidCnpj } from '../customers/tax-id.js';
 import { DatabaseService } from '../database/database.module.js';
@@ -53,8 +53,21 @@ export class CompaniesService {
     this.validateCaepf(input.kind ?? current.kind, input.caepfCode === undefined ? current.caepfCode : input.caepfCode);
     const allowed = this.database.db.select({ userId: companyUsers.userId }).from(companyUsers)
       .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), inArray(companyUsers.role, ['OWNER', 'ADMIN'])));
-    const [updated] = await this.database.db.update(companies).set({ ...input, updatedAt: new Date() })
-      .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), exists(allowed))).returning();
+    const [updated] = await this.database.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`);
+      const [locked] = await tx.select({ kind: companies.kind, taxId: companies.taxId, countryCode: companies.countryCode }).from(companies)
+        .where(eq(companies.id, companyId)).limit(1);
+      const nextKind = input.kind ?? locked?.kind;
+      const nextTaxId = input.taxId === undefined ? locked?.taxId : input.taxId;
+      const nextCountryCode = input.countryCode ?? locked?.countryCode;
+      if (locked && (nextKind !== locked.kind || nextTaxId !== locked.taxId || nextCountryCode !== locked.countryCode)) {
+        const [certificate] = await tx.select({ id: companyFiscalCertificates.id }).from(companyFiscalCertificates)
+          .where(and(eq(companyFiscalCertificates.companyId, companyId), eq(companyFiscalCertificates.status, 'ACTIVE'))).limit(1);
+        if (certificate) throw new ConflictException('Desative o certificado antes de alterar o CPF/CNPJ, tipo ou país da empresa.');
+      }
+      return tx.update(companies).set({ ...input, updatedAt: new Date() })
+        .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), exists(allowed))).returning();
+    });
     if (!updated) throw new ForbiddenException('Sem permissão para alterar a empresa');
     return { ...updated, role: current.role };
   }

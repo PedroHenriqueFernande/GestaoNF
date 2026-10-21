@@ -246,6 +246,38 @@ export const companies = pgTable(
   ],
 );
 
+export const companyFiscalCertificates = pgTable('company_fiscal_certificates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+  status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
+  subjectTaxId: varchar('subject_tax_id', { length: 14 }).notNull(),
+  fingerprintSha256: char('fingerprint_sha256', { length: 64 }).notNull(),
+  serialNumber: varchar('serial_number', { length: 120 }).notNull(),
+  subjectSummary: varchar('subject_summary', { length: 500 }).notNull(),
+  issuerSummary: varchar('issuer_summary', { length: 500 }).notNull(),
+  notBefore: timestamp('not_before', { withTimezone: true }).notNull(),
+  notAfter: timestamp('not_after', { withTimezone: true }).notNull(),
+  encryptedPayload: text('encrypted_payload'),
+  encryptionKeyId: varchar('encryption_key_id', { length: 40 }).notNull(),
+  createdByUserId: uuid('created_by_user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+}, (t) => [
+  unique('company_fiscal_certificates_company_id_id_uq').on(t.companyId, t.id),
+  uniqueIndex('company_fiscal_certificates_one_active_uq').on(t.companyId).where(sql`${t.status} = 'ACTIVE'`),
+  check('company_fiscal_certificates_status_chk', sql`${t.status} IN ('ACTIVE','REPLACED','DISABLED')`),
+  check('company_fiscal_certificates_payload_chk', sql`${t.status} <> 'ACTIVE' OR ${t.encryptedPayload} IS NOT NULL`),
+]);
+
+export const companyFiscalCertificateEvents = pgTable('company_fiscal_certificate_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+  certificateId: uuid('certificate_id').notNull().references(() => companyFiscalCertificates.id, { onDelete: 'restrict' }),
+  actorUserId: uuid('actor_user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  action: varchar('action', { length: 24 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index('company_fiscal_certificate_events_company_idx').on(t.companyId, t.createdAt)]);
+
 export const users = pgTable(
   'users',
   {

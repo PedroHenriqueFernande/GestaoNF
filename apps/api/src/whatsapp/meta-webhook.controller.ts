@@ -1,5 +1,6 @@
 import { Controller, Get, Headers, Inject, Post, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { RouteConfig } from '@nestjs/platform-fastify';
 import { MetaSignatureService } from './meta-signature.service.js';
 import { WhatsAppIngressService } from './whatsapp-ingress.service.js';
 
@@ -24,6 +25,7 @@ export class MetaWebhookController {
   }
 
   @Post()
+  @RouteConfig({ rawBody: true })
   async receive(@Req() request: RawRequest, @Headers('x-hub-signature-256') signature: string | undefined) {
     const rawBody = request.rawBody ?? JSON.stringify(request.body ?? {});
     this.signatures.verify(Buffer.from(rawBody, 'utf8'), signature);

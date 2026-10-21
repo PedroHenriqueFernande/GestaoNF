@@ -2,6 +2,8 @@ const API_URL = (import.meta.env.VITE_API_URL ?? `${window.location.protocol}//$
 
 export type User = { id: string; name: string; email: string };
 export type Company = { id: string; name: string; role: string; accountId: string };
+export type FiscalCertificate = { id: string; status: 'ACTIVE' | 'EXPIRED'; subjectTaxId: string; fingerprintSha256: string;
+  serialNumber: string; subjectSummary: string; issuerSummary: string; notBefore: string; notAfter: string; createdAt: string };
 export type Account = { id: string; name: string; status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELED'; planCode: string; additionalUsersPerCompany: number };
 export type UserCapacity = { companyId: string; name: string; status: string; limit: number; occupied: number; reserved: number; available: number; overLimit: number; ownerIncludedSeparately: boolean };
 export type ManagedMember = { id: string; type: 'MEMBER'; name: string; email: string; status: 'OWNER' | 'ACTIVE' | 'INACTIVE'; companies: { companyId: string; companyName: string; status: 'ACTIVE' | 'INACTIVE'; role: string; version: number }[]; version: string };
@@ -271,7 +273,7 @@ async function refreshSession(): Promise<void> {
 
 async function request<T>(path: string, init: RequestInit = {}, options: { retryAuth?: boolean; companyId?: string } = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (options.companyId) headers.set('X-Company-Id', options.companyId);
   const execute = () => fetch(`${API_URL}${path}`, { ...init, headers, credentials: 'include' });
   let response: Response;
@@ -354,6 +356,12 @@ export const api = {
   company: (companyId: string) => request<CompanyProfile>('/companies/current', {}, { companyId }),
   createCompany: (input: CompanyInput) => request<CompanyProfile>('/companies', { method: 'POST', body: json(input) }),
   updateCompany: (companyId: string, input: CompanyInput) => request<CompanyProfile>('/companies/current', { method: 'PATCH', body: json(input) }, { companyId }),
+  fiscalCertificate: (companyId: string) => request<FiscalCertificate | null>('/fiscal/certificate', {}, { companyId }),
+  uploadFiscalCertificate: (companyId: string, file: File, passphrase: string) => {
+    const body = new FormData(); body.append('file', file); body.append('passphrase', passphrase);
+    return request<FiscalCertificate>('/fiscal/certificate', { method: 'POST', body }, { companyId });
+  },
+  disableFiscalCertificate: (companyId: string) => request<{ disabled: true }>('/fiscal/certificate', { method: 'DELETE' }, { companyId }),
   customers: (companyId: string, params: { search: string; status: 'ACTIVE' | 'INACTIVE' | 'ALL'; page: number; limit: number }) => {
     const query = new URLSearchParams({ status: params.status, offset: String(params.page * params.limit), limit: String(params.limit) });
     if (params.search) query.set('search', params.search);

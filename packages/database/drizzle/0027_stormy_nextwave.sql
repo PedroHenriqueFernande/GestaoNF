@@ -1,0 +1,1 @@
+ALTER TABLE "company_fiscal_certificates" DROP CONSTRAINT "company_fiscal_certificates_company_fingerprint_uq";

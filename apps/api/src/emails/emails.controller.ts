@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RouteConfig } from '@nestjs/platform-fastify';
 import { z } from 'zod';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
 import { parseInput } from '../common/validate.js';
@@ -28,7 +29,7 @@ export class EmailsController {
 @ApiTags('E-mails') @Controller('integrations/email/resend')
 export class ResendWebhookController {
   constructor(@Inject(EmailsService) private readonly emails: EmailsService) {}
-  @Post('webhook') @HttpCode(200) @ApiOperation({ summary: 'Recebe eventos Resend com assinatura Svix e deduplicação' })
+  @Post('webhook') @HttpCode(200) @RouteConfig({ rawBody: true }) @ApiOperation({ summary: 'Recebe eventos Resend com assinatura Svix e deduplicação' })
   webhook(@Req() r: RequestContext & { rawBody?: string }) {
     const id = r.headers['svix-id'], timestamp = r.headers['svix-timestamp'], signature = r.headers['svix-signature'];
     if (!r.rawBody || typeof id !== 'string' || id.length > 200 || typeof timestamp !== 'string' || typeof signature !== 'string') throw new BadRequestException('Corpo e cabeçalhos Svix necessários');

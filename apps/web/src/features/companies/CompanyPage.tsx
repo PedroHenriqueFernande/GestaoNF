@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Building2, ChevronRight, FileCheck2, MapPin, Plus, Save, UserRound, X } from 'lucide-react';
+import { AlertCircle, Building2, ChevronRight, FileCheck2, MapPin, Plus, Save, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { api, type Company, type CompanyInput, type CompanyProfile, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { CountryOptions } from '../../components/CountryOptions';
@@ -46,6 +46,8 @@ export function CompanyPage({ user }: { user: User }) {
   const [modal, setModal] = useState<Modal>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [toast, setToast] = useState('');
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePassword, setCertificatePassword] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const savePendingRef = useRef(false);
@@ -63,6 +65,7 @@ export function CompanyPage({ user }: { user: User }) {
 
   const editingId = modal?.mode === 'edit' ? modal.companyId : '';
   const company = useQuery({ queryKey: ['company', editingId], queryFn: () => api.company(editingId), enabled: !!editingId });
+  const certificate = useQuery({ queryKey: ['fiscal-certificate', editingId], queryFn: () => api.fiscalCertificate(editingId), enabled: !!editingId });
   useEffect(() => { if (company.data && editingId) setForm(toForm(company.data)); }, [company.data, editingId]);
 
   useEffect(() => {
@@ -102,7 +105,22 @@ export function CompanyPage({ user }: { user: User }) {
       save.reset();
     },
   });
-  savePendingRef.current = save.isPending;
+  const uploadCertificate = useMutation({
+    mutationFn: () => api.uploadFiscalCertificate(editingId, certificateFile!, certificatePassword),
+    onSuccess: async () => {
+      setCertificateFile(null); setCertificatePassword('');
+      await queryClient.invalidateQueries({ queryKey: ['fiscal-certificate', editingId] });
+      setToast('Arquivo, senha e CPF/CNPJ do certificado conferidos.');
+    },
+  });
+  const disableCertificate = useMutation({
+    mutationFn: () => api.disableFiscalCertificate(editingId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['fiscal-certificate', editingId] });
+      setToast('Certificado desativado.');
+    },
+  });
+  savePendingRef.current = save.isPending || uploadCertificate.isPending || disableCertificate.isPending;
   const logout = useMutation({
     mutationFn: api.logout,
     onSuccess: () => { sessionStorage.removeItem('gestaonf.companyId'); queryClient.clear(); window.location.assign('/Clientes'); },
@@ -128,9 +146,9 @@ export function CompanyPage({ user }: { user: User }) {
     event.preventDefault();
     if (modal) save.mutate({ input: toInput(form), target: modal });
   }
-  function newCompany(opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'create' }); setForm(emptyForm); save.reset(); setToast(''); }
-  function openCompany(id: string, opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'edit', companyId: id }); setForm(emptyForm); save.reset(); setToast(''); }
-  function closeModal() { if (!save.isPending) { setModal(null); save.reset(); } }
+  function newCompany(opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'create' }); setForm(emptyForm); setCertificateFile(null); setCertificatePassword(''); save.reset(); setToast(''); }
+  function openCompany(id: string, opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'edit', companyId: id }); setForm(emptyForm); setCertificateFile(null); setCertificatePassword(''); save.reset(); uploadCertificate.reset(); disableCertificate.reset(); setToast(''); }
+  function closeModal() { if (!savePendingRef.current) { setModal(null); setCertificateFile(null); setCertificatePassword(''); save.reset(); } }
 
   return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onboarding={companies.data?.length === 0} onCompanyChange={(id) => { setCompanyId(id); setToast(''); }} onLogout={() => logout.mutate()} loggingOut={logout.isPending}>
     <main id="workspace-main" className="client-workspace__main company-main" tabIndex={-1}>
@@ -167,10 +185,10 @@ export function CompanyPage({ user }: { user: User }) {
         <section className="company-form__section"><div className="company-form__section-title"><UserRound size={19} /><div><h2>Identificação</h2><p>Identidade e contato da empresa</p></div></div>
           <div className="company-form__grid company-form__grid--two">
             {field('name', 'Nome de exibição', { required: true, placeholder: 'Como a empresa aparecerá no sistema' })}
-            <label className="field"><span>Tipo de prestadora</span><select value={form.kind} onChange={(event) => { setForm((current) => ({ ...current, kind: event.target.value, taxId: '', caepfCode: event.target.value === 'PJ' ? '' : current.caepfCode, tradeName: event.target.value === 'PF' ? '' : current.tradeName })); save.reset(); }} disabled={!editable || save.isPending}><option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option></select></label>
+            <label className="field"><span>Tipo de prestadora</span><select value={form.kind} onChange={(event) => { setForm((current) => ({ ...current, kind: event.target.value, taxId: '', caepfCode: event.target.value === 'PJ' ? '' : current.caepfCode, tradeName: event.target.value === 'PF' ? '' : current.tradeName })); save.reset(); }} disabled={!editable || save.isPending || !!certificate.data}><option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option></select></label>
             {field('legalName', form.kind === 'PF' ? 'Nome civil' : 'Razão social', { placeholder: 'Nome legal da prestadora' })}
             {form.kind === 'PJ' && field('tradeName', 'Nome fantasia', { placeholder: 'Nome comercial da empresa' })}
-            <label className="field"><span>{form.kind === 'PF' ? 'CPF' : 'CNPJ'}</span><input value={form.taxId} onChange={(event) => set('taxId', event.target.value)} placeholder={form.kind === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'} disabled={!editable || save.isPending} /><small className="field-hint">Opcional no cadastro; quando informado, validamos o número.</small></label>
+            <label className="field"><span>{form.kind === 'PF' ? 'CPF' : 'CNPJ'}</span><input value={form.taxId} onChange={(event) => set('taxId', event.target.value)} placeholder={form.kind === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'} disabled={!editable || save.isPending || !!certificate.data} /><small className="field-hint">{certificate.data ? 'Para alterar, desative primeiro o certificado.' : 'Opcional no cadastro; quando informado, validamos o número.'}</small></label>
             {field('email', 'E-mail', { type: 'email', placeholder: 'contato@empresa.com.br' })}
             {field('phone', 'Telefone / WhatsApp', { placeholder: '(00) 00000-0000' })}
           </div>
@@ -195,6 +213,32 @@ export function CompanyPage({ user }: { user: User }) {
             {select('specialTaxRegime', 'Regime especial de tributação', [['0', '0 — Nenhum'], ['1', '1 — Ato cooperado'], ['2', '2 — Estimativa'], ['3', '3 — Microempresa municipal'], ['4', '4 — Notário ou registrador'], ['5', '5 — Profissional autônomo'], ['6', '6 — Sociedade de profissionais'], ['9', '9 — Outros']])}
           </div>
           <p className="company-form__hint">Preencher o cadastro não habilita automaticamente a emissão. As exigências fiscais serão conferidas ao emitir a nota.</p>
+        </section>
+        <section className="company-form__section"><div className="company-form__section-title"><ShieldCheck size={19} /><div><h2>Certificado digital</h2><p>Credencial A1 da prestadora para a futura emissão de NFS-e</p></div></div>
+          {modal.mode === 'create' ? <p className="company-form__hint">Salve a empresa para adicionar o certificado.</p> : <div className="company-certificate">
+            {certificate.isPending && <p>Carregando certificado...</p>}
+            {certificate.isError && <div className="inline-error" role="alert">Não foi possível consultar o certificado. <button type="button" onClick={() => certificate.refetch()}>Tentar novamente</button></div>}
+            {certificate.data ? <div className="company-certificate__summary">
+              <strong>{certificate.data.status === 'EXPIRED' ? 'Certificado expirado' : 'Certificado validado localmente'}</strong>
+              <span>CPF/CNPJ: {certificate.data.subjectTaxId}</span>
+              <span>Emissor: {certificate.data.issuerSummary}</span>
+              <span>Válido até: {new Intl.DateTimeFormat('pt-BR').format(new Date(certificate.data.notAfter))}</span>
+              <small>A conexão com o ambiente nacional será conferida na etapa de emissão.</small>
+            </div> : certificate.isSuccess && <p className="company-certificate__empty">Nenhum certificado cadastrado para esta empresa.</p>}
+            {editable && <>
+              <div className="company-form__grid company-form__grid--two">
+                <label className="field"><span>Arquivo A1 (.pfx ou .p12)</span><input key={certificate.data?.id ?? 'empty'} type="file" accept=".pfx,.p12" onChange={(event) => { setCertificateFile(event.target.files?.[0] ?? null); uploadCertificate.reset(); }} disabled={uploadCertificate.isPending || disableCertificate.isPending} /></label>
+                <label className="field"><span>Senha do certificado</span><input type="password" autoComplete="off" value={certificatePassword} onChange={(event) => { setCertificatePassword(event.target.value); uploadCertificate.reset(); }} disabled={uploadCertificate.isPending || disableCertificate.isPending} /></label>
+              </div>
+              <div className="company-certificate__actions">
+                <button type="button" className="button button--primary" disabled={!certificateFile || !certificatePassword || !form.taxId || uploadCertificate.isPending || disableCertificate.isPending || save.isPending || certificate.isError || form.taxId.replace(/[^A-Za-z0-9]/g, '').toUpperCase() !== company.data?.taxId} onClick={() => uploadCertificate.mutate()}>{uploadCertificate.isPending ? 'Validando...' : certificate.data ? 'Substituir certificado' : 'Validar e salvar certificado'}</button>
+                {certificate.data && <button type="button" className="button button--secondary" disabled={disableCertificate.isPending || uploadCertificate.isPending} onClick={() => { if (window.confirm('Desativar o certificado desta empresa?')) disableCertificate.mutate(); }}><Trash2 size={14} /> Desativar</button>}
+              </div>
+              {form.taxId.replace(/[^A-Za-z0-9]/g, '').toUpperCase() !== company.data?.taxId && <p className="company-form__hint">Salve primeiro as alterações da empresa.</p>}
+              {uploadCertificate.isError && <div className="inline-error" role="alert">{uploadCertificate.error instanceof Error ? uploadCertificate.error.message : 'Falha ao cadastrar certificado.'}</div>}
+              {disableCertificate.isError && <div className="inline-error" role="alert">{disableCertificate.error instanceof Error ? disableCertificate.error.message : 'Falha ao desativar certificado.'}</div>}
+            </>}
+          </div>}
         </section>
         {save.isError && <div className="inline-error" role="alert">{save.error instanceof Error ? save.error.message : 'Não foi possível salvar a empresa.'}</div>}
         </div>

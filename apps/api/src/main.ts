@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import rawBody from 'fastify-raw-body';
 import { AppModule } from './app.module.js';
 import { allowedWebOrigins } from './common/origins.js';
@@ -16,7 +17,8 @@ async function bootstrap() {
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('JWT_SECRET deve ter pelo menos 32 caracteres');
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: true }));
   await app.register(cookie);
-  await app.register(rawBody, { field: 'rawBody', global: true, encoding: 'utf8', runFirst: true });
+  await app.register(multipart, { limits: { fileSize: 2 * 1024 * 1024, fieldSize: 1024, files: 1, fields: 1, parts: 2 } });
+  await app.register(rawBody, { field: 'rawBody', global: false, encoding: 'utf8', runFirst: true });
   app.enableCors({
     origin: allowedWebOrigins(),
     credentials: true,
