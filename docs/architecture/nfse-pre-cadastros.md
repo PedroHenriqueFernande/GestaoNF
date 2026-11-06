@@ -37,12 +37,12 @@ Regras marcadas com códigos provisórios, tachadas ou em evolução na publica�
 
 | Camada | Arquivos analisados |
 | --- | --- |
-| Banco | `packages/database/src/schema.ts`: `companies`, `customers`, `services`, `serviceMunicipalTaxCodes`, snapshots de venda/proposta |
-| Empresa/API | `apps/api/src/companies/companies.schemas.ts`, `companies.service.ts`, `companies.controller.ts` |
-| Serviço/API | `apps/api/src/services/services.schemas.ts`, `services.service.ts`, `services.controller.ts` |
-| Cliente/API | `apps/api/src/customers/customers.schemas.ts`, `customers.service.ts`, `tax-id.ts`, `customers.controller.ts` |
-| Frontend | `apps/web/src/features/companies/CompanyPage.tsx`, `features/services/ServiceForm.tsx`, `features/customers/CustomerForm.tsx`, `api/client.ts` |
-| Fluxos relacionados | `features/crm/QuickServiceModal.tsx`, `ProposalEditor.tsx`, `apps/api/src/crm/proposal.schemas.ts`, `proposals.service.ts`, `apps/api/src/sales/sales.schemas.ts`, `sales.service.ts` |
+| Banco | `backend/database/src/schema.ts`: `companies`, `customers`, `services`, `serviceMunicipalTaxCodes`, snapshots de venda/proposta |
+| Empresa/API | `backend/src/companies/companies.schemas.ts`, `companies.service.ts`, `companies.controller.ts` |
+| Serviço/API | `backend/src/services/services.schemas.ts`, `services.service.ts`, `services.controller.ts` |
+| Cliente/API | `backend/src/customers/customers.schemas.ts`, `customers.service.ts`, `tax-id.ts`, `customers.controller.ts` |
+| Frontend | `frontend/src/features/companies/CompanyPage.tsx`, `features/services/ServiceForm.tsx`, `features/customers/CustomerForm.tsx`, `api/client.ts` |
+| Fluxos relacionados | `features/crm/QuickServiceModal.tsx`, `ProposalEditor.tsx`, `backend/src/crm/proposal.schemas.ts`, `proposals.service.ts`, `backend/src/sales/sales.schemas.ts`, `sales.service.ts` |
 
 O sistema já suporta CPF/CNPJ alfanumérico nos schemas, armazenamento e validação de dígitos. Manter essa capacidade, sem converter CNPJ em número. Nenhum dos três módulos realiza transmissão de DPS atualmente.
 

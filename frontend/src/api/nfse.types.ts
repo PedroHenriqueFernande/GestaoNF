@@ -1,0 +1,11 @@
+export type NfseIssue = { code: string; message: string; field: string; target: 'company' | 'customer' | 'service' | 'sale' | 'series' | 'integration'; severity: 'ERROR' | 'WARNING' };
+export type NfseParty = { name: string; taxId: string | null; email: string | null; street: string | null; number: string | null; district: string | null; cityName: string | null; cityIbgeCode: string | null; postalCode: string | null; stateCode: string | null; municipalRegistration: string | null };
+export type NfseGroup = { key: string; competence: string; municipalityIbgeCode: string | null; nationalTaxCode: string | null; nbsCode: string | null; municipalTaxCode: string | null; description: string; grossAmount: string; discountAmount: string; totalAmount: string; ruleName: string | null; issWithholding: boolean; issRatePercent: string | null;
+  items: Array<{ id: string; serviceId: string; name: string; quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string }> };
+export type NfsePreviewInput = { expectedSaleVersion?: number; competence?: string; municipalityIbgeCode?: string; simplesTotalTaxPercent?: string };
+export type NfsePreview = { id: string; hash: string; stale: boolean; saleId: string; saleVersion: number; orderCode: string; generatedAt: string; environment: 'HOMOLOGATION' | 'PRODUCTION' | null;
+  series: { id: string; number: number; nextNumber: string; version: number } | null;
+  issuer: NfseParty; customer: NfseParty; customerId: string; simplesOption: string | null; groups: NfseGroup[]; totalAmount: string; input: NfsePreviewInput; issues: NfseIssue[]; emissionIssues: NfseIssue[]; canEmit: boolean };
+export type NfseEmission = { id: string; saleId: string; environment: string; status: string; createdAt: string;
+  items: Array<{ id: string; status: string; seriesNumber: number; number: string; lastError: string | null; nextActionAt: string | null; document: { id: string; number: string; accessKey: string; authorizedAt: string } | null }>;
+  events: Array<{ id: string; action: string; message: string | null; createdAt: string }> };

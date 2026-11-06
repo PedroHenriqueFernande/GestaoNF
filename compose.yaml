@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5173}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,6 +23,8 @@ services:
     image: redis:7.4-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -32,17 +34,22 @@ services:
       retries: 12
 
   api:
+    profiles: ["full"]
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
-      API_PORT: 3000
+      API_PORT: ${API_PORT:-4030}
       NODE_ENV: ${NODE_ENV:-development}
-      API_ORIGIN: ${API_ORIGIN:-http://localhost:3000}
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+      API_ORIGIN: ${API_ORIGIN:-http://localhost:4030}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3001}
+      LOCAL_HTTPS_ENABLED: ${LOCAL_HTTPS_ENABLED:-false}
+      LOCAL_HTTPS_CERT_FILE: /etc/gestaonf/https/localhost.pem
+      LOCAL_HTTPS_KEY_FILE: /etc/gestaonf/https/localhost-key.pem
+      LOCAL_HTTPS_CA_FILE: /etc/gestaonf/https/root-ca.pem
       R2_ENABLED: ${R2_ENABLED:-false}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_BUCKET: ${R2_BUCKET:-}
@@ -64,6 +71,11 @@ services:
       FISCAL_CERTIFICATE_ENCRYPTION_KEY: ${FISCAL_CERTIFICATE_ENCRYPTION_KEY:-}
       FISCAL_CERTIFICATE_ENCRYPTION_KEY_ID: ${FISCAL_CERTIFICATE_ENCRYPTION_KEY_ID:-v1}
       FISCAL_CERTIFICATE_PREVIOUS_KEYS: ${FISCAL_CERTIFICATE_PREVIOUS_KEYS:-}
+      NFSE_HOMOLOGATION_ENABLED: ${NFSE_HOMOLOGATION_ENABLED:-false}
+      NFSE_CONTRACT_CONFIRMED: ${NFSE_CONTRACT_CONFIRMED:-false}
+      NFSE_SEFIN_HOMOLOGATION_URL: ${NFSE_SEFIN_HOMOLOGATION_URL:-}
+      NFSE_SIGNATURE_PROFILE: ${NFSE_SIGNATURE_PROFILE:-}
+      NFSE_ICP_BRASIL_CA_BUNDLE: /etc/gestaonf/fiscal/icp-brasil-ca.pem
       ACCOUNTS_ALLOW_LOCAL_ACTIVATION: ${ACCOUNTS_ALLOW_LOCAL_ACTIVATION:-false}
       META_WHATSAPP_ENABLED: ${META_WHATSAPP_ENABLED:-false}
       META_APP_ID: ${META_APP_ID:-}
@@ -76,28 +88,33 @@ services:
       META_WHATSAPP_ACCOUNT_ID: ${META_WHATSAPP_ACCOUNT_ID:-}
       META_DISPLAY_PHONE_NUMBER: ${META_DISPLAY_PHONE_NUMBER:-}
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v26.0}
+    volumes:
+      - ./config/fiscal:/etc/gestaonf/fiscal:ro
+      - ./.certs:/etc/gestaonf/https:ro
     ports:
-      - "127.0.0.1:${API_PORT:-3000}:3000"
+      - "127.0.0.1:${API_PORT:-4030}:${API_PORT:-4030}"
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "scripts/healthcheck.mjs"]
       interval: 10s
       timeout: 3s
       retries: 12
       start_period: 15s
 
   worker:
+    profiles: ["full"]
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
-    command: ["corepack", "pnpm", "--filter", "@gestaonf/api", "worker:start"]
+      dockerfile: backend/Dockerfile
+    command: ["npm", "run", "worker:start"]
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
       REDIS_URL: redis://redis:6379
       NODE_ENV: ${NODE_ENV:-development}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3001}
       R2_ENABLED: ${R2_ENABLED:-false}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_BUCKET: ${R2_BUCKET:-}
@@ -119,6 +136,11 @@ services:
       FISCAL_CERTIFICATE_ENCRYPTION_KEY: ${FISCAL_CERTIFICATE_ENCRYPTION_KEY:-}
       FISCAL_CERTIFICATE_ENCRYPTION_KEY_ID: ${FISCAL_CERTIFICATE_ENCRYPTION_KEY_ID:-v1}
       FISCAL_CERTIFICATE_PREVIOUS_KEYS: ${FISCAL_CERTIFICATE_PREVIOUS_KEYS:-}
+      NFSE_HOMOLOGATION_ENABLED: ${NFSE_HOMOLOGATION_ENABLED:-false}
+      NFSE_CONTRACT_CONFIRMED: ${NFSE_CONTRACT_CONFIRMED:-false}
+      NFSE_SEFIN_HOMOLOGATION_URL: ${NFSE_SEFIN_HOMOLOGATION_URL:-}
+      NFSE_SIGNATURE_PROFILE: ${NFSE_SIGNATURE_PROFILE:-}
+      NFSE_ICP_BRASIL_CA_BUNDLE: /etc/gestaonf/fiscal/icp-brasil-ca.pem
       ACCOUNTS_ALLOW_LOCAL_ACTIVATION: ${ACCOUNTS_ALLOW_LOCAL_ACTIVATION:-false}
       META_WHATSAPP_ENABLED: ${META_WHATSAPP_ENABLED:-false}
       META_APP_ID: ${META_APP_ID:-}
@@ -136,6 +158,8 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
       NILO_WORKER_CONCURRENCY: ${NILO_WORKER_CONCURRENCY:-4}
       WHATSAPP_SEND_CONCURRENCY: ${WHATSAPP_SEND_CONCURRENCY:-8}
+    volumes:
+      - ./config/fiscal:/etc/gestaonf/fiscal:ro
     depends_on:
       api:
         condition: service_healthy
@@ -143,12 +167,19 @@ services:
         condition: service_healthy
 
   web:
+    profiles: ["full"]
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
+      dockerfile: frontend/Dockerfile
     restart: unless-stopped
+    environment:
+      LOCAL_HTTPS_ENABLED: ${LOCAL_HTTPS_ENABLED:-false}
+      LOCAL_HTTPS_CERT_FILE: /etc/gestaonf/https/localhost.pem
+      LOCAL_HTTPS_KEY_FILE: /etc/gestaonf/https/localhost-key.pem
+    volumes:
+      - ./.certs:/etc/gestaonf/https:ro
     ports:
-      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:3001:3001"
     depends_on:
       api:
         condition: service_healthy

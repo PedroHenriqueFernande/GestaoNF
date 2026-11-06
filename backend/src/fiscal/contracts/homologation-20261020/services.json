@@ -1,0 +1,1687 @@
+{
+  "010101": {
+    "name": "Análise e desenvolvimento de sistemas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010201": {
+    "name": "Programação.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010301": {
+    "name": "Processamento de dados, textos, imagens, vídeos, páginas eletrônicas, aplicativos e sistemas de informação, entre outros formatos, e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010302": {
+    "name": "Armazenamento ou hospedagem de dados, textos, imagens, vídeos, páginas eletrônicas, aplicativos e sistemas de informação, entre outros formatos, e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010401": {
+    "name": "Elaboração de programas de computadores, inclusive de jogos eletrônicos, independentemente da arquitetura construtiva da máquina em que o programa será executado, incluindo tablets, smartphones e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010501": {
+    "name": "Licenciamento ou cessão de direito de uso de programas de computação.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010601": {
+    "name": "Assessoria e consultoria em informática.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010701": {
+    "name": "Suporte técnico em informática, inclusive instalação, configuração e manutenção de programas de computação e bancos de dados.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010801": {
+    "name": "Planejamento, confecção, manutenção e atualização de páginas eletrônicas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010901": {
+    "name": "Disponibilização, sem cessão definitiva, de conteúdos de áudio por meio da internet (exceto a distribuição de conteúdos pelas prestadoras de Serviço de Acesso Condicionado, de que trata a Lei nº 12.485, de 12 de setembro de 2011, sujeita ao ICMS).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "010902": {
+    "name": "Disponibilização, sem cessão definitiva, de conteúdos de vídeo, imagem e texto por meio da internet, respeitada a imunidade de livros, jornais e periódicos (exceto a distribuição de conteúdos pelas prestadoras de Serviço de Acesso Condicionado, de que trata a Lei nº 12.485, de 12 de setembro de 2011, sujeita ao ICMS).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "020101": {
+    "name": "Serviços de pesquisas e desenvolvimento de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "030201": {
+    "name": "Cessão de direito de uso de marcas e de sinais de propaganda.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "030301": {
+    "name": "Exploração de salões de festas, centro de convenções, stands e congêneres, para realização de eventos ou negócios de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "030302": {
+    "name": "Exploração de escritórios virtuais e congêneres, para realização de eventos ou negócios de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "030303": {
+    "name": "Exploração de quadras esportivas, estádios, ginásios, canchas e congêneres, para realização de eventos ou negócios de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "030304": {
+    "name": "Exploração de auditórios, casas de espetáculos e congêneres, para realização de eventos ou negócios de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "030305": {
+    "name": "Exploração de parques de diversões e congêneres, para realização de eventos ou negócios de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "030401": {
+    "name": "Locação, sublocação, arrendamento, direito de passagem ou permissão de uso, compartilhado ou não, de ferrovia.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "030402": {
+    "name": "Locação, sublocação, arrendamento, direito de passagem ou permissão de uso, compartilhado ou não, de rodovia.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "030403": {
+    "name": "Locação, sublocação, arrendamento, direito de passagem ou permissão de uso, compartilhado ou não, de postes, cabos, dutos e condutos de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "030501": {
+    "name": "Cessão de andaimes, palcos, coberturas e outras estruturas de uso temporário.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "040101": {
+    "name": "Medicina.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040102": {
+    "name": "Biomedicina.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040201": {
+    "name": "Análises clínicas e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040202": {
+    "name": "Patologia e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040203": {
+    "name": "Eletricidade médica (eletroestimulação de nervos e musculos, cardioversão, etc) e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040204": {
+    "name": "Radioterapia, quimioterapia e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040205": {
+    "name": "Ultra-sonografia, ressonância magnética, radiologia, tomografia e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040301": {
+    "name": "Hospitais e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040302": {
+    "name": "Laboratórios e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040303": {
+    "name": "Clínicas, sanatórios, manicômios, casas de saúde, prontos-socorros, ambulatórios e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040401": {
+    "name": "Instrumentação cirúrgica.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040501": {
+    "name": "Acupuntura.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040601": {
+    "name": "Enfermagem, inclusive serviços auxiliares.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040701": {
+    "name": "Serviços farmacêuticos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040801": {
+    "name": "Terapia ocupacional.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040802": {
+    "name": "Fisioterapia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040803": {
+    "name": "Fonoaudiologia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "040901": {
+    "name": "Terapias de qualquer espécie destinadas ao tratamento físico, orgânico e mental.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041001": {
+    "name": "Nutrição.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041101": {
+    "name": "Obstetrícia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041201": {
+    "name": "Odontologia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041301": {
+    "name": "Ortóptica.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041401": {
+    "name": "Próteses sob encomenda.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041501": {
+    "name": "Psicanálise.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041601": {
+    "name": "Psicologia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041701": {
+    "name": "Casas de repouso e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041702": {
+    "name": "Casas de recuperação e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041703": {
+    "name": "Creches e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041704": {
+    "name": "Asilos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041801": {
+    "name": "Inseminação artificial, fertilização in vitro e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "041901": {
+    "name": "Bancos de sangue, leite, pele, olhos, óvulos, sêmen e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "042001": {
+    "name": "Coleta de sangue, leite, tecidos, sêmen, órgãos e materiais biológicos de qualquer espécie.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "042101": {
+    "name": "Unidade de atendimento, assistência ou tratamento móvel e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "042201": {
+    "name": "Planos de medicina de grupo ou individual e convênios para prestação de assistência médica, hospitalar, odontológica e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "042301": {
+    "name": "Outros planos de saúde que se cumpram através de serviços de terceiros contratados, credenciados, cooperados ou apenas pagos pelo operador do plano mediante indicação do beneficiário.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050101": {
+    "name": "Medicina veterinária",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050102": {
+    "name": "Zootecnia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050201": {
+    "name": "Hospitais e congêneres, na área veterinária.",
+    "specificGroup": "-",
+    "incidenceAt": "UNKNOWN"
+  },
+  "050202": {
+    "name": "Clínicas, ambulatórios, prontos-socorros e congêneres, na área veterinária.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050301": {
+    "name": "Laboratórios de análise na área veterinária.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050401": {
+    "name": "Inseminação artificial, fertilização in vitro e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050501": {
+    "name": "Bancos de sangue e de órgãos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050601": {
+    "name": "Coleta de sangue, leite, tecidos, sêmen, órgãos e materiais biológicos de qualquer espécie.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050701": {
+    "name": "Unidade de atendimento, assistência ou tratamento móvel e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050801": {
+    "name": "Guarda, tratamento, amestramento, embelezamento, alojamento e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "050901": {
+    "name": "Planos de atendimento e assistência médico-veterinária.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "060101": {
+    "name": "Barbearia, cabeleireiros, manicuros, pedicuros e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "060201": {
+    "name": "Esteticistas, tratamento de pele, depilação e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "060301": {
+    "name": "Banhos, duchas, sauna, massagens e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "060401": {
+    "name": "Ginástica, dança, esportes, natação, artes marciais e demais atividades físicas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "060501": {
+    "name": "Centros de emagrecimento, spa e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "060601": {
+    "name": "Aplicação de tatuagens, piercings e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070101": {
+    "name": "Engenharia e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070102": {
+    "name": "Agronomia e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070103": {
+    "name": "Agrimensura e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070104": {
+    "name": "Arquitetura, urbanismo e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070105": {
+    "name": "Geologia e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070106": {
+    "name": "Paisagismo e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070201": {
+    "name": "Execução, por administração, de obras de construção civil, hidráulica ou elétrica e de outras obras semelhantes, inclusive sondagem, perfuração de poços, escavação, drenagem e irrigação, terraplanagem, pavimentação, concretagem e a instalação e montagem de produtos, peças e equipamentos (exceto o fornecimento de mercadorias produzidas pelo prestador de serviços fora do local da prestação dos serviços, que fica sujeito ao ICMS).",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "070202": {
+    "name": "Execução, por empreitada ou subempreitada, de obras de construção civil, hidráulica ou elétrica e de outras obras semelhantes, inclusive sondagem, perfuração de poços, escavação, drenagem e irrigação, terraplanagem, pavimentação, concretagem e a instalação e montagem de produtos, peças e equipamentos (exceto o fornecimento de mercadorias produzidas pelo prestador de serviços fora do local da prestação dos serviços, que fica sujeito ao ICMS).",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "070301": {
+    "name": "Elaboração de planos diretores, estudos de viabilidade, estudos organizacionais e outros, relacionados com obras e serviços de engenharia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070302": {
+    "name": "Elaboração de anteprojetos, projetos básicos e projetos executivos para trabalhos de engenharia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "070401": {
+    "name": "Demolição.",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "070501": {
+    "name": "Reparação, conservação e reforma de edifícios e congêneres (exceto o fornecimento de mercadorias produzidas pelo prestador dos serviços, fora do local da prestação dos serviços, que fica sujeito ao ICMS).",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "070502": {
+    "name": "Reparação, conservação e reforma de estradas, pontes, portos e congêneres (exceto o fornecimento de mercadorias produzidas pelo prestador dos serviços, fora do local da prestação dos serviços, que fica sujeito ao ICMS).",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "070601": {
+    "name": "Colocação e instalação de tapetes, carpetes, cortinas e congêneres, com material fornecido pelo tomador do serviço.",
+    "specificGroup": "obra",
+    "incidenceAt": "PROVIDER"
+  },
+  "070602": {
+    "name": "Colocação e instalação de assoalhos, revestimentos de parede, vidros, divisórias, placas de gesso e congêneres, com material fornecido pelo tomador do serviço.",
+    "specificGroup": "obra",
+    "incidenceAt": "PROVIDER"
+  },
+  "070701": {
+    "name": "Recuperação, raspagem, polimento e lustração de pisos e congêneres.",
+    "specificGroup": "obra",
+    "incidenceAt": "PROVIDER"
+  },
+  "070801": {
+    "name": "Calafetação.",
+    "specificGroup": "obra",
+    "incidenceAt": "PROVIDER"
+  },
+  "070901": {
+    "name": "Varrição, coleta e remoção de lixo, rejeitos e outros resíduos quaisquer.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "070902": {
+    "name": "Incineração, tratamento, reciclagem, separação e destinação final de lixo, rejeitos e outros resíduos quaisquer.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071001": {
+    "name": "Limpeza, manutenção e conservação de vias e logradouros públicos, parques, jardins e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071002": {
+    "name": "Limpeza, manutenção e conservação de imóveis, chaminés, piscinas e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071101": {
+    "name": "Decoração.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071102": {
+    "name": "Jardinagem, inclusive corte e poda de árvores.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071201": {
+    "name": "Controle e tratamento de efluentes de qualquer natureza e de agentes físicos, químicos e biológicos.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071301": {
+    "name": "Dedetização, desinfecção, desinsetização, imunização, higienização, desratização, pulverização e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "071601": {
+    "name": "Florestamento, reflorestamento, semeadura, adubação, reparação de solo, plantio, silagem, colheita, corte e descascamento de árvores, silvicultura, exploração florestal e dos serviços congêneres indissociáveis da formação, manutenção e colheita de florestas, para quaisquer fins e por quaisquer meios.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071701": {
+    "name": "Escoramento, contenção de encostas e serviços congêneres.",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071801": {
+    "name": "Limpeza e dragagem de rios, portos, canais, baías, lagos, lagoas, represas, açudes e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "071901": {
+    "name": "Acompanhamento e fiscalização da execução de obras de engenharia, arquitetura e urbanismo.",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "072001": {
+    "name": "Aerofotogrametria (inclusive interpretação), cartografia, mapeamento e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "072002": {
+    "name": "Levantamentos batimétricos, geográficos, geodésicos, geológicos, geofísicos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "072003": {
+    "name": "Levantamentos topográficos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "072101": {
+    "name": "Pesquisa, perfuração, cimentação, mergulho, perfilagem, concretação, testemunhagem, pescaria, estimulação e outros serviços relacionados com a exploração e explotação de petróleo, gás natural e de outros recursos minerais.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "072201": {
+    "name": "Nucleação e bombardeamento de nuvens e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "080101": {
+    "name": "Ensino regular pré-escolar, fundamental e médio.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "080102": {
+    "name": "Ensino regular superior.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "080201": {
+    "name": "Instrução, treinamento, orientação pedagógica e educacional, avaliação de conhecimentos de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "090101": {
+    "name": "Hospedagem em hotéis, hotelaria marítima e congêneres (o valor da alimentação e gorjeta, quando incluído no preço da diária, fica sujeito ao Imposto Sobre Serviços).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "090102": {
+    "name": "Hospedagem em pensões, albergues, pousadas, hospedarias, ocupação por temporada com fornecimento de serviços e congêneres (o valor da alimentação e gorjeta, quando incluído no preço da diária, fica sujeito ao Imposto Sobre Serviços).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "090103": {
+    "name": "Hospedagem em motéis e congêneres (o valor da alimentação e gorjeta, quando incluído no preço da diária, fica sujeito ao Imposto Sobre Serviços).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "090104": {
+    "name": "Hospedagem em apart-service condominiais, flat, apart-hotéis, hotéis residência, residence-service, suite service e congêneres (o valor da alimentação e gorjeta, quando incluído no preço da diária, fica sujeito ao Imposto Sobre Serviços).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "090201": {
+    "name": "Agenciamento e intermediação de programas de turismo, passeios, viagens, excursões, hospedagens e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "090202": {
+    "name": "Organização, promoção e execução de programas de turismo, passeios, viagens, excursões, hospedagens e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "090301": {
+    "name": "Guias de turismo.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100101": {
+    "name": "Agenciamento, corretagem ou intermediação de câmbio.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100102": {
+    "name": "Agenciamento, corretagem ou intermediação de seguros.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100103": {
+    "name": "Agenciamento, corretagem ou intermediação de cartões de crédito.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100104": {
+    "name": "Agenciamento, corretagem ou intermediação de planos de saúde.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100105": {
+    "name": "Agenciamento, corretagem ou intermediação de planos de previdência privada.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100201": {
+    "name": "Agenciamento, corretagem ou intermediação de títulos em geral e valores mobiliários.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100202": {
+    "name": "Agenciamento, corretagem ou intermediação de contratos quaisquer.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100301": {
+    "name": "Agenciamento, corretagem ou intermediação de direitos de propriedade industrial, artística ou literária.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100401": {
+    "name": "Agenciamento, corretagem ou intermediação de contratos de arrendamento mercantil (leasing).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100402": {
+    "name": "Agenciamento, corretagem ou intermediação de contratos de franquia (franchising).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100403": {
+    "name": "Agenciamento, corretagem ou intermediação de faturização (factoring).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100501": {
+    "name": "Agenciamento, corretagem ou intermediação de bens móveis ou imóveis, não abrangidos em outros itens ou subitens, por quaisquer meios.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100502": {
+    "name": "Agenciamento, corretagem ou intermediação de bens móveis ou imóveis realizados no âmbito de Bolsas de Mercadorias e Futuros, por quaisquer meios.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100601": {
+    "name": "Agenciamento marítimo.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100701": {
+    "name": "Agenciamento de notícias.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100801": {
+    "name": "Agenciamento de publicidade e propaganda, inclusive o agenciamento de veiculação por quaisquer meios.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "100901": {
+    "name": "Representação de qualquer natureza, inclusive comercial.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "101001": {
+    "name": "Distribuição de bens de terceiros.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "110101": {
+    "name": "Guarda e estacionamento de veículos terrestres automotores.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "110102": {
+    "name": "Guarda e estacionamento de aeronaves e de embarcações.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "110201": {
+    "name": "Vigilância, segurança ou monitoramento de bens, pessoas e semoventes.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "110301": {
+    "name": "Escolta, inclusive de veículos e cargas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "110401": {
+    "name": "Armazenamento, depósito, guarda de bens de qualquer espécie.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "110402": {
+    "name": "Carga, descarga, arrumação de bens de qualquer espécie.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "110501": {
+    "name": "Serviços relacionados ao monitoramento e rastreamento a distância, em qualquer via ou local, de veículos, cargas, pessoas e semoventes em circulação ou movimento, realizados por meio de telefonia móvel, transmissão de satélites, rádio ou qualquer outro meio, inclusive pelas empresas de Tecnologia da Informação Veicular, independentemente de o prestador de serviços ser proprietário ou não da infraestrutura de telecomunicações que utiliza.  ",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "120101": {
+    "name": "Espetáculos teatrais.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120201": {
+    "name": "Exibições cinematográficas.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120301": {
+    "name": "Espetáculos circenses.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120401": {
+    "name": "Programas de auditório.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120501": {
+    "name": "Parques de diversões, centros de lazer e congêneres.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120601": {
+    "name": "Boates, taxi-dancing e congêneres.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120701": {
+    "name": "Shows, ballet, danças, desfiles, bailes, óperas, concertos, recitais, festivais e congêneres.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120801": {
+    "name": "Feiras, exposições, congressos e congêneres.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120901": {
+    "name": "Bilhares.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120902": {
+    "name": "Boliches.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "120903": {
+    "name": "Diversões eletrônicas ou não.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "121001": {
+    "name": "Corridas e competições de animais.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "121101": {
+    "name": "Competições esportivas ou de destreza física ou intelectual, com ou sem a participação do espectador.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "121201": {
+    "name": "Execução de música.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "121301": {
+    "name": "Produção, mediante ou sem encomenda prévia, de eventos, espetáculos, entrevistas, shows, ballet, danças, desfiles, bailes, teatros, óperas, concertos, recitais, festivais e congêneres.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PROVIDER"
+  },
+  "121401": {
+    "name": "Fornecimento de música para ambientes fechados ou não, mediante transmissão por qualquer processo.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "121501": {
+    "name": "Desfiles de blocos carnavalescos ou folclóricos, trios elétricos e congêneres.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "121601": {
+    "name": "Exibição de filmes, entrevistas, musicais, espetáculos, shows, concertos, desfiles, óperas, competições esportivas, de destreza intelectual ou congêneres.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "121701": {
+    "name": "Recreação e animação, inclusive em festas e eventos de qualquer natureza.",
+    "specificGroup": "atvEvento",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "130201": {
+    "name": "Fonografia ou gravação de sons, inclusive trucagem, dublagem, mixagem e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "130301": {
+    "name": "Fotografia e cinematografia, inclusive revelação, ampliação, cópia, reprodução, trucagem e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "130401": {
+    "name": "Reprografia, microfilmagem e digitalização.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "130501": {
+    "name": "Composição gráfica, inclusive confecção de impressos gráficos, fotocomposição, clicheria, zincografia, litografia e fotolitografia, exceto se destinados a posterior operação de comercialização ou industrialização, ainda que incorporados, de qualquer forma, a outra mercadoria que deva ser objeto de posterior circulação, tais como bulas, rótulos, etiquetas, caixas, cartuchos, embalagens e manuais técnicos e de instrução, quando ficarão sujeitos ao ICMS.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140101": {
+    "name": "Lubrificação, limpeza, lustração, revisão, carga e recarga, conserto, restauração, blindagem, manutenção e conservação de máquinas, veículos, aparelhos, equipamentos, motores, elevadores ou de qualquer objeto (exceto peças e partes empregadas, que ficam sujeitas ao ICMS).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140201": {
+    "name": "Assistência técnica.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140301": {
+    "name": "Recondicionamento de motores (exceto peças e partes empregadas, que ficam sujeitas ao ICMS).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140401": {
+    "name": "Recauchutagem ou regeneração de pneus.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140501": {
+    "name": "Restauração, recondicionamento, acondicionamento, pintura, beneficiamento, lavagem, secagem, tingimento, galvanoplastia, anodização, corte, recorte, plastificação, costura, acabamento, polimento e congêneres de objetos quaisquer.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140601": {
+    "name": "Instalação e montagem de aparelhos, máquinas e equipamentos, inclusive montagem industrial, prestados ao usuário final, exclusivamente com material por ele fornecido.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140701": {
+    "name": "Colocação de molduras e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140801": {
+    "name": "Encadernação, gravação e douração de livros, revistas e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "140901": {
+    "name": "Alfaiataria e costura, quando o material for fornecido pelo usuário final, exceto aviamento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "141001": {
+    "name": "Tinturaria e lavanderia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "141101": {
+    "name": "Tapeçaria e reforma de estofamentos em geral.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "141201": {
+    "name": "Funilaria e lanternagem.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "141301": {
+    "name": "Carpintaria.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "141302": {
+    "name": "Serralheria.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "141401": {
+    "name": "Guincho intramunicipal.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "141402": {
+    "name": "Guindaste e içamento.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "141403": {
+    "name": "Guincho intramunicipal em construção civil.",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "141404": {
+    "name": "Guindaste e içamento em construção civil.",
+    "specificGroup": "obra",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "150101": {
+    "name": "Administração de fundos quaisquer e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150102": {
+    "name": "Administração de consórcio e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150103": {
+    "name": "Administração de cartão de crédito ou débito e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150104": {
+    "name": "Administração de carteira de clientes e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150105": {
+    "name": "Administração de cheques pré-datados e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150201": {
+    "name": "Abertura de conta-corrente no País, bem como a manutenção da referida conta ativa e inativa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150202": {
+    "name": "Abertura de conta-corrente no exterior, bem como a manutenção da referida conta ativa e inativa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150203": {
+    "name": "Abertura de conta de investimentos e aplicação no País, bem como a manutenção da referida conta ativa e inativa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150204": {
+    "name": "Abertura de conta de investimentos e aplicação no exterior, bem como a manutenção da referida conta ativa e inativa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150205": {
+    "name": "Abertura de caderneta de poupança no País, bem como a manutenção da referida conta ativa e inativa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150206": {
+    "name": "Abertura de caderneta de poupança no exterior, bem como a manutenção da referida conta ativa e inativa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150207": {
+    "name": "Abertura de contas em geral no País, não abrangida em outro subitem, bem como a manutenção das referidas contas ativas e inativas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150208": {
+    "name": "Abertura de contas em geral no exterior, não abrangida em outro subitem, bem como a manutenção das referidas contas ativas e inativas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150301": {
+    "name": "Locação de cofres particulares.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150302": {
+    "name": "Manutenção de cofres particulares.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150303": {
+    "name": "Locação de terminais eletrônicos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150304": {
+    "name": "Manutenção de terminais eletrônicos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150305": {
+    "name": "Locação de terminais de atendimento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150306": {
+    "name": "Manutenção de terminais de atendimento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150307": {
+    "name": "Locação de bens e equipamentos em geral.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150308": {
+    "name": "Manutenção de bens e equipamentos em geral.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150401": {
+    "name": "Fornecimento ou emissão de atestados em geral, inclusive atestado de idoneidade, atestado de capacidade financeira e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150501": {
+    "name": "Cadastro, elaboração de ficha cadastral, renovação cadastral e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150502": {
+    "name": "Inclusão no Cadastro de Emitentes de Cheques sem Fundos - CCF.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150503": {
+    "name": "Exclusão no Cadastro de Emitentes de Cheques sem Fundos - CCF.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150504": {
+    "name": "Inclusão em quaisquer outros bancos cadastrais.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150505": {
+    "name": "Exclusão em quaisquer outros bancos cadastrais.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150601": {
+    "name": "Emissão, reemissão e fornecimento de avisos, comprovantes e documentos em geral",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150602": {
+    "name": "Abono de firmas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150603": {
+    "name": "Coleta e entrega de documentos, bens e valores.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150604": {
+    "name": "Comunicação com outra agência ou com a administração central.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150605": {
+    "name": "Licenciamento eletrônico de veículos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150606": {
+    "name": "Transferência de veículos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150607": {
+    "name": "Agenciamento fiduciário ou depositário.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150608": {
+    "name": "Devolução de bens em custódia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150701": {
+    "name": "Acesso, movimentação, atendimento e consulta a contas em geral, por qualquer meio ou processo, inclusive por telefone, fac-símile, internet e telex.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150702": {
+    "name": "Acesso a terminais de atendimento, inclusive vinte e quatro horas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150703": {
+    "name": "Acesso a outro banco e à rede compartilhada.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150704": {
+    "name": "Fornecimento de saldo, extrato e demais informações relativas a contas em geral, por qualquer meio ou processo.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150801": {
+    "name": "Emissão, reemissão, alteração, cessão, substituição, cancelamento e registro de contrato de crédito.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150802": {
+    "name": "Estudo, análise e avaliação de operações de crédito.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150803": {
+    "name": "Emissão, concessão, alteração ou contratação de aval, fiança, anuência e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150804": {
+    "name": "Serviços relativos à abertura de crédito, para quaisquer fins.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "150901": {
+    "name": "Arrendamento mercantil (leasing) de quaisquer bens, inclusive cessão de direitos e obrigações, substituição de garantia, alteração, cancelamento e registro de contrato, e demais serviços relacionados ao arrendamento mercantil (leasing).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151001": {
+    "name": "Serviços relacionados a cobranças em geral, de títulos quaisquer, de contas ou carnês, de câmbio, de tributos e por conta de terceiros, inclusive os efetuados por meio eletrônico, automático ou por máquinas de atendimento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151002": {
+    "name": "Serviços relacionados a recebimentos em geral, de títulos quaisquer, de contas ou carnês, de câmbio, de tributos e por conta de terceiros, inclusive os efetuados por meio eletrônico, automático ou por máquinas de atendimento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151003": {
+    "name": "Serviços relacionados a pagamentos em geral, de títulos quaisquer, de contas ou carnês, de câmbio, de tributos e por conta de terceiros, inclusive os efetuados por meio eletrônico, automático ou por máquinas de atendimento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151004": {
+    "name": "Serviços relacionados a fornecimento de posição de cobrança, recebimento ou pagamento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151005": {
+    "name": "Serviços relacionados a emissão de carnês, fichas de compensação, impressos e documentos em geral.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151101": {
+    "name": "Devolução de títulos, protesto de títulos, sustação de protesto, manutenção de títulos, reapresentação de títulos, e demais serviços a eles relacionados.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151201": {
+    "name": "Custódia em geral, inclusive de títulos e valores mobiliários.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151301": {
+    "name": "Serviços relacionados a operações de câmbio em geral, edição, alteração, prorrogação, cancelamento e baixa de contrato de câmbio.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151302": {
+    "name": "Serviços relacionados a emissão de registro de exportação ou de crédito.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151303": {
+    "name": "Serviços relacionados a cobrança ou depósito no exterior.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151304": {
+    "name": "Serviços relacionados a emissão, fornecimento e cancelamento de cheques de viagem.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151305": {
+    "name": "Serviços relacionados a fornecimento, transferência, cancelamento e demais serviços relativos a carta de crédito de importação, exportação e garantias recebidas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151306": {
+    "name": "Serviços relacionados a envio e recebimento de mensagens em geral relacionadas a operações de câmbio.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151401": {
+    "name": "Fornecimento, emissão, reemissão de cartão magnético, cartão de crédito, cartão de débito, cartão salário e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151402": {
+    "name": "Renovação de cartão magnético, cartão de crédito, cartão de débito, cartão salário e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151403": {
+    "name": "Manutenção de cartão magnético, cartão de crédito, cartão de débito, cartão salário e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151501": {
+    "name": "Compensação de cheques e títulos quaisquer.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151502": {
+    "name": "Serviços relacionados a depósito, inclusive depósito identificado, a saque de contas quaisquer, por qualquer meio ou processo, inclusive em terminais eletrônicos e de atendimento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151601": {
+    "name": "Emissão, reemissão, liquidação, alteração, cancelamento e baixa de ordens de pagamento, ordens de crédito e similares, por qualquer meio ou processo.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151602": {
+    "name": "Serviços relacionados à transferência de valores, dados, fundos, pagamentos e similares, inclusive entre contas em geral.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151701": {
+    "name": "Emissão e fornecimento de cheques quaisquer, avulso ou por talão.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151702": {
+    "name": "Devolução de cheques quaisquer, avulso ou por talão.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151703": {
+    "name": "Sustação, cancelamento e oposição de cheques quaisquer, avulso ou por talão.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151801": {
+    "name": "Serviços relacionados a crédito imobiliário, de avaliação e vistoria de imóvel ou obra.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151802": {
+    "name": "Serviços relacionados a crédito imobiliário, de análise técnica e jurídica.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151803": {
+    "name": "Serviços relacionados a crédito imobiliário, de emissão, reemissão, alteração, transferência e renegociação de contrato.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151804": {
+    "name": "Serviços relacionados a crédito imobiliário, de emissão e reemissão do termo de quitação.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "151805": {
+    "name": "Demais serviços relacionados a crédito imobiliário.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "160101": {
+    "name": "Serviços de transporte coletivo municipal rodoviário de passageiros.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "160102": {
+    "name": "Serviços de transporte coletivo municipal metroviário de passageiros.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "160103": {
+    "name": "Serviços de transporte coletivo municipal ferroviário de passageiros.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "160104": {
+    "name": "Serviços de transporte coletivo municipal aquaviário de passageiros.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "160201": {
+    "name": "Outros serviços de transporte de natureza municipal.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "170101": {
+    "name": "Assessoria ou consultoria de qualquer natureza, não contida em outros itens desta lista.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170102": {
+    "name": "Análise, exame, pesquisa, coleta, compilação e fornecimento de dados e informações de qualquer natureza, inclusive cadastro e similares.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170201": {
+    "name": "Datilografia, digitação, estenografia e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170202": {
+    "name": "Expediente, secretaria em geral, apoio e infra-estrutura administrativa e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170203": {
+    "name": "Resposta audível e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170204": {
+    "name": "Redação, edição, revisão e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170205": {
+    "name": "Interpretação, tradução e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170301": {
+    "name": "Planejamento, coordenação, programação ou organização técnica.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170302": {
+    "name": "Planejamento, coordenação, programação ou organização financeira.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170303": {
+    "name": "Planejamento, coordenação, programação ou organização administrativa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170401": {
+    "name": "Recrutamento, agenciamento, seleção e colocação de mão-de-obra.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170501": {
+    "name": "Fornecimento de mão-de-obra, mesmo em caráter temporário, inclusive de empregados ou trabalhadores, avulsos ou temporários, contratados pelo prestador de serviço.",
+    "specificGroup": "-",
+    "incidenceAt": "CUSTOMER"
+  },
+  "170601": {
+    "name": "Propaganda e publicidade, inclusive promoção de vendas, planejamento de campanhas ou sistemas de publicidade, elaboração de desenhos, textos e demais materiais publicitários.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170801": {
+    "name": "Franquia (franchising).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "170901": {
+    "name": "Perícias, laudos, exames técnicos e análises técnicas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171001": {
+    "name": "Planejamento, organização e administração de feiras, exposições, e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "171002": {
+    "name": "Planejamento, organização e administração de congressos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "171101": {
+    "name": "Organização de festas e recepções.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171102": {
+    "name": "Bufê (exceto o fornecimento de alimentação e bebidas, que fica sujeito ao ICMS).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171201": {
+    "name": "Administração em geral, inclusive de bens e negócios de terceiros.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171301": {
+    "name": "Leilão e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171401": {
+    "name": "Advocacia",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171501": {
+    "name": "Arbitragem de qualquer espécie, inclusive jurídica.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171601": {
+    "name": "Auditoria.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171701": {
+    "name": "Análise de Organização e Métodos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171801": {
+    "name": "Atuária e cálculos técnicos de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "171901": {
+    "name": "Contabilidade, inclusive serviços técnicos e auxiliares.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "172001": {
+    "name": "Consultoria e assessoria econômica ou financeira.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "172101": {
+    "name": "Estatística.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "172201": {
+    "name": "Cobrança em geral.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "172301": {
+    "name": "Assessoria, análise, avaliação, atendimento, consulta, cadastro, seleção, gerenciamento de informações, administração de contas a receber ou a pagar e em geral, relacionados a operações de faturização (factoring).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "172401": {
+    "name": "Apresentação de palestras, conferências, seminários e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "172501": {
+    "name": "Inserção de textos, desenhos e outros materiais de propaganda e publicidade, em qualquer meio (exceto em livros, jornais, periódicos e nas modalidades de serviços de radiodifusão sonora e de sons e imagens de recepção livre e gratuita).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "180101": {
+    "name": "Serviços de regulação de sinistros vinculados a contratos de seguros e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "180102": {
+    "name": "Serviços de inspeção e avaliação de riscos para cobertura de contratos de seguros e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "180103": {
+    "name": "Serviços de prevenção e gerência de riscos seguráveis e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "190101": {
+    "name": "Serviços de distribuição e venda de bilhetes e demais produtos de loteria, cartões, pules ou cupons de apostas, sorteios, prêmios, inclusive os decorrentes de títulos de capitalização e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "190102": {
+    "name": "Serviços de distribuição e venda de bingos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "200101": {
+    "name": "Serviços portuários, ferroportuários, utilização de porto, movimentação de passageiros, reboque de embarcações, rebocador escoteiro, atracação, desatracação, serviços de praticagem, capatazia, armazenagem de qualquer natureza, serviços acessórios, movimentação de mercadorias, serviços de apoio marítimo, de movimentação ao largo, serviços de armadores, estiva, conferência, logística e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "UNKNOWN"
+  },
+  "200201": {
+    "name": "Serviços aeroportuários, utilização de aeroporto, movimentação de passageiros, armazenagem de qualquer natureza, capatazia, movimentação de aeronaves, serviços de apoio aeroportuários, serviços acessórios, movimentação de mercadorias, logística e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "200301": {
+    "name": "Serviços de terminais rodoviários, ferroviários, metroviários, movimentação de passageiros, mercadorias, inclusive suas operações, logística e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "210101": {
+    "name": "Serviços de registros públicos, cartorários e notariais.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "220101": {
+    "name": "Serviços de exploração de rodovia mediante cobrança de preço ou pedágio dos usuários, envolvendo execução de serviços de conservação, manutenção, melhoramentos para adequação de capacidade e segurança de trânsito, operação, monitoração, assistência aos usuários e outros serviços definidos em contratos, atos de concessão ou de permissão ou em normas oficiais.",
+    "specificGroup": "-",
+    "incidenceAt": "PERFORMANCE"
+  },
+  "230101": {
+    "name": "Serviços de programação e comunicação visual e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "230102": {
+    "name": "Serviços de desenho industrial e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "240101": {
+    "name": "Serviços de chaveiros, confecção de carimbos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "240102": {
+    "name": "Serviços de placas, sinalização visual, banners, adesivos e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "250101": {
+    "name": "Funerais, inclusive fornecimento de caixão, urna ou esquifes; aluguel de capela; transporte do corpo cadavérico; fornecimento de flores, coroas e outros paramentos; desembaraço de certidão de óbito; fornecimento de véu, essa e outros adornos; embalsamento, embelezamento, conservação ou restauração de cadáveres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "250201": {
+    "name": "Translado intramunicipal de corpos e partes de corpos cadavéricos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "250202": {
+    "name": "Cremação de corpos e partes de corpos cadavéricos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "250301": {
+    "name": "Planos ou convênio funerários.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "250401": {
+    "name": "Manutenção e conservação de jazigos e cemitérios.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "250501": {
+    "name": "Cessão de uso de espaços em cemitérios para sepultamento.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "260101": {
+    "name": "Serviços de coleta, remessa ou entrega de correspondências, documentos, objetos, bens ou valores, inclusive pelos correios e suas agências franqueadas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "260102": {
+    "name": "Serviços de courrier e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "270101": {
+    "name": "Serviços de assistência social.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "280101": {
+    "name": "Serviços de avaliação de bens e serviços de qualquer natureza.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "290101": {
+    "name": "Serviços de biblioteconomia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "300101": {
+    "name": "Serviços de biologia e biotecnologia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "300102": {
+    "name": "Serviços de química.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "310101": {
+    "name": "Serviços técnicos em edificações e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "310102": {
+    "name": "Serviços técnicos em eletrônica, eletrotécnica e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "310103": {
+    "name": "Serviços técnicos em mecânica e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "310104": {
+    "name": "Serviços técnicos em telecomunicações e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "320101": {
+    "name": "Serviços de desenhos técnicos.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "330101": {
+    "name": "Serviços de desembaraço aduaneiro, comissários, despachantes e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "340101": {
+    "name": "Serviços de investigações particulares, detetives e congêneres.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "350101": {
+    "name": "Serviços de reportagem e jornalismo.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "350102": {
+    "name": "Serviços de assessoria de imprensa.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "350103": {
+    "name": "Serviços de relações públicas.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "360101": {
+    "name": "Serviços de meteorologia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "370101": {
+    "name": "Serviços de artistas, atletas, modelos e manequins.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "380101": {
+    "name": "Serviços de museologia.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "390101": {
+    "name": "Serviços de ourivesaria e lapidação (quando o material for fornecido pelo tomador do serviço).",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "400101": {
+    "name": "Obras de arte sob encomenda.",
+    "specificGroup": "-",
+    "incidenceAt": "PROVIDER"
+  },
+  "990101": {
+    "name": "Serviços sem a incidência de ISSQN e ICMS",
+    "specificGroup": "-",
+    "incidenceAt": "UNKNOWN"
+  }
+}

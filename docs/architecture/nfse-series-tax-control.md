@@ -1,5 +1,7 @@
 # Fiscal: séries da DPS e controle de tributação — arquitetura de banco e API
 
+Atualização de planejamento em 29/10/2026: o cadastro e a validação local do certificado A1 já existem. A etapa de emissão, incluindo reserva de números, agrupamento de itens, contrato por ambiente e recuperação de resultado, está detalhada na [arquitetura de homologação nacional](nfse-national-homologation.md). Para implementar o transmissor, essa especificação mais recente prevalece sobre as propostas futuras abaixo.
+
 Status em 21/10/2026: configurações de séries, numeração e regras tributárias implementadas no banco, API e frontend, com sugestão fiscal vinculada à venda. A regra padrão é escolhida por serviço e vigência; a venda também permite escolher outra regra ativa ou nenhuma. O histórico de avanço manual do contador pode ser consultado na tela de séries. A emissão da NFS-e, certificado, consulta municipal em tempo de emissão e reserva de número de DPS ainda não foram implementados. A proposta original abaixo continua como referência para a etapa de emissão; alguns campos e rotas ali descritos pertencem à etapa futura.
 
 ## 1. Escopo e vocabulário
@@ -64,7 +66,7 @@ Ao preparar uma emissão: buscar perfil **padrão** exato serviço+município, d
 
 ## 4. Backend e contratos HTTP
 
-Criar módulo NestJS `apps/api/src/fiscal/` (`FiscalModule`) com controller, schemas Zod, serviços de séries e perfis, repositório de transação, e integrar ao `AppModule`. Todas as rotas exigem `AccessGuard`, `CompanyGuard` e `X-Company-Id`. Buscar/mutar sempre por `company_id` autenticado. Alterações: somente `OWNER` e `ADMIN`; leitura: membro ativo. Um futuro papel fiscal pode ser concedido pela camada de permissões quando ela existir. Reutilizar as regras de suspensão da empresa/assinatura já presentes em `CompanyGuard`.
+Criar módulo NestJS `backend/src/fiscal/` (`FiscalModule`) com controller, schemas Zod, serviços de séries e perfis, repositório de transação, e integrar ao `AppModule`. Todas as rotas exigem `AccessGuard`, `CompanyGuard` e `X-Company-Id`. Buscar/mutar sempre por `company_id` autenticado. Alterações: somente `OWNER` e `ADMIN`; leitura: membro ativo. Um futuro papel fiscal pode ser concedido pela camada de permissões quando ela existir. Reutilizar as regras de suspensão da empresa/assinatura já presentes em `CompanyGuard`.
 
 | Rota | Efeito |
 | --- | --- |

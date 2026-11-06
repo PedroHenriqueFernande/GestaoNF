@@ -1,0 +1,31 @@
+{
+  "researchedAt": "2026-10-29",
+  "purpose": "Evidence of inspected official artifacts for architectural planning; not a runtime contract approval",
+  "artifacts": [
+    {
+      "role": "homologation-xsd-bundle",
+      "label": "PRODREST v1.01 20261020",
+      "url": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/producao-restrita/esquemas_prod_restrita_20261020.zip",
+      "sha256": "25fdcecc651a67a216496ab10d7566631e6ed10f721e37d62c7845dadb0ea267",
+      "bytes": 36351
+    },
+    {
+      "role": "homologation-layout-and-business-rules",
+      "label": "ANEXO I PRODREST v1.01 20261020",
+      "url": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/producao-restrita/anexo_i-sefin_adn-dps_nfse-snnfse_prodrest-v1-01-20261020.xlsx",
+      "sha256": "72b05981c8882cdd807f3acf901b669465360f9cf1b9d9e235ac4363dacfb2d8",
+      "bytes": 248110
+    },
+    {
+      "role": "production-layout-comparison-only",
+      "label": "ANEXO I v1.01 20260209",
+      "url": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual/anexo_i-sefin_adn-dps_nfse-snnfse-v1-01-20260209.xlsx",
+      "sha256": "de5bc492959eadc8bfa7540e16939995924f2188f743648eaf84d3b31e9eeb7c",
+      "bytes": 215196
+    }
+  ],
+  "officialApiDocumentation": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/apis-prod-restrita-e-producao/apis-prod-restrita-e-producao",
+  "homologationSefinSwagger": "https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional/docs/index",
+  "openApiStatus": "Not retrieved: official Swagger returned HTTP 403 during research; runtime server path and JSON contracts must be captured before enabling transmission",
+  "signatureProfileStatus": "Must be verified for active contract before transmission; legacy integrated manual alone is insufficient"
+}

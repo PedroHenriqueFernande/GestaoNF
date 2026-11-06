@@ -1,12 +1,14 @@
 # Certificado digital da empresa para NFS-e — arquitetura
 
+Continuação em 29/10/2026: confiança ICP-Brasil, teste remoto, assinatura e uso do certificado no transmissor estão detalhados na [arquitetura de emissão nacional em homologação](nfse-national-homologation.md). O certificado autoassinado de teste local não comprova aptidão para a homologação oficial.
+
 Status em 21/10/2026: cadastro A1 implementado no banco, API e modal da empresa. A conexão com a API nacional, validação completa da cadeia ICP-Brasil/revogação, assinatura XML e emissão permanecem para a etapa do transmissor. O estado exibido após upload significa que arquivo, senha, identidade e compatibilidade TLS passaram na verificação local.
 
 ## Objetivo e encaixe no GestãoNF
 
 O certificado será uma **credencial fiscal da empresa emissora**, não da conta pessoal do usuário. O operador abre **Cadastros → Empresa → editar empresa → Dados fiscais → Certificado digital**, envia o arquivo A1 (`.pfx` ou `.p12`) e informa sua senha uma vez. O sistema usa automaticamente CPF/CNPJ e tipo PF/PJ já cadastrados na empresa para validar a titularidade. Não haverá outro campo para digitar a inscrição federal no upload.
 
-Hoje o modal em `apps/web/src/features/companies/CompanyPage.tsx` contém identificação, endereço e dados fiscais; `companies.tax_id`, `kind`, `city_ibge_code` e regime estão em `packages/database/src/schema.ts`. O serviço `apps/api/src/companies/companies.service.ts` permite alterar o cadastro somente a `OWNER`/`ADMIN`. O módulo fiscal já guarda séries, regras e `nfse_dps`, mas não autentica no governo nem assina/transmite uma DPS. O upload privado de contratos de venda em `stored_files`/R2 permite download e, portanto, **não é cofre de chave privada**.
+Hoje o modal em `frontend/src/features/companies/CompanyPage.tsx` contém identificação, endereço e dados fiscais; `companies.tax_id`, `kind`, `city_ibge_code` e regime estão em `backend/database/src/schema.ts`. O serviço `backend/src/companies/companies.service.ts` permite alterar o cadastro somente a `OWNER`/`ADMIN`. O módulo fiscal já guarda séries, regras e `nfse_dps`, mas não autentica no governo nem assina/transmite uma DPS. O upload privado de contratos de venda em `stored_files`/R2 permite download e, portanto, **não é cofre de chave privada**.
 
 ## Base oficial e decisão de escopo
 
@@ -42,7 +44,7 @@ Para o MVP, o PFX fica **criptografado no PostgreSQL**, em tabela e serviço ded
 
 ## API e serviços
 
-Usar módulo NestJS `apps/api/src/fiscal/certificates/`. Rotas autenticadas e com empresa autorizada (padrão atual: `X-Company-Id` / `CompanyGuard`); o `company_id` vem do contexto validado, nunca de um campo livre no corpo. `GET /fiscal/certificate` devolve metadados e estado; `POST /fiscal/certificate` recebe `multipart/form-data` (`file`, `passphrase`) e substitui o ativo após validação; `POST /fiscal/certificate/test` tenta uma operação **somente de leitura** no ambiente selecionado, conforme endpoint oficial confirmado na implementação; `DELETE /fiscal/certificate` desativa. Se o framework Fastify ainda não tiver parser multipart, registrar `@fastify/multipart` exclusivamente com limite de tamanho e rejeição de campos inesperados. Respostas comuns: 400 formato/senha, 403 papel, 409 identidade em conflito/troca concorrente, 422 certificado incompatível/expirado, 502/503 falha do serviço nacional sem transformar isso em falha do arquivo.
+Usar módulo NestJS `backend/src/fiscal/certificates/`. Rotas autenticadas e com empresa autorizada (padrão atual: `X-Company-Id` / `CompanyGuard`); o `company_id` vem do contexto validado, nunca de um campo livre no corpo. `GET /fiscal/certificate` devolve metadados e estado; `POST /fiscal/certificate` recebe `multipart/form-data` (`file`, `passphrase`) e substitui o ativo após validação; `POST /fiscal/certificate/test` tenta uma operação **somente de leitura** no ambiente selecionado, conforme endpoint oficial confirmado na implementação; `DELETE /fiscal/certificate` desativa. Se o framework Fastify ainda não tiver parser multipart, registrar `@fastify/multipart` exclusivamente com limite de tamanho e rejeição de campos inesperados. Respostas comuns: 400 formato/senha, 403 papel, 409 identidade em conflito/troca concorrente, 422 certificado incompatível/expirado, 502/503 falha do serviço nacional sem transformar isso em falha do arquivo.
 
 `CertificateService.install()` implementado:
 
