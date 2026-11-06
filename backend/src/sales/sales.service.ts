@@ -1,12 +1,13 @@
 import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { companies, companyUsers, customers, nfseDps, nfseSeries, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
+import { companies, companyUsers, customers, nfseSeries, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
 import { FilesService, publicFile } from '../files/files.service.js';
 import { FiscalService } from '../fiscal/fiscal.service.js';
+import { saleFiscalState } from '../fiscal/sale-fiscal-state.js';
 import { amount, cents, itemAmounts } from './sales-money.js';
 import { orderCode, paycodes } from './sales-codes.js';
 import type { ConfirmSaleInput, CreateSaleInput, ListSalesInput, UpdateConfirmedSaleInput, UpdateSaleInput } from './sales.schemas.js';
@@ -229,8 +230,8 @@ export class SalesService {
       const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
       if (!sale) throw new NotFoundException('Pedido não encontrado');
       if (sale.status !== 'CONFIRMED' || sale.version !== input.expectedVersion) throw new ConflictException('Esta venda foi alterada. Reabra o pedido antes de salvar.');
-      const [fiscalDps] = await tx.select({ id: nfseDps.id }).from(nfseDps).where(and(eq(nfseDps.companyId, companyId), eq(nfseDps.sourceSaleId, id))).limit(1);
-      if (fiscalDps) throw new ConflictException('Esta venda já possui uma solicitação de NFS-e. Consulte a situação fiscal antes de alterar a venda.');
+      const fiscalState = await saleFiscalState(tx, companyId, id);
+      if (!fiscalState.canEditSale) throw new ConflictException(fiscalState.lockReason);
       const existing = await tx.select().from(saleInstallments)
         .where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, id))).orderBy(saleInstallments.number);
       if (ids.some((partId) => !existing.some((part) => part.id === partId))) throw new BadRequestException('Recebimento não pertence a esta venda');
@@ -375,8 +376,8 @@ export class SalesService {
       const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
       if (!sale) throw new NotFoundException('Pedido não encontrado');
       if (sale.status === 'CANCELED' || sale.version !== expectedVersion) throw new ConflictException('Pedido não pode ser cancelado nesta versão');
-      const [fiscalDps] = await tx.select({ id: nfseDps.id }).from(nfseDps).where(and(eq(nfseDps.companyId, companyId), eq(nfseDps.sourceSaleId, id))).limit(1);
-      if (fiscalDps) throw new ConflictException('Esta venda já possui uma solicitação de NFS-e. Regularize a situação fiscal antes de cancelar a venda.');
+      const fiscalState = await saleFiscalState(tx, companyId, id);
+      if (!fiscalState.canCancelSale) throw new ConflictException(fiscalState.lockReason);
       const entries = await tx.select({ id: receivables.id }).from(receivables).where(and(eq(receivables.companyId, companyId), eq(receivables.saleId, id)));
       if (entries.length) {
         const movements = await tx.select().from(receivableMovements).where(and(eq(receivableMovements.companyId, companyId), inArray(receivableMovements.receivableId, entries.map((entry) => entry.id))));

@@ -80,3 +80,31 @@
   .nfse-paper__heading strong { font-size: 16px; }
   .nfse-group-totals > span:first-child { width: 100%; }
 }
+
+/* Correção, cancelamento e substituição */
+.nfse-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; padding: 11px 14px; border: 1px solid #eed9ad; background: #fff9ed; border-radius: 7px; color: #734e31; max-width: 520px; }
+.nfse-banner svg { flex-shrink: 0; }
+.nfse-banner p { margin: 0; flex: 1 1 220px; font-size: 12px; line-height: 1.5; }
+.nfse-banner p strong, .nfse-banner p span { display: block; }
+.nfse-banner p span { color: #8a6a4c; font-size: 11px; }
+.nfse-alert[role="alert"] { margin: 0 0 10px; }
+.nfse-info--substitution { margin-bottom: 18px; }
+.nfse-emission__hint { margin: 10px 0 0; padding: 9px 12px; font-size: 12px; line-height: 1.5; color: #734e31; background: #fff9ed; border: 1px solid #eed9ad; border-radius: 6px; }
+.nfse-document { margin-top: 8px; }
+.nfse-document__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.nfse-document__head p { margin: 0; font-weight: 600; color: #233e4e; }
+.nfse-document__note { margin: 6px 0 0; font-size: 12px; color: #8a5a1f; }
+.nfse-document__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.nfse-document__actions button { margin-top: 9px; }
+.nfse-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.nfse-chip--ok { background: #e3f4ea; color: #226642; }
+.nfse-chip--warning { background: #fdf0d6; color: #8a5a1f; }
+.nfse-chip--muted { background: #e8edf1; color: #4d6575; }
+.nfse-action-form { display: grid; gap: 10px; margin-top: 12px; padding: 14px 16px; border: 1px solid #d6e5eb; background: #f7fafc; border-radius: 7px; }
+.nfse-action-form p { margin: 0; font-size: 12px; line-height: 1.6; color: #3f6577; }
+.nfse-action-form label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; color: #314d60; }
+.nfse-action-form select, .nfse-action-form textarea { border: 1px solid #ccdae3; padding: 8px 10px; border-radius: 5px; background: #fff; font: inherit; font-size: 13px; resize: vertical; }
+.nfse-action-form small { margin: 0; font-size: 11px; color: #607989; }
+.nfse-action-form small.is-invalid { color: #9e4d34; }
+.nfse-action-form > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.nfse-action-form button { margin-top: 0; }

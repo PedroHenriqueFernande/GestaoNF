@@ -6,7 +6,7 @@ Objetivo: partir de uma venda do GestãoNF, preparar a declaração de prestaç�
 
 Decisões e alternativas: [ADR do emissor nacional](adr-nfse-national-emission.md). Artefatos oficiais inspecionados e respectivas impressões SHA-256: [manifesto de pesquisa](nfse-national-research-manifest.json).
 
-**Estado operacional da entrega:** os botões `Pré-visualizar NFS-e` e `Emitir NFS-e` aparecem em vendas confirmadas. A prévia não faz requisição fiscal, não assina e não reserva número. A confirmação de emissão só fica disponível para série padrão em homologação, certificado confiável e configuração fiscal/SEFIN explícita. Série de produção é identificada na prévia, mas seu envio permanece bloqueado nesta etapa. O worker consome `nfse.process` e `nfse.archive` da outbox PostgreSQL. A correção de DPS rejeitada e o cancelamento/substituição de NFS-e autorizada ainda exigem fluxo próprio antes de produção; a venda com solicitação fiscal é bloqueada contra edição/cancelamento comercial para preservar o histórico. A checagem local da cadeia usa raízes ICP-Brasil fornecidas pelo operador; revogação e autorização remota dependem da validação oficial e ainda não foram demonstradas em ensaio.
+**Estado operacional da entrega:** os botões `Pré-visualizar NFS-e` e `Emitir NFS-e` aparecem em vendas confirmadas. A prévia não faz requisição fiscal, não assina e não reserva número. A confirmação de emissão só fica disponível para série padrão em homologação, certificado confiável e configuração fiscal/SEFIN explícita. Série de produção é identificada na prévia, mas seu envio permanece bloqueado nesta etapa. O worker consome `nfse.process` e `nfse.archive` da outbox PostgreSQL. Atualização de 06/11/2026: a **correção de rejeição**, o **cancelamento** (evento 101101) e a **substituição** (DPS com `<subst>`) estão implementados para homologação — ver [especificação](../superpowers/specs/2026-11-06-nfse-correcao-cancelamento-substituicao-design.md) e a seção 10.1. A venda com solicitação fiscal continua bloqueada contra edição/cancelamento comercial enquanto houver nota em processamento ou autorizada, preservando o histórico. A checagem local da cadeia usa raízes ICP-Brasil fornecidas pelo operador; revogação e autorização remota dependem da validação oficial e ainda não foram demonstradas em ensaio.
 
 ## 1. Escopo da entrega
 
@@ -352,6 +352,45 @@ Reenvio automático, quando permitido pelo contrato e pela política de reconcil
 
 Se for recuperada uma nota com identidade esperada mas conteúdo diferente do snapshot, registrar incidente de conflito e impedir associação silenciosa. Autorização é comprovada por documento oficial correspondente, não por 200/201/202 isolado.
 
+### 10.1 Correção, cancelamento e substituição
+
+Uma venda pode ter várias emissões (`nfse_emission_requests`), no máximo uma aberta. A trava da venda é calculada em um único lugar, `sale-fiscal-state.ts`, dentro da transação que já bloqueia a venda.
+
+| Situação da venda | Editar venda | Cancelar venda | Emitir |
+| --- | --- | --- | --- |
+| DPS ou cancelamento em processamento | não | não | não |
+| Sem nota ativa (nunca emitida, tudo rejeitado, cancelado ou substituído) | sim | sim | sim, todos os itens, número novo |
+| Nota autorizada com substituição aberta | sim | não | sim, como substituta |
+| Nota(s) autorizada(s) cobrindo toda a venda | não | não | não |
+| Nota(s) autorizada(s) cobrindo parte dos itens | não | não | sim, só os itens sem nota |
+
+- **Rejeição:** a nova emissão usa número de DPS novo e guarda `previous_emission_id`. Itens com nota autorizada não entram de novo.
+- **Cancelamento:** linha em `nfse_document_events` (`PENDING → READY → SENDING → REGISTERED`, `REJECTED` ou `UNKNOWN`), processada pelo tópico `nfse.event`. O identificador `PRE{chave}101101` e o índice único parcial garantem um cancelamento ativo por nota. Resultado incerto é consultado antes de qualquer reenvio. Só quando o evento é registrado a nota passa a `CANCELLED`; a venda continua `CONFIRMED` e o financeiro não é alterado.
+- **Substituição:** só para venda com uma única nota ativa que cubra todos os serviços. Abrir a substituição destrava a venda; a prévia cobre a venda toda e precisa resultar em **uma** nota. A DPS substituta leva `<subst>` (chave da original, motivo). Na autorização, o XML retornado precisa referenciar exatamente a chave substituída; então a original passa a `SUBSTITUTED` na mesma transação. Substituta rejeitada mantém a original válida e a substituição aberta.
+- **Desistir da substituição:** permitido enquanto o conteúdo fiscal da venda for igual ao da nota emitida (a versão da venda só cresce, por isso a comparação é por conteúdo, ignorando ids de itens, que são recriados a cada edição).
+- **O que a substituta não pode mudar (E0061/E0063):** enquanto o prestador continua MEI ou ME/EPP, a competência, o tomador e o valor do serviço da nota substituta devem ser iguais aos da original. A prévia em modo substituição bloqueia a emissão (`SUBSTITUTION_COMPETENCE_LOCKED`, `SUBSTITUTION_CUSTOMER_LOCKED`, `SUBSTITUTION_VALUE_LOCKED`) e orienta a cancelar a nota e emitir outra. Descrição, classificação e demais dados podem mudar.
+- **Fora do escopo:** substituição em venda com várias notas, análise fiscal para cancelamento fora do prazo (evento 101103), produção.
+- **Contrato pendente de conferência no Swagger:** caminho e nomes de campo JSON dos eventos (ver `eventSchemas.unverifiedAgainstSwagger` no manifesto). Ficam isolados em `nfse-national.client.ts`.
+
+### 10.2 Respostas do ambiente nacional
+
+`classifyResponse` (em `nfse-national.client.ts`) decide o que fazer com a resposta HTTP de um envio:
+
+| Resposta | Tratamento |
+| --- | --- |
+| 2xx com XML | Autorizada |
+| 400, 422 e demais 4xx de negócio | **Rejeitada**, com os erros lidos de `erros`/`erro`/`errors` (qualquer caixa, objeto ou lista) ou, na falta deles, o texto cru da resposta |
+| 401, 403, 404 | **Não processada** (URL, certificado ou permissão): a DPS volta a `READY` com `sentAt` limpo e a mensagem orienta a corrigir e usar "Retomar processamento"; o mesmo XML assinado é reenviado, sem consulta |
+| 408, 409, 429, 5xx, queda de conexão | **Incerta**: consulta antes de qualquer reenvio |
+
+A autorização é gravada mesmo que o XML devolvido difira do XSD local; nesse caso registra-se o evento `SCHEMA_WARNING`. XML malformado, identidade, prestador, ambiente ou valores divergentes continuam sendo recusados.
+
+`dhEmi` (e `dhEvento`) são recuados em 1 minuto para absorver diferença de relógio com o governo (E0008), sem passar para o dia anterior à competência (E0015).
+
+### 10.3 Prontidão e teste de conexão
+
+`GET /fiscal/nfse/readiness` confere, sem rede: flags do servidor, URL, perfil de assinatura, cadeia ICP-Brasil, certificado, cadastro da empresa, série de homologação e lembra do convênio do município (ME/EPP). `POST /fiscal/nfse/readiness/connection` faz uma consulta somente leitura `GET /dps/{id}` de um número ainda não usado: um erro de negócio em JSON (por exemplo, DPS não encontrada) prova que URL, TLS, certificado e permissão estão aceitos; 401/403 indicam certificado ou permissão recusados; 404 sem erro de negócio indica caminho base errado. A sondagem não exige `NFSE_CONTRACT_CONFIRMED`, porque é por ela que a URL é verificada. O convênio do município **não** é consultado automaticamente.
+
 ## 11. API do GestãoNF
 
 Todas as rotas abaixo usam autenticação e contexto de empresa. Para a primeira entrega fiscal, ações de configuração, teste de credencial e emissão ficam com `OWNER`/`ADMIN`; ampliar a colaboradores somente com uma permissão fiscal explícita. Documentos fiscais e chaves não ficam expostos por conhecimento do UUID.
@@ -367,6 +406,14 @@ Todas as rotas abaixo usam autenticação e contexto de empresa. Para a primeira
 | `GET /fiscal/nfse/documents` | Lista paginada, com filtros de ambiente, competência, emissão, situação, cliente e número |
 | `GET /fiscal/nfse/dps/:id` | Situação, histórico e motivos de uma DPS, sem credenciais |
 | `POST /fiscal/nfse/dps/:id/reconcile` | Agenda consulta idempotente; não envia nova declaração |
+| `GET /fiscal/nfse/readiness` | Pendências de configuração, certificado, cadastro e série para emitir em homologação (OWNER/ADMIN) |
+| `POST /fiscal/nfse/readiness/connection` | Teste de conexão somente leitura com o ambiente nacional; não consome numeração |
+| `GET /sales/:saleId/nfse/state` | Estado fiscal da venda: trava, modo de emissão (`ISSUE`/`SUBSTITUTION`), substituição aberta e ações possíveis por nota |
+| `POST /fiscal/nfse/documents/:id/cancel` | Exige `Idempotency-Key`; `{ reasonCode: 1\|2\|9, reasonText: 15–255 }`; responde 202 |
+| `GET /fiscal/nfse/document-events/:id` | Situação do cancelamento |
+| `POST /fiscal/nfse/document-events/:id/reconcile` | Reconsulta cancelamento incerto; 202 |
+| `POST /fiscal/nfse/documents/:id/substitution` | `{ reasonCode: 01–05\|99, reasonText }`; abre a substituição |
+| `DELETE /fiscal/nfse/documents/:id/substitution` | Desiste da substituição (204) |
 | `POST /fiscal/nfse/dps/:id/corrections/preview` | Prepara correção de grupo definitivamente rejeitado sem consumir número |
 | `POST /fiscal/nfse/dps/:id/corrections` | Confirma nova revisão rejeitada, com idempotência, versão e hash; nunca atua sobre nota autorizada ou resultado desconhecido |
 | `GET /fiscal/nfse/documents/:id/download?format=xml` | Valida acesso e entrega XML exato, por streaming ou URL privada curta |

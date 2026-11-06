@@ -27,5 +27,21 @@
   "officialApiDocumentation": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/apis-prod-restrita-e-producao/apis-prod-restrita-e-producao",
   "homologationSefinSwagger": "https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional/docs/index",
   "openApiStatus": "Not retrieved: official Swagger returned HTTP 403 during research; runtime server path and JSON contracts must be captured before enabling transmission",
-  "signatureProfileStatus": "Must be verified for active contract before transmission; legacy integrated manual alone is insufficient"
+  "signatureProfileStatus": "Must be verified for active contract before transmission; legacy integrated manual alone is insufficient",
+  "eventSchemas": {
+    "inspectedAt": "2026-11-06",
+    "source": "PRODREST v1.01 20261020 (mesmo pacote esquemas_prod_restrita_20261020.zip, sha256 25fdcecc…ea267 reconferido)",
+    "installedAt": "backend/src/fiscal/contracts/homologation-20261020/",
+    "files": {
+      "pedRegEvento_v1.01.xsd": "e90b6816d29cca0bd5ed8f86ad98d3b7b0d8bbfc11a7583e6ff8f98170fd4009",
+      "evento_v1.01.xsd": "986d0a1c4d27454f712169849aa7c2380aaa4560bd9c920e0ff03ba6599ae28b",
+      "tiposEventos_v1.01.xsd": "1b32bea21089dc232d78b62d805e9c07382f440d4e0ea2cb3fb6b82ebde68c11"
+    },
+    "unverifiedAgainstSwagger": [
+      "POST /nfse/{chaveAcesso}/eventos",
+      "campo JSON do pedido (pedidoRegistroEventoXmlGZipB64)",
+      "campo JSON do retorno (eventoXmlGZipB64)",
+      "GET /nfse/{chaveAcesso}/eventos/{tipoEvento}"
+    ]
+  }
 }

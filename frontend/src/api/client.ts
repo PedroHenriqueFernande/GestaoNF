@@ -1,4 +1,4 @@
-import type { NfseEmission, NfsePreview, NfsePreviewInput } from './nfse.types';
+import type { NfseCancelInput, NfseCancellation, NfseConnectionResult, NfseEmission, NfseReadiness, NfsePreview, NfsePreviewInput, NfseSaleState, NfseSubstitutionInput } from './nfse.types';
 const API_URL = (import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:4030`).replace(/\/$/, '');
 
 export type User = { id: string; name: string; email: string };
@@ -319,6 +319,13 @@ export const api = {
   nfseEmissions: (companyId: string, saleId: string) => request<NfseEmission[]>(`/sales/${saleId}/nfse/emissions`, {}, { companyId }),
   reconcileNfse: (companyId: string, id: string) => request<NfseEmission>(`/fiscal/nfse/dps/${id}/reconcile`, { method: 'POST' }, { companyId }),
   nfseXml: (companyId: string, id: string) => requestBlob(`/fiscal/nfse/documents/${id}/xml`, companyId),
+  nfseReadiness: (companyId: string) => request<NfseReadiness>('/fiscal/nfse/readiness', {}, { companyId }),
+  nfseConnectionTest: (companyId: string) => request<NfseConnectionResult>('/fiscal/nfse/readiness/connection', { method: 'POST' }, { companyId }),
+  nfseState: (companyId: string, saleId: string) => request<NfseSaleState>(`/sales/${saleId}/nfse/state`, {}, { companyId }),
+  cancelNfse: (companyId: string, documentId: string, key: string, input: NfseCancelInput) => request<NfseCancellation>(`/fiscal/nfse/documents/${documentId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
+  reconcileNfseCancellation: (companyId: string, eventId: string) => request<NfseCancellation>(`/fiscal/nfse/document-events/${eventId}/reconcile`, { method: 'POST' }, { companyId }),
+  openNfseSubstitution: (companyId: string, documentId: string, input: NfseSubstitutionInput) => request<{ documentId: string }>(`/fiscal/nfse/documents/${documentId}/substitution`, { method: 'POST', body: json(input) }, { companyId }),
+  discardNfseSubstitution: (companyId: string, documentId: string) => request<void>(`/fiscal/nfse/documents/${documentId}/substitution`, { method: 'DELETE' }, { companyId }),
   fiscalSeries: (companyId: string, environment?: FiscalSeries['environment']) => request<FiscalSeries[]>(`/fiscal/series${environment ? `?environment=${environment}` : ''}`, {}, { companyId }),
   fiscalSeriesAdjustments: (companyId: string, id: string) => request<FiscalSeriesAdjustment[]>(`/fiscal/series/${id}/adjustments`, {}, { companyId }),
   createFiscalSeries: (companyId: string, input: { environment: FiscalSeries['environment']; seriesNumber: number; nextNumber: string; isDefault: boolean }) =>

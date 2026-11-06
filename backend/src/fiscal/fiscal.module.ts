@@ -10,6 +10,9 @@ import { NfsePreviewService } from './nfse-preview.service.js';
 import { NfseIssuanceService } from './nfse-issuance.service.js';
 import { NationalNfseClient } from './nfse-national.client.js';
 import { NfseProcessorService } from './nfse-processor.service.js';
+import { NfseEventProcessorService } from './nfse-event-processor.service.js';
+import { NfseDocumentActionsService } from './nfse-document-actions.service.js';
+import { NfseReadinessService } from './nfse-readiness.service.js';
 
-@Module({ imports: [AuthModule, FilesModule], controllers: [FiscalController, CertificateController, NfseController], providers: [FiscalService, CertificateService, NfsePreviewService, NfseIssuanceService, NationalNfseClient, NfseProcessorService], exports: [FiscalService, CertificateService, NfseProcessorService] })
+@Module({ imports: [AuthModule, FilesModule], controllers: [FiscalController, CertificateController, NfseController], providers: [FiscalService, CertificateService, NfsePreviewService, NfseIssuanceService, NationalNfseClient, NfseProcessorService, NfseEventProcessorService, NfseDocumentActionsService, NfseReadinessService], exports: [FiscalService, CertificateService, NfseProcessorService, NfseEventProcessorService] })
 export class FiscalModule {}

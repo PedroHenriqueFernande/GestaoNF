@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, customers, companyFiscalCertificates, companyUsers, nfsePreviews, nfseSeries, saleItems, sales, services, serviceMunicipalTaxCodes } from '@gestaonf/database/schema';
+import { companies, customers, companyFiscalCertificates, companyUsers, nfseDocuments, nfseDps, nfsePreviews, nfseSeries, saleItems, sales, services, serviceMunicipalTaxCodes } from '@gestaonf/database/schema';
 import { and, eq } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 import { isValidCnpj, isValidCpf } from '../customers/tax-id.js';
@@ -8,6 +8,7 @@ import { NFSE_CONTRACT, buildDps, hash, isOfficialNbsCode, officialService, vali
 import type { NfsePreviewInput } from './nfse.schemas.js';
 import type { NfseGroup, NfseIssue, NfseParty, NfsePreview, NfseSnapshot } from './nfse.types.js';
 import { CertificateService } from './certificate.service.js';
+import { saleFiscalState } from './sale-fiscal-state.js';
 
 type Db = DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
 export function snapshotHash(snapshot: NfseSnapshot) {
@@ -62,8 +63,14 @@ export class NfsePreviewService {
     if (!selected) add('SERIES_REQUIRED', compatible.length ? 'Defina uma única série padrão para a empresa em Fiscal → Séries e numeração.' : 'Cadastre uma série compatível com o CNPJ e município da empresa.', 'series', 'series');
     if (selected && selected.nextNumber > 999999999999999n) add('SERIES_EXHAUSTED', 'A numeração desta série está esgotada.', 'nextNumber', 'series');
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: company.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const fiscal = await saleFiscalState(db, companyId, saleId);
+    const substitution = fiscal.substitution;
+    if (fiscal.inProgress) add('NFSE_IN_PROGRESS', 'Há uma solicitação fiscal em andamento para esta venda. Aguarde o resultado antes de emitir novamente.', 'status', 'sale');
+    // Normal emission covers only the items without an active note; a substitute covers the whole sale.
+    const included = substitution ? items : items.filter(({ item }) => !fiscal.coveredItemIds.has(item.id));
+    if (!fiscal.inProgress && fiscal.activeDocuments.length && !substitution && !included.length) add('NFSE_ALREADY_AUTHORIZED', 'Todos os serviços desta venda já possuem NFS-e autorizada. Para corrigir a nota, cancele ou substitua a nota emitida.', 'status', 'sale');
     const groups = new Map<string, NfseGroup>();
-    for (const { item, service } of items) {
+    for (const { item, service } of included) {
       const competence = input.competence ?? item.performedOn ?? sale.soldOn ?? today;
       if (competence > today) add('FUTURE_COMPETENCE', `A competência de ${item.serviceNameSnapshot} não pode ser futura.`, 'competence', 'sale');
       if (!item.performedOn && !input.competence) add('CONFIRM_COMPETENCE', `Confira a data da prestação de ${item.serviceNameSnapshot}; foi sugerida a data da venda.`, 'competence', 'sale', 'WARNING');
@@ -94,7 +101,27 @@ export class NfsePreviewService {
     }
     if (!items.length) add('SERVICES_REQUIRED', 'A venda precisa ter um serviço.', 'items', 'sale');
     const groupedTotal = [...groups.values()].reduce((total, group) => total + cents(group.totalAmount), 0n);
-    if (groupedTotal !== cents(sale.totalAmount)) add('SALE_TOTAL_MISMATCH', 'O total dos serviços não corresponde ao total da venda. Revise o pedido.', 'totalAmount', 'sale');
+    const wholeSale = included.length === items.length;
+    const includedTotal = included.reduce((total, { item }) => total + cents(item.totalAmount), 0n);
+    if (substitution && groups.size === 1) {
+      // National rules E0061/E0063: while the issuer stays MEI or ME/EPP, a substitute cannot change competence, recipient or service value.
+      const [original] = await db.select({ snapshot: nfseDps.snapshot, groupKey: nfseDps.groupKey }).from(nfseDocuments)
+        .innerJoin(nfseDps, and(eq(nfseDps.companyId, nfseDocuments.companyId), eq(nfseDps.id, nfseDocuments.dpsId)))
+        .where(and(eq(nfseDocuments.companyId, companyId), eq(nfseDocuments.id, substitution.documentId))).limit(1);
+      const before = original?.snapshot as unknown as NfseSnapshot | undefined;
+      const beforeGroup = before?.groups.find(g => g.key === original?.groupKey);
+      const now = [...groups.values()][0];
+      if (before && beforeGroup && ['2', '3'].includes(before.simplesOption ?? '') && ['2', '3'].includes(company.simplesNationalOption ?? '')) {
+        const hint = ' Para MEI e ME/EPP o governo não aceita essa mudança na substituição: restaure o valor original ou cancele a nota e emita outra.';
+        const date = (value: string) => value.split('-').reverse().join('/');
+        const money = (value: string) => value.replace('.', ',');
+        if (now.competence !== beforeGroup.competence) add('SUBSTITUTION_COMPETENCE_LOCKED', `A competência da nota substituta não pode mudar (a nota original é de ${date(beforeGroup.competence)}).${hint}`, 'competence', 'sale');
+        if (before.customer.taxId !== recipient.taxId) add('SUBSTITUTION_CUSTOMER_LOCKED', `O tomador da nota substituta não pode mudar (a nota original é de ${before.customer.name}).${hint}`, 'customer', 'customer');
+        if (cents(now.grossAmount) !== cents(beforeGroup.grossAmount)) add('SUBSTITUTION_VALUE_LOCKED', `O valor do serviço da nota substituta não pode mudar (a nota original é de R$ ${money(beforeGroup.grossAmount)}).${hint}`, 'totalAmount', 'sale');
+      }
+    }
+    if (substitution && groups.size > 1) add('SUBSTITUTION_SINGLE_GROUP', 'A NFS-e substituta precisa ser uma única nota, mas os serviços atuais da venda têm classificações fiscais diferentes. Ajuste os serviços ou cancele a nota e emita novamente.', 'items', 'sale');
+    if (groupedTotal !== (wholeSale ? cents(sale.totalAmount) : includedTotal)) add('SALE_TOTAL_MISMATCH', 'O total dos serviços não corresponde ao total da venda. Revise o pedido.', 'totalAmount', 'sale');
     for (const g of groups.values()) {
       if (g.description.length > 2000) add('DESCRIPTION_LENGTH', 'A descrição agrupada excede 2.000 caracteres. Revise os serviços.', 'description', 'sale');
       if (cents(g.totalAmount) <= 0n) add('VALUE_REQUIRED', 'O valor dos serviços da nota deve ser maior que zero.', 'totalAmount', 'sale');
@@ -103,7 +130,8 @@ export class NfsePreviewService {
     if (!cert) add('CERTIFICATE_MISSING', 'Cadastre o certificado A1 da empresa para poder emitir. A prévia pode ser consultada.', 'certificate', 'company', 'WARNING');
     const snapshot: NfseSnapshot = { schemaVersion: 1, saleId, saleVersion: sale.version, orderCode: sale.orderCode, generatedAt: new Date().toISOString(), contractVersion: NFSE_CONTRACT,
       environment: selected?.environment as NfseSnapshot['environment'] ?? null, series: selected ? { id: selected.id, number: selected.seriesNumber, nextNumber: selected.nextNumber.toString(), version: selected.version } : null,
-      issuer, customer: recipient, customerId: customer.id, simplesOption: company.simplesNationalOption, simplesTaxationRegime: company.simplesTaxationRegime, specialTaxRegime: company.specialTaxRegime ?? '0', groups: [...groups.values()], totalAmount: sale.totalAmount, issues,
+      issuer, customer: recipient, customerId: customer.id, simplesOption: company.simplesNationalOption, simplesTaxationRegime: company.simplesTaxationRegime, specialTaxRegime: company.specialTaxRegime ?? '0', groups: [...groups.values()], totalAmount: wholeSale ? sale.totalAmount : amount(includedTotal), issues,
+      ...(substitution ? { substitution: { documentId: substitution.documentId, accessKey: substitution.accessKey, reasonCode: substitution.reasonCode, reasonText: substitution.reasonText } } : {}),
       input: { ...(input.competence ? { competence: input.competence } : {}), ...(input.municipalityIbgeCode ? { municipalityIbgeCode: input.municipalityIbgeCode } : {}), ...(input.simplesTotalTaxPercent ? { simplesTotalTaxPercent: input.simplesTotalTaxPercent } : {}) }, certificate: cert ? { id: cert.id, expiresAt: cert.notAfter.toISOString(), status: cert.notAfter > new Date() ? 'ACTIVE' : 'EXPIRED', trusted: false } : null };
     if (!issues.some(i => i.severity === 'ERROR') && selected?.environment === 'HOMOLOGATION') {
       for (const [i, group] of snapshot.groups.entries()) {

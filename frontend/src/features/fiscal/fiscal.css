@@ -32,3 +32,18 @@
 .fiscal-history{width:100%;padding:10px 12px;border-top:1px solid #e1eaee;color:#496574;font-size:12px}.fiscal-history p{margin:6px 0}
 @media(max-width:950px){.fiscal-form{grid-template-columns:repeat(2,minmax(0,1fr))}.fiscal-form__rates{grid-template-columns:repeat(2,minmax(0,1fr))}.fiscal-advance{grid-template-columns:1fr 1fr}.fiscal-advance button{grid-column:1/-1}}
 @media(max-width:600px){.fiscal-page{padding:22px 15px 60px}.fiscal-heading h1{font-size:25px}.fiscal-heading__icon{display:none}.fiscal-tabs a{flex:1;text-align:center;padding:10px 6px;font-size:12px}.fiscal-card{padding:17px}.fiscal-form,.fiscal-form--tax,.fiscal-form__rates,.fiscal-advance{grid-template-columns:1fr}.fiscal-form__rates{grid-column:1}.fiscal-form__actions{grid-column:1}.fiscal-row{display:grid}}
+
+/* Prontidão para emitir */
+.nfse-readiness__summary{margin:0 0 14px;padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600}
+.nfse-readiness__summary.is-ready{background:#e3f4ea;color:#226642}.nfse-readiness__summary.is-blocked{background:#fdeee9;color:#8a3b25}
+.nfse-readiness__list{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:2px}
+.nfse-readiness__list li{display:flex;gap:11px;align-items:flex-start;padding:10px 4px;border-top:1px solid #e5edf1}
+.nfse-readiness__list li:first-child{border-top:0}
+.nfse-readiness__list svg{flex-shrink:0;margin-top:2px}
+.nfse-readiness__list li.is-ok svg{color:#2a8a55}.nfse-readiness__list li.is-warning svg{color:#c27c1b}.nfse-readiness__list li.is-error svg{color:#c4452b}
+.nfse-readiness__list strong{display:block;font-size:13px;color:#1f3c4c}
+.nfse-readiness__list p{margin:3px 0 0;font-size:12px;line-height:1.55;color:#587283;overflow-wrap:anywhere}
+.nfse-readiness__probe{display:grid;gap:8px;justify-items:start;padding-top:14px;border-top:1px solid #e5edf1}
+.nfse-readiness__probe small{color:#637c8b;font-size:11px}
+.nfse-readiness__probe .fiscal-alert{margin:0;width:100%}
+.nfse-readiness .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

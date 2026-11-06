@@ -1,12 +1,21 @@
 import { ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { companies, companyUsers, integrationOutbox, nfseDocuments, nfseDps, nfseEmissionRequests, nfseEvents, nfsePreviews, nfseSeries, sales } from '@gestaonf/database/schema';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { companies, companyUsers, integrationOutbox, nfseDocumentEvents, nfseDocuments, nfseDps, nfseEmissionRequests, nfseEvents, nfsePreviews, nfseSeries, saleItems, sales } from '@gestaonf/database/schema';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { saleFiscalState, type SaleFiscalState } from './sale-fiscal-state.js';
 import { DatabaseService } from '../database/database.module.js';
 import { NfsePreviewService, snapshotHash } from './nfse-preview.service.js';
 import { dpsIdentifier, hash } from './nfse-contract.js';
 import type { NfseSnapshot } from './nfse.types.js';
 import { NationalNfseClient } from './nfse-national.client.js';
+
+type Db = DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
+
+/** Rejects an emission that would duplicate work already in flight or already authorized. */
+function assertCanEmit(state: SaleFiscalState, groups: Array<{ items: Array<{ id: string }> }>) {
+  if (state.inProgress) throw new ConflictException({ code: 'NFSE_IN_PROGRESS', message: 'Há uma solicitação fiscal em andamento para esta venda. Consulte o resultado antes de emitir novamente.' });
+  if (!state.substitution && groups.some(group => group.items.some(item => state.coveredItemIds.has(item.id)))) throw new ConflictException({ code: 'NFSE_ALREADY_AUTHORIZED', message: 'Estes serviços já possuem NFS-e autorizada. Para corrigir a nota, cancele ou substitua a nota emitida.' });
+}
 
 @Injectable()
 export class NfseIssuanceService {
@@ -22,6 +31,7 @@ export class NfseIssuanceService {
     }
     const preview = await this.previews.get(companyId, previewId);
     if (preview.saleId !== saleId) throw new NotFoundException('Prévia não encontrada para esta venda.');
+    assertCanEmit(await saleFiscalState(this.database.db, companyId, saleId), preview.groups);
     if (preview.environment !== 'HOMOLOGATION') throw new UnprocessableEntityException('A série precisa estar em homologação. Emissão em produção ainda não está disponível.');
     if (Date.now() - Date.parse(preview.generatedAt) > 5 * 60000) throw new ConflictException('A prévia expirou. Atualize os dados antes de emitir.');
     if (!preview.canEmit) throw new UnprocessableEntityException({ code: 'NFSE_NOT_READY', message: [...preview.issues, ...preview.emissionIssues].filter(i => i.severity === 'ERROR').map(i => i.message).join('\n'), issues: [...preview.issues, ...preview.emissionIssues] });
@@ -38,8 +48,11 @@ export class NfseIssuanceService {
         if (sameKey.requestHash !== requestHash) throw new ConflictException('Chave idempotente incompatível.');
         return sameKey.id;
       }
-      const [issued] = await tx.select({ id: nfseEmissionRequests.id }).from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.saleId, saleId), eq(nfseEmissionRequests.environment, 'HOMOLOGATION'))).limit(1);
-      if (issued) throw new ConflictException({ code: 'NFSE_ALREADY_REQUESTED', message: 'Esta venda já possui uma solicitação de emissão em homologação. Consulte seu resultado.', emissionId: issued.id });
+      const fiscal = await saleFiscalState(tx, companyId, saleId);
+      assertCanEmit(fiscal, preview.groups);
+      const [latest] = await tx.select({ id: nfseEmissionRequests.id }).from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.saleId, saleId), eq(nfseEmissionRequests.environment, 'HOMOLOGATION'))).orderBy(desc(nfseEmissionRequests.createdAt)).limit(1);
+      // The substitution recorded in the confirmed preview must still be the open one.
+      if ((preview.substitution?.documentId ?? null) !== (fiscal.substitution?.documentId ?? null)) throw new ConflictException('A situação da substituição mudou. Gere outra prévia.');
       const [series] = await tx.select().from(nfseSeries).where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, preview.series!.id))).for('update').limit(1);
       if (!series || series.environment !== 'HOMOLOGATION' || series.status !== 'ACTIVE' || series.version !== preview.series!.version || series.nextNumber.toString() !== preview.series!.nextNumber || series.issuerTaxIdSnapshot !== preview.issuer.taxId) throw new ConflictException('A série mudou. Gere outra prévia.');
       // Lock and compare all mutable sources with the saved snapshot before accepting it.
@@ -47,7 +60,7 @@ export class NfseIssuanceService {
       if (snapshotHash(verified) !== preview.hash) throw new ConflictException('Os cadastros mudaram. Gere outra prévia.');
       const end = series.nextNumber + BigInt(preview.groups.length);
       if (end > 1000000000000000n) throw new ConflictException('A numeração da série está esgotada.');
-      const [request] = await tx.insert(nfseEmissionRequests).values({ companyId, saleId, previewId, environment: 'HOMOLOGATION', requestKey: key, requestHash, createdByUserId: userId }).returning({ id: nfseEmissionRequests.id });
+      const [request] = await tx.insert(nfseEmissionRequests).values({ companyId, saleId, previewId, environment: 'HOMOLOGATION', requestKey: key, requestHash, createdByUserId: userId, kind: fiscal.substitution ? 'SUBSTITUTION' : 'ISSUE', previousEmissionId: latest?.id ?? null, substitutesDocumentId: fiscal.substitution?.documentId ?? null }).returning({ id: nfseEmissionRequests.id });
       for (const [index, group] of preview.groups.entries()) {
         const number = series.nextNumber + BigInt(index);
         const [dps] = await tx.insert(nfseDps).values({ companyId, seriesId: series.id, environment: 'HOMOLOGATION', issuerTaxIdSnapshot: series.issuerTaxIdSnapshot, municipalityIbgeCode: series.municipalityIbgeCode, seriesNumber: series.seriesNumber, dpsNumber: number, sourceSaleId: saleId, emissionId: request.id, groupKey: group.key,
@@ -62,17 +75,42 @@ export class NfseIssuanceService {
   }
 
   async get(companyId: string, id: string) {
-    const [request] = await this.database.db.select({ id: nfseEmissionRequests.id, saleId: nfseEmissionRequests.saleId, environment: nfseEmissionRequests.environment, createdAt: nfseEmissionRequests.createdAt }).from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.id, id))).limit(1);
+    const [request] = await this.database.db.select({ id: nfseEmissionRequests.id, saleId: nfseEmissionRequests.saleId, environment: nfseEmissionRequests.environment, createdAt: nfseEmissionRequests.createdAt, kind: nfseEmissionRequests.kind, previousEmissionId: nfseEmissionRequests.previousEmissionId, substitutesDocumentId: nfseEmissionRequests.substitutesDocumentId }).from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.id, id))).limit(1);
     if (!request) throw new NotFoundException('Emissão não encontrada.');
-    const rows = await this.database.db.select({ dps: { id: nfseDps.id, status: nfseDps.status, seriesNumber: nfseDps.seriesNumber, number: nfseDps.dpsNumber, lastError: nfseDps.lastError, nextActionAt: nfseDps.nextActionAt }, document: { id: nfseDocuments.id, number: nfseDocuments.number, accessKey: nfseDocuments.accessKey, authorizedAt: nfseDocuments.authorizedAt } }).from(nfseDps).leftJoin(nfseDocuments, and(eq(nfseDocuments.companyId, nfseDps.companyId), eq(nfseDocuments.dpsId, nfseDps.id))).where(and(eq(nfseDps.companyId, companyId), eq(nfseDps.emissionId, id))).orderBy(asc(nfseDps.dpsNumber));
+    const rows = await this.database.db.select({ dps: { id: nfseDps.id, status: nfseDps.status, seriesNumber: nfseDps.seriesNumber, number: nfseDps.dpsNumber, lastError: nfseDps.lastError, nextActionAt: nfseDps.nextActionAt }, document: { id: nfseDocuments.id, number: nfseDocuments.number, accessKey: nfseDocuments.accessKey, authorizedAt: nfseDocuments.authorizedAt, status: nfseDocuments.status, cancelledAt: nfseDocuments.cancelledAt, substitutionReasonCode: nfseDocuments.substitutionReasonCode, substitutionReasonText: nfseDocuments.substitutionReasonText } }).from(nfseDps).leftJoin(nfseDocuments, and(eq(nfseDocuments.companyId, nfseDps.companyId), eq(nfseDocuments.dpsId, nfseDps.id))).where(and(eq(nfseDps.companyId, companyId), eq(nfseDps.emissionId, id))).orderBy(asc(nfseDps.dpsNumber));
     const states = rows.map(r => r.dps.status);
     const status = states.every(s => s === 'AUTHORIZED') ? 'AUTHORIZED' : states.some(s => s === 'AUTHORIZED') ? 'PARTIAL' : states.every(s => s === 'REJECTED') ? 'REJECTED' : states.some(s => s === 'UNKNOWN') ? 'UNKNOWN' : 'PROCESSING';
     const events = await this.database.db.select({ id: nfseEvents.id, action: nfseEvents.action, message: nfseEvents.message, createdAt: nfseEvents.createdAt }).from(nfseEvents).where(and(eq(nfseEvents.companyId, companyId), eq(nfseEvents.emissionId, id))).orderBy(desc(nfseEvents.createdAt)).limit(100);
-    return { ...request, status, items: rows.map(r => ({ ...r.dps, number: r.dps.number.toString(), document: r.document })), events };
+    const documentIds = rows.flatMap(r => r.document?.id ? [r.document.id] : []);
+    const cancellations = documentIds.length ? await this.database.db.select().from(nfseDocumentEvents).where(and(eq(nfseDocumentEvents.companyId, companyId), inArray(nfseDocumentEvents.documentId, documentIds))).orderBy(desc(nfseDocumentEvents.createdAt)) : [];
+    const items = rows.map(r => {
+      const { substitutionReasonCode, substitutionReasonText, ...document } = r.document ?? {} as Record<string, never>;
+      const latest = r.document?.id ? cancellations.find(event => event.documentId === r.document!.id) : undefined;
+      return { ...r.dps, number: r.dps.number.toString(), document: r.document?.id ? { ...document, substitution: substitutionReasonCode ? { reasonCode: substitutionReasonCode, reasonText: substitutionReasonText ?? null } : null,
+        cancellation: latest ? { id: latest.id, status: latest.status, reasonCode: latest.reasonCode, reasonText: latest.reasonText, lastError: latest.lastError, createdAt: latest.createdAt } : null } : null };
+    });
+    return { ...request, status, items, events };
+  }
+
+  /** What the sale screen needs to decide which fiscal actions to offer. */
+  async state(companyId: string, saleId: string) {
+    const [sale] = await this.database.db.select({ id: sales.id }).from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, saleId))).limit(1);
+    if (!sale) throw new NotFoundException('Venda não encontrada.');
+    const fiscal = await saleFiscalState(this.database.db, companyId, saleId);
+    const items = await this.database.db.select({ id: saleItems.id }).from(saleItems).where(and(eq(saleItems.companyId, companyId), eq(saleItems.saleId, saleId)));
+    const uncovered = items.filter(item => !fiscal.coveredItemIds.has(item.id)).length;
+    const single = fiscal.activeDocuments.length === 1 && uncovered === 0 && !fiscal.inProgress && !fiscal.substitution;
+    return {
+      inProgress: fiscal.inProgress, canEditSale: fiscal.canEditSale, canCancelSale: fiscal.canCancelSale, lockReason: fiscal.lockReason,
+      uncoveredItems: uncovered, hasActiveDocuments: fiscal.activeDocuments.length > 0,
+      emitMode: fiscal.inProgress ? null : fiscal.substitution ? 'SUBSTITUTION' as const : uncovered > 0 ? 'ISSUE' as const : null,
+      substitution: fiscal.substitution ? { documentId: fiscal.substitution.documentId, number: fiscal.substitution.number, reasonCode: fiscal.substitution.reasonCode, reasonText: fiscal.substitution.reasonText } : null,
+      activeDocuments: fiscal.activeDocuments.map(document => ({ id: document.id, number: document.number, canSubstitute: single, canCancel: !fiscal.inProgress })),
+    };
   }
 
   async forSale(companyId: string, saleId: string) {
-    const rows = await this.database.db.select({ id: nfseEmissionRequests.id }).from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.saleId, saleId)));
+    const rows = await this.database.db.select({ id: nfseEmissionRequests.id }).from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.saleId, saleId))).orderBy(asc(nfseEmissionRequests.createdAt));
     return Promise.all(rows.map(r => this.get(companyId, r.id)));
   }
 

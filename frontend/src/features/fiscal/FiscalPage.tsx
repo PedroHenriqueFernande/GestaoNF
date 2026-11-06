@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { AlertCircle, Calculator, Hash, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api, type FiscalSeries, type TaxProfile, type TaxRevisionInput, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
+import { NfseReadinessCard } from './NfseReadinessCard';
 import './fiscal.css';
 
 const today = () => new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -109,6 +110,7 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
       {message && <p className="fiscal-alert fiscal-alert--success" role="status"><ShieldCheck size={17} />{message}</p>}
       {mode === 'series' ? <>
         <div className="fiscal-note"><strong>O ambiente da emissão é definido pela série padrão.</strong> Use homologação para testar. A pré-visualização não consome numeração; a reserva ocorre somente na confirmação de Emitir NFS-e. O envio em produção ainda não está disponível.</div>
+        {canManage && companyId && <NfseReadinessCard companyId={companyId} />}
         {canManage && <section className="fiscal-card"><h2><Plus size={18} /> Nova série</h2>
           <p>A empresa precisa ter CPF/CNPJ e município preenchidos. Use uma série exclusiva deste sistema.</p>
           <form className="fiscal-form" onSubmit={createSeries}>

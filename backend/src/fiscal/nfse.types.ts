@@ -14,5 +14,7 @@ export type NfseSnapshot = {
   simplesOption: string | null; simplesTaxationRegime: string | null; specialTaxRegime: string | null;
   groups: NfseGroup[]; totalAmount: string; issues: NfseIssue[]; input: { competence?: string; municipalityIbgeCode?: string; simplesTotalTaxPercent?: string };
   certificate: { id: string; status: string; trusted: boolean; expiresAt: string } | null;
+  substitution?: NfseSubstitution;
 };
+export type NfseSubstitution = { documentId: string; accessKey: string; reasonCode: string; reasonText: string | null };
 export type NfsePreview = NfseSnapshot & { id: string; hash: string; stale: boolean; emissionIssues: NfseIssue[]; canEmit: boolean };
