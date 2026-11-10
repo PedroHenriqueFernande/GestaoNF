@@ -32,3 +32,9 @@ export function initials(name: string): string {
 export function formatDate(value: string): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
 }
+
+const COMPANY_ROLE_LABELS: Record<string, string> = { OWNER: 'Proprietário', ADMIN: 'Administrador', MANAGER: 'Gerente', COLLABORATOR: 'Colaborador' };
+
+export function companyRoleLabel(role: string | null | undefined): string {
+  return role ? COMPANY_ROLE_LABELS[role] ?? 'Usuário' : 'Usuário';
+}

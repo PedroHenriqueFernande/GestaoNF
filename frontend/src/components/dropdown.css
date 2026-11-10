@@ -1,0 +1,115 @@
+/* Dropdown padrão da GestãoNF — mesma animação do menu "Nova venda".
+   Anima só opacity/transform (barato para o navegador); o painel fechado fica
+   invisível, sem cliques e inert. */
+.dropdown { position: relative; }
+
+.dropdown-panel {
+  --dropdown-ease: cubic-bezier(.22, .8, .24, 1);
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 40;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid #e1e6ea;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 6px rgba(16, 32, 42, .06), 0 18px 40px -12px rgba(16, 32, 42, .22);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(.97);
+  transform-origin: top center;
+  transition: opacity .14s ease, transform .18s var(--dropdown-ease), visibility 0s linear .18s;
+}
+.dropdown-panel.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  transition: opacity .18s ease, transform .28s var(--dropdown-ease), visibility 0s;
+}
+.dropdown-panel--start { left: 0; transform-origin: top left; }
+.dropdown-panel--end { right: 0; transform-origin: top right; }
+.dropdown-panel--center { left: 50%; transform: translate(-50%, -8px) scale(.97); transform-origin: top center; }
+.dropdown-panel--center.is-open { transform: translate(-50%, 0); }
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #3b4652;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: background .16s, color .16s, opacity .12s ease, transform .12s ease;
+}
+.dropdown-panel.is-open .dropdown-item {
+  opacity: 1;
+  transform: none;
+  transition: background .16s, color .16s, opacity .2s ease var(--stagger, 0ms), transform .28s var(--dropdown-ease) var(--stagger, 0ms);
+}
+.dropdown-item > svg { flex: none; color: var(--muted); transition: color .16s; }
+.dropdown-item:hover:not(:disabled),
+.dropdown-item:focus-visible { background: #f1f5f7; color: var(--text); outline: none; }
+.dropdown-item:hover:not(:disabled) > svg,
+.dropdown-item:focus-visible > svg { color: var(--primary); }
+.dropdown-item.is-selected,
+.dropdown-item[aria-current="page"] { background: var(--primary-light); color: var(--primary-dark); font-weight: 650; }
+.dropdown-item.is-selected > svg,
+.dropdown-item[aria-current="page"] > svg { color: var(--primary); }
+.dropdown-item--danger { color: #b91c1c; }
+.dropdown-item--danger > svg { color: #dc2626; }
+.dropdown-item--danger:hover:not(:disabled),
+.dropdown-item--danger:focus-visible { background: #fdecec; color: #991b1b; }
+.dropdown-item--danger:hover:not(:disabled) > svg,
+.dropdown-item--danger:focus-visible > svg { color: #dc2626; }
+.dropdown-item:disabled { cursor: not-allowed; }
+.dropdown-panel.is-open .dropdown-item:disabled { opacity: .55; }
+
+.dropdown-separator { height: 1px; margin: 6px; background: #edf0f2; }
+.dropdown-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.dropdown-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #eef2f4;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.dropdown-empty { margin: 0; padding: 14px 12px; color: var(--muted); font-size: 13px; text-align: center; }
+
+.dropdown-chevron { flex: none; color: #7a868f; transition: transform .28s cubic-bezier(.22, .8, .24, 1); }
+[aria-expanded="true"] > .dropdown-chevron { transform: rotate(180deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dropdown-panel,
+  .dropdown-panel.is-open,
+  .dropdown-item,
+  .dropdown-panel.is-open .dropdown-item,
+  .dropdown-chevron { transition: none !important; }
+}

@@ -8,7 +8,6 @@
   --sidebar-hover: #f1f5f7;
   --sidebar-line: #c9d3d9;
   --sidebar-active: var(--primary-dark);
-  --sidebar-header-height: 64px;
   min-height: 100dvh;
 }
 
@@ -35,7 +34,7 @@
 /* Botão circular na junção sidebar/header */
 .workspace-sidebar__collapse {
   position: absolute;
-  top: calc(var(--sidebar-header-height) - 14px);
+  top: calc(var(--header-height, 64px) - 14px);
   right: -14px;
   z-index: 2;
   display: grid;
@@ -57,8 +56,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 88px;
+  height: var(--header-height, 88px);
   padding: 0 24px;
+  border-bottom: 1px solid #e4e9ed;
   flex: none;
 }
 .workspace-sidebar__brand-link { display: inline-flex; align-items: center; border-radius: 6px; }
@@ -82,7 +82,7 @@
 .workspace-sidebar__close:hover { background: var(--sidebar-hover); color: var(--text); }
 
 /* Ação principal: Nova venda + menu de ações rápidas */
-.workspace-cta { position: relative; padding: 0 20px 22px; flex: none; }
+.workspace-cta { position: relative; padding: 20px 20px 22px; flex: none; }
 .workspace-cta__group {
   display: flex;
   height: 48px;
@@ -143,56 +143,7 @@
 .workspace-cta__divider { width: 1px; margin: 11px 0; background: rgba(255, 255, 255, .3); }
 .workspace-cta__group.is-disabled { opacity: .5; box-shadow: none; }
 .workspace-cta__group.is-disabled button { cursor: not-allowed; opacity: 1; }
-.workspace-cta__menu {
-  position: absolute;
-  top: 54px;
-  left: 20px;
-  right: 20px;
-  z-index: 5;
-  padding: 6px;
-  border: 1px solid #e1e6ea;
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 2px 6px rgba(16, 32, 42, .06), 0 18px 40px -12px rgba(16, 32, 42, .22);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateY(-8px) scale(.97);
-  transform-origin: top center;
-  transition: opacity .14s ease, transform .18s var(--sidebar-ease), visibility 0s linear .18s;
-}
-.workspace-cta__menu.is-open {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: none;
-  transition: opacity .18s ease, transform .28s var(--sidebar-ease), visibility 0s;
-}
-.workspace-cta__menu a {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 42px;
-  padding: 0 12px;
-  border-radius: 6px;
-  color: var(--sidebar-text);
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: background .16s, color .16s, opacity .12s ease, transform .12s ease;
-}
-.workspace-cta__menu.is-open a {
-  opacity: 1;
-  transform: none;
-  transition: background .16s, color .16s, opacity .2s ease var(--stagger, 0ms), transform .28s var(--sidebar-ease) var(--stagger, 0ms);
-}
-.workspace-cta__menu a:nth-child(2) { --stagger: 35ms; }
-.workspace-cta__menu a:nth-child(3) { --stagger: 70ms; }
-.workspace-cta__menu a svg { flex: none; color: var(--muted); transition: color .16s; }
-.workspace-cta__menu a:hover { background: var(--sidebar-hover); color: var(--text); }
-.workspace-cta__menu a:hover svg { color: var(--primary); }
+.workspace-cta__menu { top: 74px; left: 20px; right: 20px; min-width: 0; }
 
 /* Navegação */
 .workspace-sidebar__navigation { display: flex; flex-direction: column; gap: 4px; padding: 0 16px 20px; }
@@ -346,7 +297,7 @@
   .workspace-layout--collapsed .workspace-sidebar__brand { padding: 0; }
   .workspace-layout--collapsed .workspace-sidebar__logo { display: none; }
   .workspace-layout--collapsed .workspace-sidebar__mark { display: block; }
-  .workspace-layout--collapsed .workspace-cta { padding: 0 18px 22px; }
+  .workspace-layout--collapsed .workspace-cta { padding: 20px 18px 22px; }
   .workspace-layout--collapsed .workspace-cta__label,
   .workspace-layout--collapsed .workspace-cta__divider,
   .workspace-layout--collapsed .workspace-cta__more,
@@ -369,7 +320,7 @@
   }
   .workspace-layout--menu-open .workspace-sidebar { visibility: visible; transform: translateX(0); }
   .workspace-sidebar__collapse { display: none; }
-  .workspace-sidebar__brand { height: 76px; justify-content: flex-start; }
+  .workspace-sidebar__brand { justify-content: flex-start; }
   .workspace-sidebar__logo { height: 30px; }
   .workspace-sidebar__close { display: grid; }
   .workspace-content { margin-left: 0; }
@@ -385,8 +336,6 @@
   .workspace-subnav__link,
   .workspace-subnav__link > svg,
   .workspace-subnav__link > span,
-  .workspace-cta__menu,
-  .workspace-cta__menu a,
   .workspace-cta__main::before,
   .workspace-cta__more::before,
   .workspace-cta__more svg { transition: none !important; }

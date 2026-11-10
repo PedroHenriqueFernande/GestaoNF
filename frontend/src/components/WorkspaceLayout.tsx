@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { Bot, BriefcaseBusiness, Building2, CalendarDays, Calculator, ChartColumn, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, FileText, FolderOpen, Hash, Landmark, LogOut, Menu, Plus, ReceiptText, Target, UserCog, UserRound, UserRoundPlus, UsersRound, Wallet, X } from 'lucide-react';
+import { Bot, BriefcaseBusiness, Building2, CalendarDays, Calculator, ChartColumn, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, FileText, FolderOpen, Hash, Landmark, Menu, Plus, ReceiptText, Target, UserCog, UserRoundPlus, UsersRound, Wallet, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { CompanyPicker } from './CompanyPicker';
-import { UserAvatar } from './UserAvatar';
+import { UserMenu } from './UserMenu';
+import { useDropdown } from './useDropdown';
+import { companyRoleLabel } from '../utils/format';
+import './dropdown.css';
 import './workspace-sidebar.css';
+import './workspace-header.css';
 
 const MOBILE_QUERY = '(max-width: 959px)';
 const COLLAPSED_KEY = 'gestaonf.sidebarCollapsed';
@@ -73,15 +77,10 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const location = useLocation();
   const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const sidebarRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
-  const profileRef = useRef<HTMLDivElement>(null);
-  const profileButtonRef = useRef<HTMLButtonElement>(null);
-  const quickRef = useRef<HTMLDivElement>(null);
-  const quickButtonRef = useRef<HTMLButtonElement>(null);
+  const quick = useDropdown();
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
   const section = sectionFor(pathname);
   const company = companies?.find((item) => item.id === companyId);
@@ -139,50 +138,10 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
     };
   }, [mobile, mobileOpen]);
 
-  useEffect(() => {
-    if (!profileOpen) return;
-    const closeOutside = (event: Event) => {
-      if (!profileRef.current?.contains(event.target as Node)) setProfileOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setProfileOpen(false);
-      profileButtonRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('focusin', closeOutside);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('focusin', closeOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [profileOpen]);
+  const closeQuick = quick.close;
+  useEffect(() => { if (isCollapsed) closeQuick(); }, [isCollapsed, closeQuick]);
 
-  useEffect(() => {
-    if (!quickOpen) return;
-    const closeOutside = (event: Event) => {
-      if (!quickRef.current?.contains(event.target as Node)) setQuickOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      setQuickOpen(false);
-      quickButtonRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('focusin', closeOutside);
-    document.addEventListener('keydown', closeOnEscape, true);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('focusin', closeOutside);
-      document.removeEventListener('keydown', closeOnEscape, true);
-    };
-  }, [quickOpen]);
-
-  useEffect(() => { if (isCollapsed) setQuickOpen(false); }, [isCollapsed]);
-
-  const closeNavigation = () => { setMobileOpen(false); setQuickOpen(false); };
+  const closeNavigation = () => { setMobileOpen(false); quick.close(); };
 
   function toggleGroup(group: GroupId) {
     if (isCollapsed) {
@@ -223,18 +182,18 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
           <button type="button" className="workspace-sidebar__close" aria-label="Fechar menu" onClick={() => setMobileOpen(false)}><X size={20} /></button>
         </div>
 
-        <div ref={quickRef} className="workspace-cta">
+        <div ref={quick.rootRef} className="dropdown workspace-cta">
           <div className={`workspace-cta__group${onboarding ? ' is-disabled' : ''}`}>
             {onboarding
               ? <button type="button" className="workspace-cta__main" disabled title="Cadastre uma empresa para liberar esta opção"><Plus size={19} strokeWidth={2.4} aria-hidden="true" /><span className="workspace-cta__label">Nova venda</span></button>
               : <Link to="/portal-de-servicos?novo=1" className="workspace-cta__main" title={isCollapsed ? 'Nova venda' : undefined} aria-label="Nova venda" onClick={closeNavigation}><Plus size={19} strokeWidth={2.4} aria-hidden="true" /><span className="workspace-cta__label">Nova venda</span></Link>}
             <span className="workspace-cta__divider" aria-hidden="true" />
-            <button ref={quickButtonRef} type="button" className="workspace-cta__more" aria-label="Mais ações rápidas" aria-expanded={quickOpen} aria-controls="workspace-quick-actions" disabled={onboarding} onClick={() => setQuickOpen((value) => !value)}>
+            <button ref={quick.triggerRef} type="button" className="workspace-cta__more" aria-label="Mais ações rápidas" aria-expanded={quick.open} aria-controls="workspace-quick-actions" disabled={onboarding} onClick={quick.toggle} onKeyDown={quick.onTriggerKeyDown}>
               <ChevronDown size={19} strokeWidth={2.4} aria-hidden="true" />
             </button>
           </div>
-          <div id="workspace-quick-actions" className={`workspace-cta__menu${quickOpen ? ' is-open' : ''}`} inert={!quickOpen}>
-            {quickActions.map(({ label, path, icon: Icon }) => <Link key={path} to={path} onClick={closeNavigation}><Icon size={17} aria-hidden="true" />{label}</Link>)}
+          <div id="workspace-quick-actions" ref={quick.panelRef} className={`dropdown-panel workspace-cta__menu${quick.open ? ' is-open' : ''}`} inert={!quick.open}>
+            {quickActions.map(({ label, path, icon: Icon }, index) => <Link key={path} to={path} className="dropdown-item" style={{ '--stagger': `${index * 35}ms` } as CSSProperties} onClick={closeNavigation}><Icon size={17} aria-hidden="true" />{label}</Link>)}
           </div>
         </div>
 
@@ -266,21 +225,15 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
       </div>
     </aside>
     <div className="workspace-content" inert={mobile && mobileOpen}>
-      <header className="topbar"><div className="topbar__inner">
-        <button ref={menuRef} type="button" className="icon-button workspace-menu-toggle" onClick={() => setMobileOpen((value) => !value)} aria-label="Abrir menu de navegação" aria-controls="workspace-sidebar" aria-expanded={mobileOpen}>
-          <Menu size={20} />
+      <header className="workspace-header">
+        <button ref={menuRef} type="button" className="workspace-header__menu" onClick={() => setMobileOpen((value) => !value)} aria-label="Abrir menu de navegação" aria-controls="workspace-sidebar" aria-expanded={mobileOpen}>
+          <Menu size={21} aria-hidden="true" />
         </button>
-        <div className="topbar__right">
-          <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={onCompanyChange} />
-          <div className="topbar__divider" />
-          <UserAvatar user={user} className="user-badge" />
-          <div className="user-info"><strong>{user.name}</strong><span>{onboarding ? 'Cadastro pendente' : company?.role === 'OWNER' ? 'Proprietário' : company?.role ?? 'Usuário'}</span></div>
-          <div ref={profileRef} className="topbar__profile-menu">
-            <button ref={profileButtonRef} type="button" className="icon-button topbar__profile-toggle" title="Opções do perfil" aria-label="Opções do perfil" aria-controls={profileOpen ? 'workspace-profile-options' : undefined} aria-expanded={profileOpen} onClick={() => setProfileOpen((value) => !value)}><ChevronDown size={18} strokeWidth={2.2} /></button>
-            {profileOpen && <div id="workspace-profile-options" className="topbar__profile-options"><Link to="/meu-perfil" aria-current={section === 'profile' ? 'page' : undefined} onClick={() => setProfileOpen(false)}><UserRound size={16} aria-hidden="true" />Meu perfil</Link><button type="button" onClick={() => { setProfileOpen(false); onLogout(); }} disabled={loggingOut}><LogOut size={16} aria-hidden="true" />Sair</button></div>}
-          </div>
+        <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={onCompanyChange} />
+        <div className="workspace-header__end">
+          <UserMenu user={user} roleLabel={onboarding ? 'Cadastro pendente' : companyRoleLabel(company?.role)} profileActive={section === 'profile'} onLogout={onLogout} loggingOut={loggingOut} />
         </div>
-      </div></header>
+      </header>
       {children}
     </div>
   </div>;

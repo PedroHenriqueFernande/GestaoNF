@@ -38,7 +38,7 @@
   color: var(--finance-ink);
 }
 
-.finance-main { width: min(100%, 1640px); min-height: calc(100dvh - 64px); margin: 0 auto; padding: 29px 32px 58px; }
+.finance-main { width: min(100%, 1640px); min-height: calc(100dvh - var(--header-height, 72px)); margin: 0 auto; padding: 29px 32px 58px; }
 .finance-page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 23px; }
 .finance-eyebrow { color: var(--finance-teal); font-size: 10px; font-weight: 800; letter-spacing: .15em; }
 .finance-page-header h1 { margin: 5px 0 5px; color: var(--finance-ink); font: 750 clamp(27px, 2.1vw, 34px)/1.1 var(--display-font); letter-spacing: -.045em; }
