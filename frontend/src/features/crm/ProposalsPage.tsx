@@ -37,6 +37,11 @@ export function ProposalsPage({ user }: { user: User }) {
     setSource(proposalId ? { id: proposalId } : opportunityId ? { opportunityId } : { customerId: customerId! });
     setParams(previous => { const next = new URLSearchParams(previous); next.delete('abrir'); next.delete('negociacao'); next.delete('cliente'); return next; }, { replace: true });
   }, [companyId, companies.data, params, setParams]);
+  useEffect(() => {
+    if (params.get('novo') !== '1' || !companyId || !companies.data?.some(company => company.id === companyId)) return;
+    if (!source) setChooser(true);
+    setParams(previous => { const next = new URLSearchParams(previous); next.delete('novo'); return next; }, { replace: true });
+  }, [companyId, companies.data, params, setParams, source]);
   const list = useQuery({ queryKey: ['proposals', companyId, filters, page], queryFn: () => api.proposals(companyId, filters, page, PAGE_SIZE), enabled: !!companyId });
   const opportunities = useQuery({ queryKey: ['proposal-opportunities', companyId, search], queryFn: () => api.crmOpportunities(companyId, { search: search.trim() || undefined }, 0, 100), enabled: chooser && originTab === 'OPPORTUNITY' && !!companyId });
   const customers = useQuery({ queryKey: ['proposal-customers', companyId, search], queryFn: () => api.customers(companyId, { search: search.trim(), status: 'ACTIVE', page: 0, limit: 100 }), enabled: chooser && originTab === 'CUSTOMER' && !!companyId });

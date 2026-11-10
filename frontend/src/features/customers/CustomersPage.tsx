@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { AlertCircle, Building2, ChevronLeft, ChevronRight, CircleCheck, FileText, Pencil, Plus, Search, UserRoundX } from 'lucide-react';
 import { api, ApiError, type Customer, type CustomerInput, type CustomerList, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
@@ -32,6 +32,7 @@ function MobileCustomerList({ items, onEdit, onInactivate, onReactivate, onPropo
 export function CustomersPage({ user }: { user: User }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const searchSequence = useRef(0);
   const toastSequence = useRef(0);
   const [companyId, setCompanyId] = useState(() => sessionStorage.getItem('gestaonf.companyId') ?? '');
@@ -112,6 +113,11 @@ export function CustomersPage({ user }: { user: User }) {
 
   const closeDrawer = useCallback(() => { if (!saveMutation.isPending) setDrawer(null); }, [saveMutation.isPending]);
   const openCreate = () => { saveMutation.reset(); setDrawer({ mode: 'create' }); };
+  useEffect(() => {
+    if (params.get('novo') !== '1' || !companyId) return;
+    if (!drawer) { saveMutation.reset(); setDrawer({ mode: 'create' }); }
+    setParams((previous) => { const next = new URLSearchParams(previous); next.delete('novo'); return next; }, { replace: true });
+  }, [params, setParams, companyId, drawer, saveMutation]);
   const openEdit = (customer: Customer) => { saveMutation.reset(); setDrawer({ mode: 'edit', customer }); };
   const openInactivate = (customer: Customer) => { inactivateMutation.reset(); setConfirmCustomer(customer); };
   const lastPage = Math.max(0, Math.ceil((list.data?.total ?? 0) / PAGE_SIZE) - 1);

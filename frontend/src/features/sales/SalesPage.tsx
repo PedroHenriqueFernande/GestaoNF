@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, FilePlus2, Plus, RefreshCw, Search } from 'lucide-react';
 import { api, type Sale, type SaleDetail, type SaleStatus, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
@@ -17,6 +17,7 @@ const statusLabel = (value: SaleStatus) => value === 'CONFIRMED' ? 'Confirmado' 
 export function SalesPage({ user }: { user: User }) {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const [companyId, setCompanyId] = useState(() => sessionStorage.getItem('gestaonf.companyId') ?? '');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -45,6 +46,16 @@ export function SalesPage({ user }: { user: User }) {
     return () => { active = false; };
   }, [params, setParams, companyId, companies.data]);
   useEffect(() => { if (companies.data && !companies.data.some((company) => company.id === companyId)) setCompanyId(companies.data[0]?.id ?? ''); }, [companies.data, companyId]);
+  useEffect(() => {
+    if (params.get('novo') !== '1' || !companyId || !companies.data?.some((company) => company.id === companyId)) return;
+    if (!editing) { setEditingDraft(null); setSelectedId(null); setEditing(true); }
+    setParams((previous) => { const next = new URLSearchParams(previous); next.delete('novo'); return next; }, { replace: true });
+  }, [params, setParams, companyId, companies.data, editing]);
+  useEffect(() => {
+    // Clique em "Portal de Serviços" no menu lateral volta para a lista, como o botão de voltar do editor.
+    if ((location.state as { workspaceNav?: boolean } | null)?.workspaceNav !== true) return;
+    setEditing(false); setEditingDraft(null); setSelectedId(null);
+  }, [location.key, location.state]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 5000); return () => clearTimeout(timer); }, [toast]);
   const list = useQuery({ queryKey: ['sales', companyId, status, search, page], queryFn: () => api.sales(companyId, { status, search, page, limit: PAGE_SIZE }), enabled: !!companyId });
