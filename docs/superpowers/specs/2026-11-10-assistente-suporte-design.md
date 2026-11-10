@@ -51,10 +51,9 @@ Estimativa: cerca de 2.500 tokens de entrada e 300 de saída por mensagem, ou se
 | `SUPPORT_OPENAI_API_KEY` | vazio | Chave própria opcional (outro Project da OpenAI, para separar custos). Vazia, usa `OPENAI_API_KEY` |
 | `SUPPORT_AI_BASE_URL` | vazio | `baseURL` opcional para provedor compatível com a API da OpenAI |
 | `SUPPORT_DAILY_MESSAGE_LIMIT` | `100` | Mensagens do usuário por empresa por dia (no fuso da empresa) |
-| `SUPPORT_PDF_MAX_ROWS` | `5000` | Teto de linhas do PDF |
-| `SUPPORT_AI_FAKE` | `false` | Usa o `FakeSupportLlmClient` (testes e Playwright). Ignorado com `NODE_ENV=production` |
+| `REPORTS_PDF_MAX_ROWS` | `5000` | Teto de linhas do PDF de relatório |
 
-Atualizar o `.env.example`.
+Atualizar o `.env.example`. Para o teste real com a billing zerada, basta `SUPPORT_AI_ENABLED=true` com a `OPENAI_API_KEY` atual.
 
 ## 5. Arquitetura do backend
 
@@ -88,7 +87,7 @@ interface SupportLlmClient {
 }
 ```
 
-Um `FakeSupportLlmClient` com respostas roteirizadas é usado nos testes e no Playwright (`SUPPORT_AI_FAKE=true`, aceito só fora de produção).
+Um `FakeSupportLlmClient` com respostas roteirizadas é injetado nos testes do backend. O Playwright simula a API com `page.route`, como os demais testes do frontend.
 
 ### 5.2 Tools
 
@@ -97,7 +96,7 @@ Um `FakeSupportLlmClient` com respostas roteirizadas é usado nos testes e no Pl
 | `buscar_ajuda` | leitura | `topico` (enum dos ids do catálogo) | conteúdo do `.md` | nenhum |
 | `abrir_tela` | leitura | `destino` (enum: `clientes`, `servicos`, `portal_servicos`, `financeiro`, `relatorios`, `fiscal_series`, `fiscal_tributacao`, `empresa`, `crm`, `agenda`, `propostas`, `nero`, `usuarios`, `meu_perfil`) | `{ ok: true }` | `navigate` |
 | `gerar_relatorio_pdf` | leitura | `tipo` (enum dos 8), `de`, `ate` (YYYY-MM-DD ou null nos inventários) | resumo do relatório (`summary`) | `download` |
-| `localizar_venda_para_emissao` | leitura | `busca` (código do pedido ou nome do cliente) | até 5 vendas: código, cliente, data, total, situação fiscal | `navigate` por venda (`/portal-de-servicos?abrir=<id>&empresa=<id>`) |
+| `localizar_venda_para_emissao` | leitura | `busca` (código do pedido ou nome do cliente) | até 5 vendas confirmadas: código, cliente, data, total | `navigate` por venda (`/portal-de-servicos?abrir=<id>&empresa=<id>`) |
 | `preparar_cadastro_cliente` | escrita | campos de `createCustomerSchema` (obrigatórios `kind`, `name`) | ação criada, ou erros de validação/duplicidade | `action` |
 | `preparar_cadastro_servico` | escrita | campos de `createServiceSchema` (obrigatório `name`) | ação criada, ou erros de validação | `action` |
 
@@ -127,7 +126,7 @@ Tópicos iniciais: `clientes`, `servicos`, `portal-servicos`, `emitir-nfse`, `ca
 ### 5.4 PDF dos relatórios
 
 - `ReportsPdfService` no `ReportsModule` existente, usando `pdfkit`.
-- Endpoint `GET /reports/:type.pdf` com os mesmos filtros e guardas do JSON. Usa o `ReportsReadService`, com o mesmo escopo de CRM, percorrendo as páginas até o fim ou até `SUPPORT_PDF_MAX_ROWS`. Acima do teto, responde `422` com "Reduza o período".
+- Endpoint `GET /reports/:type/pdf` com os mesmos filtros e guardas do JSON. Usa o `ReportsReadService`, com o mesmo escopo de CRM, percorrendo as páginas até o fim ou até `REPORTS_PDF_MAX_ROWS`. Acima do teto, responde `422` com "Reduza o período".
 - `report-pdf-columns.ts` declara, por tipo, título, colunas (rótulo, campo, largura, formato: texto, data, moeda, percentual) e os indicadores do `summary`.
 - Layout: cabeçalho com empresa, título, período e data/hora de geração no fuso da empresa; bloco de indicadores; tabela com cabeçalho repetido a cada página; rodapé "Página X de Y".
 - `Content-Type: application/pdf`, `Content-Disposition: attachment; filename="<tipo>-<de>-<ate>.pdf"`.
@@ -142,13 +141,10 @@ Pasta `frontend/src/features/support/`:
 | `SupportWidget.tsx` | Botão flutuante e abertura do painel. Montado no `WorkspaceLayout`, exceto com `onboarding`. Recebe o `companyId` do layout; ao trocar de empresa, carrega a conversa daquela empresa |
 | `SupportPanel.tsx` | Cabeçalho ("Ajuda do GestãoNF", Nova conversa, fechar), lista de mensagens, campo de texto, estado "digitando" enquanto aguarda |
 | `QuickActions.tsx` | Atalhos sem IA, mostrados com a conversa vazia e acessíveis por um botão fixo |
-| `ReportPdfForm.tsx` | Mini formulário: tipo, período (mês atual por padrão), Baixar. Chama `GET /reports/:type.pdf` direto |
-| `HelpArticle.tsx` | Mostra um artigo de `GET /support/help/:id` |
-| `blocks/TextBlock.tsx` | Markdown simples (negrito, listas, links internos), sem `dangerouslySetInnerHTML` |
-| `blocks/NavigateBlock.tsx` | Botão que usa `navigate()` do react-router |
-| `blocks/DownloadBlock.tsx` | Baixa o PDF com o token e o `X-Company-Id` (fetch + blob), como no CSV atual |
-| `blocks/ConfirmActionCard.tsx` | Lista de campos, botões Confirmar e Cancelar, estados (pendente, criado com link, cancelado, expirado, falhou) |
-| `blocks/NoticeBlock.tsx` | Avisos de indisponibilidade e de limite |
+| `ReportPdfForm.tsx` | Mini formulário: tipo, período (mês atual por padrão), Baixar. Chama `GET /reports/:type/pdf` direto |
+| `SupportHelp.tsx` | Lista de tópicos e artigo (`GET /support/help` e `/support/help/:id`), com botão "Ir para a tela" |
+| `SupportText.tsx` | Markdown simples (parágrafos, títulos, negrito e listas), sem `dangerouslySetInnerHTML` |
+| `SupportBlocks.tsx` | Renderiza os blocos: texto, aviso, navegação, download (fetch + blob com `X-Company-Id`) e cartão de confirmação (Confirmar/Cancelar e estados: pendente, criado com link, cancelado, expirado, falhou) |
 | `support.css` | Estilos no padrão visual do sistema; no celular, o painel ocupa a tela inteira |
 
 Funções novas no `api/client.ts`: `supportConversation`, `supportSend`, `supportReset`, `supportConfirm`, `supportCancel`, `supportHelpList`, `supportHelp`, `reportPdf`.
@@ -167,8 +163,8 @@ Todos com `AccessGuard` + `CompanyGuard`. A empresa vem do `X-Company-Id` e o us
 | `POST` | `/support/actions/:id/confirm` | não | `{ block: ActionBlock }` atualizado |
 | `POST` | `/support/actions/:id/cancel` | não | `{ block: ActionBlock }` atualizado |
 | `GET` | `/support/help` | não | `[{ id, titulo }]` |
-| `GET` | `/support/help/:id` | não | `{ id, titulo, rota, conteudo }` |
-| `GET` | `/reports/:type.pdf` | não | arquivo PDF |
+| `GET` | `/support/help/:id` | não | `{ id, titulo, to, conteudo }` (`to` é o caminho da tela ou `null`) |
+| `GET` | `/reports/:type/pdf` | não | arquivo PDF |
 
 ## 8. Fluxos
 
@@ -240,7 +236,7 @@ FKs com `onDelete: 'restrict'`, como no restante do schema.
 
 - Empresa e usuário vêm sempre dos guards. O modelo não recebe nem devolve IDs de empresa ou de usuário.
 - Os handlers chamam os services de domínio com o contexto da requisição, então permissões e escopo de CRM valem igual às telas.
-- `navigate` só aceita destinos do enum ou o deep link de venda montado pelo servidor. `download` só aponta para `/reports/<tipo>.pdf` com tipo do enum.
+- `navigate` só aceita destinos do enum ou o deep link de venda montado pelo servidor. `download` só aponta para `/reports/<tipo>/pdf` com tipo do enum.
 - O texto do modelo é renderizado como texto, sem HTML.
 - Escrita só pelo endpoint de confirmação, com mudança de estado atômica e revalidação.
 - `llm_items` nunca sai do backend. O histórico enviado ao modelo vem só do banco.
@@ -256,13 +252,13 @@ FKs com `onDelete: 'restrict'`, como no restante do schema.
 5. Confirmação cria o cliente exatamente uma vez com dois confirms em paralelo; expirada responde `409`; de outro usuário responde `404`; falha do domínio vira `FAILED`.
 6. Erros do LLM (429 quota, 429 rate limit, 400, 401, timeout): bloco `notice`, `error_code` gravado, HTTP 200.
 7. A mensagem 101 do dia responde `429`.
-8. `abrir_tela` com destino fora do enum é rejeitado; blocos `download` só com `/reports/*.pdf`.
+8. `abrir_tela` com destino fora do enum é rejeitado; blocos `download` só com `/reports/<tipo>/pdf`.
 9. Catálogo de ajuda: ids únicos, rotas válidas, conteúdo não vazio.
-10. `GET /reports/:type.pdf` nos 8 tipos devolve `application/pdf` começando com `%PDF`; respeita o escopo de CRM do colaborador; acima do teto responde `422`.
+10. O PDF dos 8 tipos começa com `%PDF`. `readAll` usa a mesma definição e a mesma política de acesso do `read` (mesmo resumo e mesmas linhas para os mesmos filtros), então herda o escopo de CRM. Acima do teto, `422`.
 
 **Verificação real da API:** `backend/scripts/check-support-ai.ts` (`npm run support:check`) faz uma chamada com a configuração atual e imprime status HTTP e `error_code`. Com a billing zerada, o resultado esperado é `AI_QUOTA`, o que prova que a chamada sai.
 
-**Frontend (Playwright, `frontend/tests/support-widget.spec.ts`, backend com `SUPPORT_AI_FAKE=true`):** abrir o widget, enviar mensagem e confirmar o cartão de cadastro; baixar PDF pelo atalho sem IA; trocar de empresa e ver a conversa trocar.
+**Frontend (Playwright, `frontend/tests/support-widget.spec.ts`, API simulada com `page.route`):** abrir o widget, enviar mensagem e confirmar o cartão de cadastro; baixar PDF pelo atalho sem IA; aviso de IA indisponível. A troca de conversa por empresa é garantida pela chave `['support-conversation', companyId]` e pelo teste de isolamento do backend.
 
 ## 14. Fora do escopo
 
