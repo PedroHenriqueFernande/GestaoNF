@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { BarChart3, Bot, Building2, CalendarDays, ChevronDown, ChevronRight, ClipboardList, ContactRound, FileText, Hash, Landmark, LogOut, Menu, ReceiptText, Calculator, UsersRound, X } from 'lucide-react';
+import { BarChart3, Bot, Building2, CalendarDays, ChevronDown, ChevronRight, ClipboardList, ContactRound, FileText, Hash, Landmark, LogOut, Menu, ReceiptText, Calculator, UsersRound, UserRound, X } from 'lucide-react';
 import type { Company, User } from '../api/client';
-import { initials } from '../utils/format';
 import { CompanyPicker } from './CompanyPicker';
+import { UserAvatar } from './UserAvatar';
 
 const MOBILE_QUERY = '(max-width: 959px)';
 const navigation = [
@@ -43,7 +43,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = pathname === '/fiscal/series' ? 'fiscal-series' : pathname === '/fiscal/tributacao' ? 'fiscal-tax' : pathname === '/empresa' ? 'company' : pathname === '/usuarios' ? 'users' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/relatorios' || pathname.startsWith('/relatorios/') ? 'reports' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/propostas' ? 'proposals' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
+  const section = pathname === '/meu-perfil' ? 'profile' : pathname === '/fiscal/series' ? 'fiscal-series' : pathname === '/fiscal/tributacao' ? 'fiscal-tax' : pathname === '/empresa' ? 'company' : pathname === '/usuarios' ? 'users' : pathname === '/serviço' || pathname === '/servicos' ? 'services' : pathname === '/portal-de-servicos' ? 'sales' : pathname === '/financeiro' ? 'finance' : pathname === '/relatorios' || pathname.startsWith('/relatorios/') ? 'reports' : pathname === '/crm' ? 'crm' : pathname === '/agenda' ? 'agenda' : pathname === '/propostas' ? 'proposals' : pathname === '/nero' || pathname === '/nilo' ? 'nilo' : 'customers';
   const company = companies?.find((item) => item.id === companyId);
 
   useEffect(() => {
@@ -133,11 +133,11 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
         <div className="topbar__right">
           <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={onCompanyChange} />
           <div className="topbar__divider" />
-          <span className="user-badge" title={user.email}>{initials(user.name)}</span>
+          <UserAvatar user={user} className="user-badge" />
           <div className="user-info"><strong>{user.name}</strong><span>{onboarding ? 'Cadastro pendente' : company?.role === 'OWNER' ? 'Proprietário' : company?.role ?? 'Usuário'}</span></div>
           <div ref={profileRef} className="topbar__profile-menu">
             <button ref={profileButtonRef} type="button" className="icon-button topbar__profile-toggle" title="Opções do perfil" aria-label="Opções do perfil" aria-controls={profileOpen ? 'workspace-profile-options' : undefined} aria-expanded={profileOpen} onClick={() => setProfileOpen((value) => !value)}><ChevronDown size={18} strokeWidth={2.2} /></button>
-            {profileOpen && <div id="workspace-profile-options" className="topbar__profile-options"><button type="button" onClick={() => { setProfileOpen(false); onLogout(); }} disabled={loggingOut}><LogOut size={16} aria-hidden="true" />Sair</button></div>}
+            {profileOpen && <div id="workspace-profile-options" className="topbar__profile-options"><Link to="/meu-perfil" aria-current={section === 'profile' ? 'page' : undefined} onClick={() => setProfileOpen(false)}><UserRound size={16} aria-hidden="true" />Meu perfil</Link><button type="button" onClick={() => { setProfileOpen(false); onLogout(); }} disabled={loggingOut}><LogOut size={16} aria-hidden="true" />Sair</button></div>}
           </div>
         </div>
       </div></header>

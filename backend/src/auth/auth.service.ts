@@ -33,7 +33,7 @@ export class AuthService {
       const result = await this.database.db.transaction(async (tx) => {
         const [user] = await tx.insert(users).values({ name: input.name, email: input.email }).returning();
         await tx.insert(userCredentials).values({ userId: user.id, passwordHash });
-        return { user: { id: user.id, name: user.name, email: user.email } };
+        return { user: { id: user.id, name: user.name, email: user.email, avatarId: user.avatarId, profileVersion: user.profileVersion } };
       });
       return { ...result, ...(await this.issueTokens(result.user.id)) };
     } catch (error) {
@@ -49,11 +49,11 @@ export class AuthService {
     if (!record || record.user.status !== 'ACTIVE' || !(await this.verifyPassword(input.password, record.credential.passwordHash))) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
-    return { user: { id: record.user.id, name: record.user.name, email: record.user.email }, ...(await this.issueTokens(record.user.id)) };
+    return { user: { id: record.user.id, name: record.user.name, email: record.user.email, avatarId: record.user.avatarId, profileVersion: record.user.profileVersion }, ...(await this.issueTokens(record.user.id)) };
   }
 
   async me(userId: string) {
-    const [user] = await this.database.db.select({ id: users.id, name: users.name, email: users.email }).from(users)
+    const [user] = await this.database.db.select({ id: users.id, name: users.name, email: users.email, avatarId: users.avatarId, profileVersion: users.profileVersion }).from(users)
       .where(and(eq(users.id, userId), eq(users.status, 'ACTIVE'))).limit(1);
     if (!user) throw new UnauthorizedException();
     return user;

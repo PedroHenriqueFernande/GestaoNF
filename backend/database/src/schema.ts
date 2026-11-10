@@ -19,6 +19,7 @@ import {
   varchar,
   text,
   type PgTableExtraConfigValue,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 const timestamps = {
@@ -284,6 +285,8 @@ export const users = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     name: varchar('name', { length: 200 }).notNull(),
+    avatarId: uuid('avatar_id'),
+    profileVersion: integer('profile_version').default(1).notNull(),
     email: varchar('email', { length: 254 }).notNull(),
     emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
@@ -291,11 +294,52 @@ export const users = pgTable(
   },
   (table) => [
     check('users_name_nonblank_chk', sql`length(btrim(${table.name})) > 0`),
+    check('users_name_trimmed_chk', sql`${table.name} = btrim(${table.name})`),
+    check('users_profile_version_chk', sql`${table.profileVersion} > 0`),
+    foreignKey({ name: 'users_avatar_owner_fk', columns: [table.id, table.avatarId], foreignColumns: [userAvatarFiles.userId, userAvatarFiles.id] }).onDelete('restrict'),
     check('users_email_normalized_chk', sql`${table.email} = lower(btrim(${table.email}))`),
     check('users_status_chk', sql`${table.status} IN ('ACTIVE', 'INACTIVE')`),
     uniqueIndex('users_email_lower_uq').on(sql`lower(${table.email})`),
   ],
 );
+
+export const userAvatarFiles = pgTable('user_avatar_files', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
+  requestKey: varchar('request_key', { length: 200 }).notNull(),
+  requestHash: char('request_hash', { length: 64 }).notNull(),
+  inputMimeType: varchar('input_mime_type', { length: 32 }).notNull(),
+  expectedBytes: integer('expected_bytes').notNull(),
+  mimeType: varchar('mime_type', { length: 32 }),
+  sizeBytes: integer('size_bytes'),
+  width: integer('width'),
+  height: integer('height'),
+  sha256: char('sha256', { length: 64 }),
+  bucket: text('bucket').notNull(),
+  stagingKey: text('staging_key').notNull(),
+  objectKey: text('object_key').notNull(),
+  status: varchar('status', { length: 16 }).default('PENDING').notNull(),
+  uploadExpiresAt: timestamp('upload_expires_at', { withTimezone: true }).notNull(),
+  unattachedExpiresAt: timestamp('unattached_expires_at', { withTimezone: true }),
+  readyAt: timestamp('ready_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  stagingCleanedAt: timestamp('staging_cleaned_at', { withTimezone: true }),
+  objectDeletedAt: timestamp('object_deleted_at', { withTimezone: true }),
+  ...timestamps,
+}, t => [
+  unique('user_avatar_files_user_id_id_uq').on(t.userId, t.id),
+  unique('user_avatar_files_request_uq').on(t.userId, t.requestKey),
+  unique('user_avatar_files_staging_key_uq').on(t.stagingKey),
+  unique('user_avatar_files_object_key_uq').on(t.objectKey),
+  uniqueIndex('user_avatar_files_active_user_uq').on(t.userId).where(sql`${t.status} = 'ACTIVE'`),
+  index('user_avatar_files_user_status_idx').on(t.userId, t.status),
+  index('user_avatar_files_upload_expiry_idx').on(t.uploadExpiresAt),
+  index('user_avatar_files_unattached_expiry_idx').on(t.unattachedExpiresAt),
+  index('user_avatar_files_cleanup_idx').on(t.status, t.stagingCleanedAt, t.objectDeletedAt),
+  check('user_avatar_files_status_chk', sql`${t.status} IN ('PENDING','READY','ACTIVE','REJECTED','EXPIRED','DELETING','DELETED')`),
+  check('user_avatar_files_input_chk', sql`${t.inputMimeType} IN ('image/jpeg','image/png','image/webp') AND ${t.expectedBytes} BETWEEN 1 AND 5242880`),
+  check('user_avatar_files_ready_chk', sql`${t.status} NOT IN ('READY','ACTIVE') OR (${t.mimeType} IS NOT NULL AND ${t.sizeBytes} IS NOT NULL AND ${t.width} IS NOT NULL AND ${t.height} IS NOT NULL AND ${t.mimeType} = 'image/webp' AND ${t.sizeBytes} BETWEEN 1 AND 1048576 AND ${t.width} BETWEEN 1 AND 512 AND ${t.height} BETWEEN 1 AND 512 AND ${t.sha256} IS NOT NULL AND ${t.readyAt} IS NOT NULL AND ${t.objectDeletedAt} IS NULL)`),
+]);
 
 export const userCredentials = pgTable('user_credentials', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),

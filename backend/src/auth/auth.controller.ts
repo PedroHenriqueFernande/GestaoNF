@@ -58,7 +58,10 @@ export class AuthController {
   @Get('me')
   @UseGuards(AccessGuard)
   @ApiBearerAuth()
-  async me(@Req() request: RequestContext) { return this.auth.me(request.userId!); }
+  async me(@Req() request: RequestContext, @Res({ passthrough: true }) reply: FastifyReply) {
+    reply.header('Cache-Control', 'private, no-store');
+    return this.auth.me(request.userId!);
+  }
 
   private respond<T extends { accessToken: string; refreshToken: string; expiresIn: number }>(result: T, client: ClientType, reply: FastifyReply) {
     return authResponse(result, client, reply);

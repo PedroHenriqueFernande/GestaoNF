@@ -171,7 +171,7 @@ export class UsersService {
       if (!created) throw conflict('LOGIN_REQUIRED');
       await tx.insert(userCredentials).values({ userId: created.id, passwordHash });
       await this.grant(tx, invite, created.id, destinations.map(c => c.id));
-      return { user: { id: created.id, name: created.name, email: created.email }, companies: destinations.map(c => ({ id: c.id, name: c.name })), ...(await this.auth.issueTokens(created.id, tx)) };
+      return { user: { id: created.id, name: created.name, email: created.email, avatarId: created.avatarId, profileVersion: created.profileVersion }, companies: destinations.map(c => ({ id: c.id, name: c.name })), ...(await this.auth.issueTokens(created.id, tx)) };
     });
   }
   async acceptExisting(token: string, userId: string) {

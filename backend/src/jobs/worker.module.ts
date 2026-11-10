@@ -14,10 +14,12 @@ import { UsersModule } from '../users/users.module.js';
 import { InvitationExpiryWorkerService } from './invitation-expiry-worker.service.js';
 import { FiscalModule } from '../fiscal/fiscal.module.js';
 import { NfseWorkerService } from './nfse-worker.service.js';
+import { ProfileModule } from '../profile/profile.module.js';
+import { ProfileAvatarCleanupWorkerService } from './profile-avatar-cleanup-worker.service.js';
 
 @Module({
-  imports: [DatabaseModule, WhatsAppModule, AssistantModule, CrmModule, FilesModule, EmailsModule, UsersModule, FiscalModule],
-  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService, FileCleanupWorkerService, EmailWorkerService, InvitationExpiryWorkerService, NfseWorkerService],
+  imports: [DatabaseModule, WhatsAppModule, AssistantModule, CrmModule, FilesModule, EmailsModule, UsersModule, FiscalModule, ProfileModule],
+  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService, ProfileAvatarCleanupWorkerService, EmailWorkerService, InvitationExpiryWorkerService, NfseWorkerService],
 })
 export class WorkerModule {}
 

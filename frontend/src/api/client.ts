@@ -1,7 +1,10 @@
 import type { NfseCancelInput, NfseCancellation, NfseConnectionResult, NfseEmission, NfseReadiness, NfsePreview, NfsePreviewInput, NfseSaleState, NfseSubstitutionInput } from './nfse.types';
 const API_URL = (import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:4030`).replace(/\/$/, '');
 
-export type User = { id: string; name: string; email: string };
+export type User = { id: string; name: string; email: string; avatarId: string | null; profileVersion: number };
+export type AvatarUpload = { file: { id: string; status: string }; upload: { url: string; method: 'PUT'; headers: Record<string, string>; expiresAt: string } | null };
+export type AvatarCompletion = { file: { id: string; status: string; mimeType: string; width: number; height: number; sizeBytes: number }; expiresAt: string | null };
+export type AvatarAccess = { avatarId: string; url: string; expiresAt: string };
 export type Company = { id: string; name: string; role: string; accountId: string };
 export type FiscalCertificate = { id: string; status: 'ACTIVE' | 'EXPIRED'; subjectTaxId: string; fingerprintSha256: string;
   serialNumber: string; subjectSummary: string; issuerSummary: string; notBefore: string; notAfter: string; createdAt: string };
@@ -352,6 +355,10 @@ export const api = {
   fileAccess: (companyId: string, id: string) => request<{ url: string; expiresAt: string; fileName: string }>(`/files/${id}/access?disposition=attachment`, {}, { companyId }),
   removeFile: (companyId: string, id: string) => request<void>(`/files/${id}`, { method: 'DELETE' }, { companyId }),
   me: () => request<User>('/auth/me'),
+  beginAvatarUpload: (input: { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; sizeBytes: number }, key: string) => request<AvatarUpload>('/profile/avatar/uploads', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }),
+  completeAvatarUpload: (id: string) => request<AvatarCompletion>(`/profile/avatar/uploads/${id}/complete`, { method: 'POST', body: '{}' }),
+  updateProfile: (input: { expectedVersion: number; name?: string; avatarId?: string | null }) => request<User>('/profile/me', { method: 'PATCH', body: json(input) }),
+  avatarAccess: () => request<AvatarAccess>('/profile/avatar/access'),
   login: (email: string, password: string) => request('/auth/login', { method: 'POST', body: json({ email, password, client: 'web' }) }, { retryAuth: false }),
   register: (name: string, email: string, password: string) => request('/auth/register', { method: 'POST', body: json({ name, email, password, client: 'web' }) }, { retryAuth: false }),
   logout: () => request<void>('/auth/logout', { method: 'POST', body: '{}' }, { retryAuth: false }),

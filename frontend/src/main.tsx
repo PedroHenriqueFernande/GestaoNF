@@ -22,17 +22,19 @@ const AgendaPage = lazy(() => import('./features/crm/AgendaPage').then((module) 
 const ProposalsPage = lazy(() => import('./features/crm/ProposalsPage').then((module) => ({ default: module.ProposalsPage })));
 const NiloPage = lazy(() => import('./features/nilo/NiloPage').then((module) => ({ default: module.NiloPage })));
 const UsersPage = lazy(() => import('./features/users/UsersPage').then((module) => ({ default: module.UsersPage })));
+const ProfilePage = lazy(() => import('./features/profile/ProfilePage').then((module) => ({ default: module.ProfilePage })));
 const AcceptInvitationPage = lazy(() => import('./features/users/AcceptInvitationPage').then((module) => ({ default: module.AcceptInvitationPage })));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000, refetchOnWindowFocus: false } } });
 
-function SessionGate({ page }: { page: 'customers' | 'services' | 'company' | 'sales' | 'finance' | 'reports' | 'crm' | 'agenda' | 'proposals' | 'nilo' | 'users' | 'fiscal-series' | 'fiscal-tax' }) {
-  useEffect(() => { document.title = `GestãoNF · ${page === 'fiscal-series' ? 'Séries fiscais' : page === 'fiscal-tax' ? 'Tributação' : page === 'services' ? 'Serviços' : page === 'company' ? 'Empresa' : page === 'sales' ? 'Portal de Serviços' : page === 'finance' ? 'Financeiro' : page === 'reports' ? 'Relatórios' : page === 'crm' ? 'CRM' : page === 'agenda' ? 'Agenda' : page === 'proposals' ? 'Propostas' : page === 'nilo' ? 'Nero' : page === 'users' ? 'Usuários' : 'Clientes'}`; }, [page]);
+function SessionGate({ page }: { page: 'profile' | 'customers' | 'services' | 'company' | 'sales' | 'finance' | 'reports' | 'crm' | 'agenda' | 'proposals' | 'nilo' | 'users' | 'fiscal-series' | 'fiscal-tax' }) {
+  useEffect(() => { document.title = `GestãoNF · ${page === 'profile' ? 'Meu perfil' : page === 'fiscal-series' ? 'Séries fiscais' : page === 'fiscal-tax' ? 'Tributação' : page === 'services' ? 'Serviços' : page === 'company' ? 'Empresa' : page === 'sales' ? 'Portal de Serviços' : page === 'finance' ? 'Financeiro' : page === 'reports' ? 'Relatórios' : page === 'crm' ? 'CRM' : page === 'agenda' ? 'Agenda' : page === 'proposals' ? 'Propostas' : page === 'nilo' ? 'Nero' : page === 'users' ? 'Usuários' : 'Clientes'}`; }, [page]);
   const session = useQuery({ queryKey: ['me'], queryFn: api.me });
   const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies, enabled: session.isSuccess });
   if (session.isPending) return <div className="startup"><Brand /><div className="loading-line" /><p>Carregando sua área de trabalho...</p></div>;
   if (session.error instanceof ApiError && session.error.status === 401) return <AuthScreen />;
   if (session.isError) return <div className="startup"><Brand /><p>{session.error instanceof Error ? session.error.message : 'Não foi possível carregar o sistema.'}</p><button className="button button--primary" onClick={() => session.refetch()}><RefreshCw size={16} /> Tentar novamente</button></div>;
+  if (page === 'profile') return <Suspense fallback={<div className="startup"><Brand /><div className="loading-line" /></div>}><ProfilePage user={session.data} companies={companies.data} /></Suspense>;
   if (companies.isPending) return <div className="startup"><Brand /><div className="loading-line" /><p>Carregando suas empresas...</p></div>;
   if (companies.isError) return <div className="startup"><Brand /><p>Não foi possível carregar suas empresas.</p><button className="button button--primary" onClick={() => companies.refetch()}><RefreshCw size={16} /> Tentar novamente</button></div>;
   if (page !== 'company' && companies.data.length === 0) return <Navigate to="/empresa" replace />;
@@ -46,6 +48,7 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          <Route path="/meu-perfil" element={<SessionGate page="profile" />} />
           <Route path="/Clientes" element={<SessionGate page="customers" />} />
           <Route path="/serviço" element={<SessionGate page="services" />} />
           <Route path="/servicos" element={<SessionGate page="services" />} />
