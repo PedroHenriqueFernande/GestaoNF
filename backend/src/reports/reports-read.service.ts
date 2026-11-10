@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
@@ -189,6 +189,34 @@ export class ReportsReadService {
         nextCursor: rows.length>limit && last ? Buffer.from(JSON.stringify({ sort:last._sort,id:last.id,hash })).toString('base64url') : null,
         filters, generatedAt:new Date().toISOString(), timezone:a.timezone, visibility:a.manager ? 'COMPANY' : ['lead-entries','meetings','loss-rate','disqualification-rate'].includes(type) ? 'ASSIGNED' : 'COMPANY' };
     },{ isolationLevel:'repeatable read' });
+  }
+
+  private pdfTarget(d: Definition) { return d.target ? sql`"decisionStatus"=${d.target}` : sql`TRUE`; }
+
+  async readAll(ctx: CrmContext, type: ReportType, input: ReportInput, maxRows: number) {
+    this.validate(type, input);
+    return this.database.db.transaction(async (tx) => {
+      const a = await this.policy.access(ctx, tx), d = this.definition(type, input, a);
+      const [summary] = await tx.execute(sql`WITH report_rows AS (${d.rows}) ${d.summary}`);
+      const rows = await tx.execute(sql`WITH report_rows AS (${d.rows}) SELECT * FROM report_rows
+        WHERE ${this.pdfTarget(d)}
+        ORDER BY "_order" DESC,id DESC LIMIT ${maxRows + 1}`) as unknown as ReportRow[];
+      if (rows.length > maxRows) throw new UnprocessableEntityException(`O PDF aceita até ${maxRows} linhas. Reduza o período ou refine os filtros.`);
+      return {
+        summary: summary as Record<string, unknown>,
+        rows: rows.map(({ _sort: _internal, _order: _date, ...row }) => row as Record<string, unknown> & { id: string }),
+        timezone: a.timezone,
+      };
+    }, { isolationLevel: 'repeatable read' });
+  }
+
+  async countPdfRows(ctx: CrmContext, type: ReportType, input: ReportInput): Promise<number> {
+    this.validate(type, input);
+    return this.database.db.transaction(async (tx) => {
+      const a = await this.policy.access(ctx, tx), d = this.definition(type, input, a);
+      const [row] = await tx.execute(sql`WITH report_rows AS (${d.rows}) SELECT count(*)::int AS total FROM report_rows WHERE ${this.pdfTarget(d)}`);
+      return Number(row.total);
+    }, { isolationLevel: 'repeatable read' });
   }
 
   async exportRows(ctx: CrmContext, type: CatalogReport, input: ReportInput, maxRows: number, onRows: (rows: ReportRow[])=>Promise<void>) {

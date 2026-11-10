@@ -300,8 +300,14 @@ async function request<T>(path: string, init: RequestInit = {}, options: { retry
 
 async function requestBlob(path: string, companyId: string): Promise<Blob> {
   const execute = () => fetch(`${API_URL}${path}`, { credentials: 'include', headers: { 'X-Company-Id': companyId } });
-  let response = await execute();
-  if (response.status === 401) { await refreshSession(); response = await execute(); }
+  let response: Response;
+  try {
+    response = await execute();
+    if (response.status === 401) { await refreshSession(); response = await execute(); }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(0, 'Não foi possível conectar ao sistema. Tente novamente em instantes.');
+  }
   if (!response.ok) throw await readError(response);
   return response.blob();
 }
@@ -314,6 +320,20 @@ export type ReportResult = { summary: Record<string, number | string | null>; it
 function reportQuery(filters: ReportFilters) {
   return new URLSearchParams(Object.entries(filters).filter(([,value]) => value !== undefined && value !== '').map(([key,value]) => [key,String(value)]));
 }
+
+export type SupportActionStatus = 'PENDING' | 'CONFIRMED' | 'CANCELED' | 'EXPIRED' | 'FAILED';
+export type SupportActionBlock = { type: 'action'; actionId: string; kind: 'CREATE_CUSTOMER' | 'CREATE_SERVICE'; status: SupportActionStatus;
+  summary: { label: string; value: string }[]; expiresAt: string; resultTo?: string; errorMessage?: string };
+export type SupportBlock =
+  | { type: 'text'; text: string }
+  | { type: 'notice'; level: 'info' | 'error'; text: string }
+  | { type: 'navigate'; label: string; to: string }
+  | { type: 'download'; label: string; url: string; filename: string }
+  | SupportActionBlock;
+export type SupportMessage = { id: string; role: 'user' | 'assistant'; createdAt: string; blocks: SupportBlock[] };
+export type SupportConversation = { conversation: { id: string; messages: SupportMessage[] } | null; aiEnabled: boolean };
+export type SupportHelpTopic = { id: string; titulo: string };
+export type SupportHelpArticle = SupportHelpTopic & { to: string | null; conteudo: string };
 
 export const api = {
   previewNfse: (companyId: string, saleId: string, input: NfsePreviewInput, key: string) => request<NfsePreview>(`/sales/${saleId}/nfse/preview`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
@@ -349,6 +369,15 @@ export const api = {
   report: (companyId: string, type: ReportType, filters: ReportFilters) => request<ReportResult>(`/reports/${type}?${reportQuery(filters)}`, {}, { companyId }),
   reportOptions: (companyId: string, field: 'customerId' | 'serviceId' | 'assignedUserId', search = '') => request<{ items: Array<{ id: string; name: string }> }>(`/reports/options?${new URLSearchParams({ field, search, limit: '100' })}`, {}, { companyId }),
   reportCsv: (companyId: string, type: 'customers' | 'service-catalog', filters: ReportFilters) => requestBlob(`/reports/${type}.csv?${reportQuery(filters)}`, companyId),
+  reportPdf: (companyId: string, type: ReportType, filters: ReportFilters) => requestBlob(`/reports/${type}/pdf?${reportQuery(filters)}`, companyId),
+  supportConversation: (companyId: string) => request<SupportConversation>('/support/conversation', {}, { companyId }),
+  supportSend: (companyId: string, text: string) => request<{ messages: SupportMessage[] }>('/support/conversation/messages', { method: 'POST', body: json({ text }) }, { companyId }),
+  supportReset: (companyId: string) => request<void>('/support/conversation/reset', { method: 'POST' }, { companyId }),
+  supportConfirm: (companyId: string, id: string) => request<{ block: SupportActionBlock }>(`/support/actions/${id}/confirm`, { method: 'POST' }, { companyId }),
+  supportCancel: (companyId: string, id: string) => request<{ block: SupportActionBlock }>(`/support/actions/${id}/cancel`, { method: 'POST' }, { companyId }),
+  supportHelpList: (companyId: string) => request<SupportHelpTopic[]>('/support/help', {}, { companyId }),
+  supportHelp: (companyId: string, id: string) => request<SupportHelpArticle>(`/support/help/${encodeURIComponent(id)}`, {}, { companyId }),
+  supportDownload: (companyId: string, url: string) => requestBlob(url, companyId),
   fileCapabilities: (companyId: string) => request<UploadCapabilities>('/files/capabilities', {}, { companyId }),
   beginFileUpload: (companyId: string, input: { fileName: string; mimeType: StoredFile['mimeType']; sizeBytes: number }, key: string) => request<UploadSession>('/files/uploads', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
   completeFileUpload: (companyId: string, id: string) => request<StoredFile>(`/files/${id}/complete`, { method: 'POST', body: '{}' }, { companyId }),

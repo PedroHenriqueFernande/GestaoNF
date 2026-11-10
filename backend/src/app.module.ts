@@ -15,6 +15,7 @@ import { UsersModule } from './users/users.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { FiscalModule } from './fiscal/fiscal.module.js';
 import { ProfileModule } from './profile/profile.module.js';
+import { SupportModule } from './support/support.module.js';
 
 @Controller('health')
 class HealthController {
@@ -26,5 +27,5 @@ class HealthController {
   }
 }
 
-@Module({ imports: [DatabaseModule, AuthModule, CompaniesModule, CustomersModule, ServicesModule, SalesModule, FinanceModule, WhatsAppModule, CrmModule, FilesModule, EmailsModule, UsersModule, ReportsModule, FiscalModule, ProfileModule], controllers: [HealthController] })
+@Module({ imports: [DatabaseModule, AuthModule, CompaniesModule, CustomersModule, ServicesModule, SalesModule, FinanceModule, WhatsAppModule, CrmModule, FilesModule, EmailsModule, UsersModule, ReportsModule, FiscalModule, ProfileModule, SupportModule], controllers: [HealthController] })
 export class AppModule {}

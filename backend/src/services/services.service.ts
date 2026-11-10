@@ -23,13 +23,16 @@ export class ServicesService {
 
   async create(companyId: string, userId: string, input: CreateService) {
     try {
-      const [service] = await this.database.db.insert(services)
-        .values({ ...input, companyId, createdByUserId: userId }).returning();
-      return this.withFiscalClassification(service);
+      return await this.createInTx(this.database.db, companyId, userId, input);
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('Código interno já cadastrado nesta empresa');
       throw error;
     }
+  }
+
+  async createInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, input: CreateService) {
+    const [service] = await db.insert(services).values({ ...input, companyId, createdByUserId: userId }).returning();
+    return this.withFiscalClassification(service);
   }
 
   async list(companyId: string, input: ListServices) {

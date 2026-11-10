@@ -1875,3 +1875,80 @@ export const crmActivities = pgTable('crm_activities', {
   index('crm_activities_opportunity_status_date_idx').on(t.companyId, t.opportunityId, t.occurredAt.desc(), t.recordedAt.desc(), t.id.desc()).where(sql`${t.kind} = 'STATUS_CHANGED' AND ${t.opportunityId} IS NOT NULL`),
   index('crm_activities_meeting_idx').on(t.companyId, t.meetingId, t.recordedAt.desc(), t.id.desc()).where(sql`${t.meetingId} IS NOT NULL`),
 ]);
+
+export const supportConversations = pgTable(
+  'support_conversations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('support_conversations_active_uq').on(table.companyId, table.userId).where(sql`${table.status} = 'ACTIVE'`),
+    foreignKey({
+      name: 'support_conversations_company_user_fk',
+      columns: [table.companyId, table.userId],
+      foreignColumns: [companyUsers.companyId, companyUsers.userId],
+    }).onDelete('restrict'),
+    check('support_conversations_status_chk', sql`${table.status} IN ('ACTIVE', 'CLOSED')`),
+  ],
+);
+
+export const supportMessages = pgTable(
+  'support_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    seq: bigint('seq', { mode: 'number' }).generatedAlwaysAsIdentity().notNull(),
+    conversationId: uuid('conversation_id').notNull().references(() => supportConversations.id, { onDelete: 'restrict' }),
+    companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+    role: varchar('role', { length: 16 }).notNull(),
+    blocks: jsonb('blocks').$type<Record<string, unknown>[]>().notNull(),
+    llmItems: jsonb('llm_items').$type<unknown[]>().default(sql`'[]'::jsonb`).notNull(),
+    model: varchar('model', { length: 80 }),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    toolCallCount: integer('tool_call_count').default(0).notNull(),
+    errorCode: varchar('error_code', { length: 40 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('support_messages_conversation_idx').on(table.conversationId, table.seq),
+    index('support_messages_company_role_idx').on(table.companyId, table.role, table.createdAt),
+    check('support_messages_role_chk', sql`${table.role} IN ('user', 'assistant')`),
+    check('support_messages_counts_chk', sql`(${table.inputTokens} IS NULL OR ${table.inputTokens} >= 0) AND (${table.outputTokens} IS NULL OR ${table.outputTokens} >= 0) AND ${table.toolCallCount} >= 0`),
+  ],
+);
+
+export const supportActions = pgTable(
+  'support_actions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    conversationId: uuid('conversation_id').notNull().references(() => supportConversations.id, { onDelete: 'restrict' }),
+    messageId: uuid('message_id').notNull().references(() => supportMessages.id, { onDelete: 'restrict' }),
+    companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    kind: varchar('kind', { length: 32 }).notNull(),
+    status: varchar('status', { length: 16 }).default('PENDING').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    resultEntityId: uuid('result_entity_id'),
+    errorMessage: text('error_message'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('support_actions_pending_uq').on(table.conversationId).where(sql`${table.status} = 'PENDING'`),
+    index('support_actions_company_user_idx').on(table.companyId, table.userId, table.createdAt),
+    foreignKey({
+      name: 'support_actions_company_user_fk',
+      columns: [table.companyId, table.userId],
+      foreignColumns: [companyUsers.companyId, companyUsers.userId],
+    }).onDelete('restrict'),
+    check('support_actions_kind_chk', sql`${table.kind} IN ('CREATE_CUSTOMER', 'CREATE_SERVICE')`),
+    check('support_actions_status_chk', sql`${table.status} IN ('PENDING', 'CONFIRMED', 'CANCELED', 'EXPIRED', 'FAILED')`),
+  ],
+);

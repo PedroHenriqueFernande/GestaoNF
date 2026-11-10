@@ -218,6 +218,13 @@
       "when": 1794279896966,
       "tag": "0030_keen_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794287803248,
+      "tag": "0031_support_assistant",
+      "breakpoints": true
     }
   ]
 }

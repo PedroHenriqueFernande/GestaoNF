@@ -5,6 +5,7 @@ import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.g
 import { parseInput } from '../common/validate.js';
 import { ReportsReadService } from './reports-read.service.js';
 import { ReportsCsvService } from './reports-csv.service.js';
+import { ReportsPdfService } from './reports-pdf.service.js';
 import { reportFiltersSchema, reportOptionsSchema, reportTypeSchema } from './reports.schemas.js';
 const ctx=(r:RequestContext)=>({companyId:r.companyId!,userId:r.userId!});
 @ApiTags('Relatórios')
@@ -13,7 +14,7 @@ const ctx=(r:RequestContext)=>({companyId:r.companyId!,userId:r.userId!});
 @UseGuards(AccessGuard,CompanyGuard)
 @Controller('reports')
 export class ReportsController {
-  constructor(@Inject(ReportsReadService) private readonly reader:ReportsReadService,@Inject(ReportsCsvService) private readonly csv:ReportsCsvService) {}
+  constructor(@Inject(ReportsReadService) private readonly reader:ReportsReadService,@Inject(ReportsCsvService) private readonly csv:ReportsCsvService,@Inject(ReportsPdfService) private readonly pdf:ReportsPdfService) {}
   @Get('options')
   options(@Req() r:RequestContext,@Query() query:unknown){ return this.reader.options(ctx(r),parseInput(reportOptionsSchema,query)); }
   @Get('customers.csv')
@@ -26,6 +27,12 @@ export class ReportsController {
   async servicesCsv(@Req() r:RequestContext,@Query() query:unknown,@Res() reply:FastifyReply) {
     const stream=await this.csv.create(ctx(r),'service-catalog',parseInput(reportFiltersSchema,query));
     return reply.header('Content-Type','text/csv; charset=utf-8').header('Cache-Control','private, no-store').header('Content-Disposition','attachment; filename="servicos.csv"').send(stream);
+  }
+  @Get(':type/pdf')
+  @ApiOperation({summary:'Gera o PDF do relatório com todos os registros filtrados'})
+  async pdfReport(@Req() r:RequestContext,@Param('type') type:unknown,@Query() query:unknown,@Res() reply:FastifyReply) {
+    const file=await this.pdf.create(ctx(r),parseInput(reportTypeSchema,type),parseInput(reportFiltersSchema,query));
+    return reply.header('Content-Type','application/pdf').header('Cache-Control','private, no-store').header('Content-Disposition',`attachment; filename="${file.filename}"`).send(file.buffer);
   }
   @Get(':type')
   @ApiQuery({name:'from',required:false,type:String}) @ApiQuery({name:'to',required:false,type:String})

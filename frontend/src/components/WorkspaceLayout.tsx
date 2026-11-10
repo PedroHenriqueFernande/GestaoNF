@@ -8,6 +8,7 @@ import { CompanyPicker } from './CompanyPicker';
 import { UserMenu } from './UserMenu';
 import { useDropdown } from './useDropdown';
 import { companyRoleLabel } from '../utils/format';
+import { SupportWidget } from '../features/support/SupportWidget';
 import './dropdown.css';
 import './workspace-sidebar.css';
 import './workspace-header.css';
@@ -235,6 +236,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
         </div>
       </header>
       {children}
+      {!onboarding && companyId && <SupportWidget key={user.id} userId={user.id} companyId={companyId} />}
     </div>
   </div>;
 }

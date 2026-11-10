@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
-import { AlertCircle, ArrowLeft, ArrowRight, BarChart3, ChevronLeft, ChevronRight, Download, Filter, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, BarChart3, ChevronLeft, ChevronRight, Download, FileDown, Filter, RefreshCw } from 'lucide-react';
 import { api, type ReportFilters, type ReportResult, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { money, monthPeriod, reportDate, reports, statusLabels, type ReportDefinition } from './report-definitions';
+import { saveBlob, reportPdfFilename } from '../support/download';
 import './reports.css';
 
 export function ReportsPage({ user }: { user: User }) {
@@ -39,6 +40,7 @@ function ReportDetail({definition:d,companyId,timezone}:{definition:ReportDefini
   const csv=useMutation({mutationFn:()=>api.reportCsv(companyId,d.type as 'customers'|'service-catalog',applied),onSuccess:(blob)=>{
     const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${d.slug}-${companyId.slice(0,8)}.csv`;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
   }});
+  const pdf=useMutation({mutationFn:()=>api.reportPdf(companyId,d.type,applied),onSuccess:(blob)=>saveBlob(blob,reportPdfFilename(d.type,applied.from,applied.to))});
   const [validation,setValidation]=useState('');
   function apply(event:FormEvent) {
     event.preventDefault();
@@ -47,14 +49,14 @@ function ReportDetail({definition:d,companyId,timezone}:{definition:ReportDefini
       const span=(Date.parse(draft.to)-Date.parse(draft.from))/86400000;
       if(span<0 || span>=366) {setValidation('Escolha um período de até 366 dias, com início anterior ao fim.');return;}
     }
-    setValidation('');csv.reset();setApplied(Object.fromEntries(Object.entries(draft).filter(([,v])=>v!=='')));setCursors([undefined]);
+    setValidation('');csv.reset();pdf.reset();setApplied(Object.fromEntries(Object.entries(draft).filter(([,v])=>v!=='')));setCursors([undefined]);
   }
   const update=(key:keyof ReportFilters,value:string)=>setDraft(old=>({...old,[key]:value}));
   const summary=result.data?.summary;
   const total=Number(summary?.[d.rate ? d.type==='loss-rate' ? 'lost' : 'disqualified' : d.type==='lead-entries' ? 'entries' : d.type==='closed-services' ? 'saleCount' : d.type==='service-receipts' ? 'movementCount' : 'total']??0);
   return <>
     <Link className="reports-back" to="/relatorios"><ArrowLeft size={15}/>Todos os relatórios</Link>
-    <header className="reports-header"><div><span className="eyebrow">{d.catalog ? 'CADASTROS' : d.crm || d.type==='meetings' ? 'RELACIONAMENTO' : 'VENDAS E RECEBIMENTOS'}</span><h1>{d.title}</h1><p>{d.description}</p></div><div className="reports-actions"><button className="button button--secondary" aria-label="Atualizar relatório" disabled={result.isFetching} onClick={()=>result.refetch()}><RefreshCw size={16} className={result.isFetching ? 'is-spinning' : ''}/></button>{d.catalog && <button className="button button--primary" disabled={csv.isPending || result.isPending || result.isError} onClick={()=>csv.mutate()}><Download size={16}/>{csv.isPending ? 'Exportando...' : 'Exportar CSV'}</button>}</div></header>
+    <header className="reports-header"><div><span className="eyebrow">{d.catalog ? 'CADASTROS' : d.crm || d.type==='meetings' ? 'RELACIONAMENTO' : 'VENDAS E RECEBIMENTOS'}</span><h1>{d.title}</h1><p>{d.description}</p></div><div className="reports-actions"><button className="button button--secondary" aria-label="Atualizar relatório" disabled={result.isFetching} onClick={()=>result.refetch()}><RefreshCw size={16} className={result.isFetching ? 'is-spinning' : ''}/></button>{pdf.isError && <span role="alert" className="reports-pdf-error">{pdf.error.message}</span>}<button className="button button--secondary" disabled={pdf.isPending || result.isPending || result.isError} onClick={()=>pdf.mutate()}><FileDown size={16}/>{pdf.isPending ? 'Gerando PDF...' : 'Exportar PDF'}</button>{d.catalog && <button className="button button--primary" disabled={csv.isPending || result.isPending || result.isError} onClick={()=>csv.mutate()}><Download size={16}/>{csv.isPending ? 'Exportando...' : 'Exportar CSV'}</button>}</div></header>
     <section className="reports-filters" aria-label="Filtros do relatório"><div className="reports-filters__title"><Filter size={16}/><h2>Filtrar relatório</h2>{d.catalog && <span>Período de cadastro opcional</span>}</div><form onSubmit={apply}>
       <label>De<input type="date" value={draft.from??''} onChange={e=>update('from',e.target.value)} required={!d.catalog}/></label><label>Até<input type="date" value={draft.to??''} onChange={e=>update('to',e.target.value)} required={!d.catalog}/></label>
       <label className="reports-search">Buscar<input type="search" maxLength={200} placeholder={d.catalog ? 'Nome, código ou contato' : 'Cliente, lead, pedido ou negociação'} value={draft.search??''} onChange={e=>update('search',e.target.value)}/></label>
