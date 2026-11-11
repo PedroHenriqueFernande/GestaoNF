@@ -7,11 +7,12 @@ import { WhatsAppIngressService } from './whatsapp-ingress.service.js';
 import { WhatsAppLinkController } from './whatsapp-link.controller.js';
 import { WhatsAppLinkService } from './whatsapp-link.service.js';
 import { WhatsAppOutboundService } from './whatsapp-outbound.service.js';
+import { WhatsAppSendService } from './whatsapp-send.service.js';
 
 @Module({
   imports: [AuthModule],
   controllers: [MetaWebhookController, WhatsAppLinkController],
-  providers: [MetaCloudClient, MetaSignatureService, WhatsAppIngressService, WhatsAppLinkService, WhatsAppOutboundService],
-  exports: [MetaCloudClient, WhatsAppLinkService, WhatsAppOutboundService],
+  providers: [MetaCloudClient, MetaSignatureService, WhatsAppIngressService, WhatsAppLinkService, WhatsAppOutboundService, WhatsAppSendService],
+  exports: [MetaCloudClient, WhatsAppLinkService, WhatsAppOutboundService, WhatsAppSendService],
 })
 export class WhatsAppModule {}

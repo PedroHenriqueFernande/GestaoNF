@@ -15,6 +15,9 @@ export class WhatsAppLinkController {
   @Get('status')
   status(@Req() request: RequestContext) { return this.links.status(request.userId!, request.companyId!); }
 
+  @Get('undelivered')
+  undelivered(@Req() request: RequestContext) { return this.links.undelivered(request.userId!, request.companyId!); }
+
   @Post('challenges')
   create(@Req() request: RequestContext, @Body() body: unknown) {
     const input = z.object({ mode: z.enum(['NEW_NUMBER', 'EXISTING_NUMBER']).optional(), linkId: z.uuid().optional() }).strict().safeParse(body ?? {});

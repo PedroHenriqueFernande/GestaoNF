@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, CheckCircle2, ExternalLink, Link2, LoaderCircle, MessageCircle, ShieldCheck, Smartphone, Unlink } from 'lucide-react';
+import { AlertTriangle, Bot, CheckCircle2, ExternalLink, Link2, LoaderCircle, MessageCircle, ShieldCheck, Smartphone, Unlink } from 'lucide-react';
 import QRCode from 'qrcode';
 import { api, type User, type WhatsAppLinkChallenge } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
@@ -34,6 +34,7 @@ export function NiloPage({ user }: { user: User }) {
   }, [challenge]);
 
   const status = useQuery({ queryKey: ['whatsapp-link', companyId], queryFn: () => api.whatsappLinkStatus(companyId), enabled: !!companyId });
+  const undelivered = useQuery({ queryKey: ['whatsapp-undelivered', companyId], queryFn: () => api.whatsappUndelivered(companyId), enabled: !!companyId && !!status.data?.linked, refetchInterval: 60_000 });
   const numbers = status.data?.verifiedNumbers ?? [];
   const numberId = numbers.some((number) => number.id === selectedNumber) ? selectedNumber : numbers[0]?.id ?? '';
   const challengeStatus = useQuery({
@@ -85,8 +86,13 @@ export function NiloPage({ user }: { user: User }) {
               <div className="nilo-start__actions">{numbers.length > 0 && <button className="button button--primary" type="button" disabled={create.isPending || !numberId} onClick={() => create.mutate({ companyId, mode: 'EXISTING_NUMBER', linkId: numberId })}><Link2 size={16} /> Vincular este número também</button>}<button className={`button${numbers.length ? '' : ' button--primary'}`} type="button" disabled={create.isPending} onClick={() => create.mutate({ companyId, mode: 'NEW_NUMBER' })}>{create.isPending ? <LoaderCircle className="is-spinning" size={16} /> : <Smartphone size={16} />}{numbers.length ? 'Vincular outro número' : 'Gerar QR Code'}</button></div>
             </div>}
           {message && <p className="nilo-message" role="status">{message}</p>}
+          {!!undelivered.data?.length && <section className="nilo-undelivered" aria-label="Respostas não entregues">
+            <header><AlertTriangle size={17} /><h3>{undelivered.data.length === 1 ? '1 resposta não foi entregue' : `${undelivered.data.length} respostas não foram entregues`} no WhatsApp</h3></header>
+            <p>O WhatsApp recusou o envio. O conteúdo está abaixo para você não perder nada.</p>
+            <ul>{undelivered.data.map((item) => <li key={item.id}><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</time><p>{item.body}</p></li>)}</ul>
+          </section>}
         </article>
-        <aside className="nilo-card nilo-card--guide"><span>COMO FUNCIONA</span><h2>Um vínculo para cada empresa</h2><ol><li><b>1</b><div><strong>Empresa do QR Code</strong><p>A confirmação vincula seu número somente à empresa exibida.</p></div></li><li><b>2</b><div><strong>Mesmo número ou outro</strong><p>Você pode reutilizar seu WhatsApp em outra empresa ou conectar um número diferente.</p></div></li><li><b>3</b><div><strong>Escolha em cada pedido</strong><p>Se o mesmo número tiver várias empresas, Nero perguntará qual usar em cada nova solicitação.</p></div></li></ol><div className="nilo-security"><ShieldCheck size={18} /><p>Trocar a empresa no site não altera seus vínculos nem o pedido em andamento no WhatsApp.</p></div></aside>
+        <aside className="nilo-card nilo-card--guide"><span>COMO FUNCIONA</span><h2>Um vínculo para cada empresa</h2><ol><li><b>1</b><div><strong>Empresa do QR Code</strong><p>A confirmação vincula seu número somente à empresa exibida.</p></div></li><li><b>2</b><div><strong>Mesmo número ou outro</strong><p>Você pode reutilizar seu WhatsApp em outra empresa ou conectar um número diferente.</p></div></li><li><b>3</b><div><strong>Uma escolha por conversa</strong><p>Se o mesmo número tiver várias empresas, Nero pergunta qual usar no início da conversa. A escolha vale até a conversa ficar 1 hora parada ou você pedir outra empresa.</p></div></li></ol><div className="nilo-security"><ShieldCheck size={18} /><p>Trocar a empresa no site não altera seus vínculos nem o pedido em andamento no WhatsApp.</p></div></aside>
       </section>
     </main>
   </WorkspaceLayout>;

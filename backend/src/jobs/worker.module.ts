@@ -16,10 +16,11 @@ import { FiscalModule } from '../fiscal/fiscal.module.js';
 import { NfseWorkerService } from './nfse-worker.service.js';
 import { ProfileModule } from '../profile/profile.module.js';
 import { ProfileAvatarCleanupWorkerService } from './profile-avatar-cleanup-worker.service.js';
+import { NeroRetentionWorkerService } from './nero-retention-worker.service.js';
 
 @Module({
   imports: [DatabaseModule, WhatsAppModule, AssistantModule, CrmModule, FilesModule, EmailsModule, UsersModule, FiscalModule, ProfileModule],
-  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService, ProfileAvatarCleanupWorkerService, EmailWorkerService, InvitationExpiryWorkerService, NfseWorkerService],
+  providers: [OutboxDispatcherService, WhatsAppWorkersService, MeetingReminderWorkerService, ProfileAvatarCleanupWorkerService, EmailWorkerService, InvitationExpiryWorkerService, NfseWorkerService, NeroRetentionWorkerService],
 })
 export class WorkerModule {}
 

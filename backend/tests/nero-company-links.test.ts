@@ -13,13 +13,17 @@ import * as schema from '@gestaonf/database/schema';
 import { DatabaseService } from '../src/database/database.module.js';
 import { WhatsAppLinkService } from '../src/whatsapp/whatsapp-link.service.js';
 import { WhatsAppOutboundService } from '../src/whatsapp/whatsapp-outbound.service.js';
-import { CompanyRequestService } from '../src/assistant/company-request.service.js';
+import { ActionService } from '../src/assistant/actions/action.service.js';
+import { AgentOrchestrator } from '../src/assistant/agent-orchestrator.service.js';
+import { ConversationService } from '../src/assistant/conversation.service.js';
+import { OpenAINeroModel } from '../src/assistant/model/nero-model.js';
 import { NiloService } from '../src/assistant/nilo.service.js';
+import { createToolRegistry } from '../src/assistant/tools/index.js';
 
 config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 const testDatabaseName = `gestaonf_nero_test_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 let admin: ReturnType<typeof postgres>, client: ReturnType<typeof postgres>;
-let db: ReturnType<typeof drizzle<typeof schema>>, links: WhatsAppLinkService, outbound: WhatsAppOutboundService, requests: CompanyRequestService, nero: NiloService;
+let db: ReturnType<typeof drizzle<typeof schema>>, links: WhatsAppLinkService, outbound: WhatsAppOutboundService, nero: NiloService;
 let connectionId: string, userId: string, companyA: string, companyB: string, companyC: string;
 const phone = () => '55' + BigInt('0x' + randomUUID().replace(/-/g, '').slice(0, 10)).toString().padStart(12, '0');
 const legacy = { user: randomUUID(), a: randomUUID(), b: randomUUID(), link: randomUUID(), orphanUser: randomUUID(), orphanLink: randomUUID() };
@@ -50,8 +54,9 @@ beforeAll(async () => {
   db = drizzle(client, { schema });
   const database = { db } as DatabaseService;
   links = new WhatsAppLinkService(database); outbound = new WhatsAppOutboundService(database);
-  requests = new CompanyRequestService(database, links, outbound);
-  nero = new NiloService(database, links, outbound, requests);
+  const registry = createToolRegistry(database);
+  const actions = new ActionService(database, registry);
+  nero = new NiloService(database, links, outbound, new ConversationService(database), actions, new AgentOrchestrator(database, new OpenAINeroModel(), registry, actions));
   vi.stubEnv('META_WHATSAPP_ENABLED', 'true'); vi.stubEnv('META_APP_ID', 'nero-test-app'); vi.stubEnv('META_WABA_ID', 'nero-test-waba'); vi.stubEnv('META_PHONE_NUMBER_ID', 'nero-test-phone'); vi.stubEnv('META_DISPLAY_PHONE_NUMBER', '15550000000');
   vi.stubEnv('NILO_ENABLED', 'false'); vi.stubEnv('OPENAI_API_KEY', '');
 }, 60000);
@@ -173,97 +178,26 @@ describe('vínculos por empresa', () => {
     expect(await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, event.id))).toHaveLength(0);
     await links.confirm(userId, companyB, challenge.challengeId);
   });
-});
 
-describe('seleção da empresa por solicitação', () => {
-  it('pergunta em cada pedido, preserva o original e não usa a empresa do cabeçalho', async () => {
+  it('revalida o vínculo da empresa da conversa antes do envio e preserva as outras empresas', async () => {
     const sender = phone(), a = await pair(companyA, sender); await pair(companyB, sender, a.linkId);
-    await db.update(schema.whatsappSessions).set({ activeCompanyId: companyC }).where(eq(schema.whatsappSessions.linkId, a.linkId));
-    const first = await inbound(sender, 'Mostre as vendas deste mês');
-    const [request] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, first.id));
-    expect(request.status).toBe('AWAITING_COMPANY'); expect(request.companyId).toBeNull();
-    expect(request.options.map((item) => item.companyId)).toEqual([companyA, companyB]);
-    expect(await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, first.id))).toHaveLength(0);
-    const answer = await inbound(sender, '1');
-    const [run] = await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, answer.id));
-    expect(run.companyId).toBe(companyA); expect(run.status).toBe('COMPLETED');
-    const second = await inbound(sender, 'Mostre as vendas do mês passado');
-    const [next] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, second.id));
-    expect(next.status).toBe('AWAITING_COMPANY'); expect(next.companyId).toBeNull();
-    expect(await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, second.id))).toHaveLength(0);
-  });
-
-  it('seleciona automaticamente apenas para o número com uma empresa', async () => {
-    const aSender = phone(), bSender = phone();
-    await pair(companyA, aSender); await pair(companyB, bSender);
-    const event = await inbound(bSender, 'vendas deste mês');
-    const [run] = await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, event.id));
-    expect(run.companyId).toBe(companyB); expect(run.status).toBe('COMPLETED');
-  });
-
-  it('seleção expirada, de outro remetente ou associação revogada não consulta dados', async () => {
-    const sender = phone(), a = await pair(companyA, sender); await pair(companyB, sender, a.linkId);
-    const event = await inbound(sender, 'vendas deste mês');
-    const [request] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, event.id));
-    const foreign = await inbound(phone(), `${request.selectionCode}-1`);
-    expect(await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, foreign.id))).toHaveLength(0);
+    const eligible = await links.eligibleCompanies(a.linkId, userId);
+    const target = eligible.find((item) => item.companyId === companyB)!;
+    const [conversation] = await db.insert(schema.neroConversations).values({ linkId: a.linkId, userId, status: 'ACTIVE', companyId: target.companyId, companyLinkId: target.companyLinkId }).returning();
+    const base = { connectionId, recipientId: sender, linkId: a.linkId, companyId: target.companyId, companyLinkId: target.companyLinkId };
+    const scopedId = await outbound.enqueueText({ ...base, conversationId: conversation.id, logicalKey: `canSend:${randomUUID()}`, body: 'Resposta da conversa na empresa B' });
+    const unscopedId = await outbound.enqueueText({ connectionId, recipientId: sender, linkId: a.linkId, logicalKey: `canSend:${randomUUID()}`, body: 'Aviso sem empresa' });
+    const load = async (id: string | null) => (await db.select().from(schema.whatsappOutboundMessages).where(eq(schema.whatsappOutboundMessages.id, id!)))[0];
+    expect(await links.canSend(await load(scopedId))).toBe(true);
+    expect(await links.canSend(await load(unscopedId))).toBe(true);
     await links.disconnect(userId, companyB);
-    const revoked = await inbound(sender, '2');
-    expect(await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, revoked.id))).toHaveLength(0);
-    await pair(companyB, sender, a.linkId);
-    const nextEvent = await inbound(sender, 'vendas deste mês');
-    const [next] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, nextEvent.id));
-    await db.update(schema.whatsappRequests).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(schema.whatsappRequests.id, next.id));
-    const expired = await inbound(sender, `${next.selectionCode}-1`);
-    expect(await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, expired.id))).toHaveLength(0);
-  });
-
-  it('pedidos pendentes distintos exigem uma escolha referente ao pedido correto', async () => {
-    const sender = phone(), a = await pair(companyA, sender); await pair(companyB, sender, a.linkId);
-    const first = await inbound(sender, 'vendas deste mês'); await inbound(sender, 'vendas do mês passado');
-    const ambiguous = await inbound(sender, '1');
-    expect(await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, ambiguous.id))).toHaveLength(0);
-    const [request] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, first.id));
-    const selected = await inbound(sender, `${request.selectionCode}-2`);
-    const [run] = await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, selected.id));
-    expect(run.companyId).toBe(companyB);
-  });
-
-  it('revalida o vínculo antes do envio e preserva o contexto empresarial da resposta', async () => {
-    const sender = phone(), a = await pair(companyA, sender); await pair(companyB, sender, a.linkId);
-    await inbound(sender, 'vendas deste mês'); const event = await inbound(sender, '2');
-    const [message] = await db.select().from(schema.whatsappOutboundMessages).where(eq(schema.whatsappOutboundMessages.logicalKey, `nilo:${event.id}`));
-    expect(message.companyId).toBe(companyB); expect(await links.canSend(message)).toBe(true);
-    await links.disconnect(userId, companyB);
-    expect(await links.canSend(message)).toBe(false);
+    expect(await links.canSend(await load(scopedId))).toBe(false);
+    expect(await links.canSend(await load(unscopedId))).toBe(true);
     expect((await links.status(userId, companyA)).linked).toBe(true);
   });
+});
 
-  it('esclarecimento mantém a empresa do mesmo pedido; pedido seguinte pergunta novamente', async () => {
-    const sender = phone(), a = await pair(companyA, sender); await pair(companyB, sender, a.linkId);
-    const answer = vi.spyOn(nero as any, 'answerWithOpenAI').mockResolvedValueOnce({ text: 'Qual período?', toolCallCount: 1, usage: null, needsFollowUp: true, conversation: [{ role: 'user', content: 'vendas' }] })
-      .mockResolvedValueOnce({ text: 'Relatório', toolCallCount: 1, usage: null, needsFollowUp: false, conversation: [] });
-    const first = await inbound(sender, 'Mostre minhas vendas'); await inbound(sender, '2');
-    const [original] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, first.id));
-    const followup = await inbound(sender, `${original.selectionCode}: mês passado`);
-    expect(answer.mock.calls[1][0]).toMatchObject({ companyId: companyB, text: 'mês passado' });
-    const [run] = await db.select().from(schema.assistantRuns).where(eq(schema.assistantRuns.inboxEventId, followup.id));
-    expect(run.companyId).toBe(companyB);
-    const next = await inbound(sender, 'vendas deste mês');
-    const [request] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, next.id));
-    expect(request.status).toBe('AWAITING_COMPANY');
-  });
-
-  it('novo pedido durante um esclarecimento não herda a empresa anterior', async () => {
-    const sender = phone(), a = await pair(companyA, sender); await pair(companyB, sender, a.linkId);
-    const answer = vi.spyOn(nero as any, 'answerWithOpenAI').mockResolvedValue({ text: 'Qual período?', toolCallCount: 1, usage: null, needsFollowUp: true, conversation: [{ role: 'user', content: 'vendas' }] });
-    await inbound(sender, 'Mostre minhas vendas'); await inbound(sender, '1');
-    const next = await inbound(sender, 'Quantas vendas foram feitas neste mês?');
-    const [request] = await db.select().from(schema.whatsappRequests).where(eq(schema.whatsappRequests.sourceInboxEventId, next.id));
-    expect(request.status).toBe('AWAITING_COMPANY'); expect(request.companyId).toBeNull();
-    expect(answer).toHaveBeenCalledTimes(1);
-  });
-
+describe('opt-out', () => {
   it('opt-out global desconecta as empresas do remetente, preservando outro número do usuário', async () => {
     const sender = phone(), a = await pair(companyA, sender); await pair(companyB, sender, a.linkId);
     const c = await pair(companyC, phone());

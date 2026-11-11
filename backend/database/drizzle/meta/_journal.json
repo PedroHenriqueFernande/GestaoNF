@@ -225,6 +225,48 @@
       "when": 1794287803248,
       "tag": "0031_support_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794349139406,
+      "tag": "0032_nero_outbox_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794349523913,
+      "tag": "0033_nero_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794349880712,
+      "tag": "0034_nero_conversation_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794350562601,
+      "tag": "0035_nero_messages_seq",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794351105707,
+      "tag": "0036_nero_action_status_len",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794351602108,
+      "tag": "0037_nero_action_pending_uq",
+      "breakpoints": true
     }
   ]
 }

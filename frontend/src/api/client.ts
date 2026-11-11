@@ -159,6 +159,7 @@ export type WhatsAppLinkStatus = {
   link: { id: string; linkId: string; companyId: string; phoneE164: string | null; verifiedAt: string } | null;
   verifiedNumbers: { id: string; phoneE164: string | null; verifiedAt: string }[];
 };
+export type WhatsAppUndelivered = { id: string; body: string; createdAt: string; failedAt: string | null }[];
 export type WhatsAppLinkChallenge = {
   challengeId: string; expiresAt: string; waLink: string; displayPhoneNumber: string; instruction: string;
 };
@@ -523,6 +524,7 @@ export const api = {
   meetingNotifications: (companyId: string) => request<{ items: MeetingNotification[]; total: number }>('/crm/notifications?limit=100&offset=0', {}, { companyId }),
   readMeetingNotification: (companyId: string, id: string) => request<MeetingNotification>(`/crm/notifications/${id}/read`, { method: 'PATCH', body: '{}' }, { companyId }),
   whatsappLinkStatus: (companyId: string) => request<WhatsAppLinkStatus>('/integrations/whatsapp/link/status', {}, { companyId }),
+  whatsappUndelivered: (companyId: string) => request<WhatsAppUndelivered>('/integrations/whatsapp/link/undelivered', {}, { companyId }),
   createWhatsAppChallenge: (companyId: string, input: { mode?: 'NEW_NUMBER' | 'EXISTING_NUMBER'; linkId?: string } = {}) => request<WhatsAppLinkChallenge>('/integrations/whatsapp/link/challenges', { method: 'POST', body: json(input) }, { companyId }),
   whatsappChallengeStatus: (companyId: string, challengeId: string) => request<WhatsAppChallengeStatus>(`/integrations/whatsapp/link/challenges/${challengeId}`, {}, { companyId }),
   confirmWhatsAppLink: (companyId: string, challengeId: string) => request<{ linked: true; phoneE164: string | null; verifiedAt: string }>(`/integrations/whatsapp/link/challenges/${challengeId}/confirm`, { method: 'POST', body: '{}' }, { companyId }),

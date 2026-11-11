@@ -1210,6 +1210,55 @@ export const whatsappSessions = pgTable(
   ],
 );
 
+export const neroConversations = pgTable(
+  'nero_conversations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    linkId: uuid('link_id').notNull().references(() => whatsappLinks.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'restrict' }),
+    companyLinkId: uuid('company_link_id').references(() => whatsappLinkCompanies.id, { onDelete: 'restrict' }),
+    status: varchar('status', { length: 20 }).default('AWAITING_COMPANY').notNull(),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow().notNull(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedReason: varchar('closed_reason', { length: 20 }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('nero_conversations_link_open_uq').on(table.linkId).where(sql`${table.status} <> 'CLOSED'`),
+    index('nero_conversations_link_date_idx').on(table.linkId, table.createdAt),
+    foreignKey({ name: 'nero_conversations_company_user_fk', columns: [table.companyId, table.userId], foreignColumns: [companyUsers.companyId, companyUsers.userId] }).onDelete('restrict'),
+    foreignKey({ name: 'nero_conversations_company_context_fk', columns: [table.companyLinkId, table.linkId, table.companyId, table.userId], foreignColumns: [whatsappLinkCompanies.id, whatsappLinkCompanies.linkId, whatsappLinkCompanies.companyId, whatsappLinkCompanies.userId] }).onDelete('restrict'),
+    check('nero_conversations_context_chk', sql`(${table.companyLinkId} IS NULL) = (${table.companyId} IS NULL)`),
+    check('nero_conversations_status_chk', sql`${table.status} IN ('AWAITING_COMPANY', 'ACTIVE', 'CLOSED')`),
+    check('nero_conversations_company_chk', sql`${table.status} <> 'ACTIVE' OR (${table.companyId} IS NOT NULL AND ${table.companyLinkId} IS NOT NULL)`),
+    check('nero_conversations_closed_chk', sql`(${table.status} = 'CLOSED') = (${table.closedAt} IS NOT NULL)`),
+    check('nero_conversations_reason_chk', sql`${table.closedReason} IS NULL OR ${table.closedReason} IN ('IDLE', 'NEW_TOPIC', 'COMPANY_SWITCH', 'LINK_REVOKED')`),
+  ],
+);
+
+export const neroMessages = pgTable(
+  'nero_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    seq: bigint('seq', { mode: 'number' }).generatedAlwaysAsIdentity(),
+    conversationId: uuid('conversation_id').notNull().references(() => neroConversations.id, { onDelete: 'cascade' }),
+    role: varchar('role', { length: 12 }).notNull(),
+    source: varchar('source', { length: 12 }).default('TEXT').notNull(),
+    content: text('content').notNull(),
+    inboxEventId: uuid('inbox_event_id').references(() => whatsappInboxEvents.id, { onDelete: 'set null' }),
+    outboundMessageId: uuid('outbound_message_id').references(() => whatsappOutboundMessages.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('nero_messages_conversation_seq_idx').on(table.conversationId, table.seq),
+    index('nero_messages_created_idx').on(table.createdAt),
+    check('nero_messages_role_chk', sql`${table.role} IN ('USER', 'ASSISTANT', 'TOOL')`),
+    check('nero_messages_source_chk', sql`${table.source} IN ('TEXT', 'AUDIO', 'BUTTON', 'SYSTEM')`),
+    check('nero_messages_content_chk', sql`length(btrim(${table.content})) > 0`),
+  ],
+);
+
 export const whatsappConsentEvents = pgTable(
   'whatsapp_consent_events',
   {
@@ -1307,6 +1356,8 @@ export const whatsappOutboundMessages = pgTable(
     companyId: uuid('company_id').references(() => companies.id, { onDelete: 'restrict' }),
     companyLinkId: uuid('company_link_id').references(() => whatsappLinkCompanies.id, { onDelete: 'restrict' }),
     requestId: uuid('request_id').references(() => whatsappRequests.id, { onDelete: 'restrict' }),
+    conversationId: uuid('conversation_id').references(() => neroConversations.id, { onDelete: 'restrict' }),
+    interactive: jsonb('interactive').$type<{ buttons: { id: string; title: string }[] }>(),
     recipientId: varchar('recipient_id', { length: 80 }).notNull(),
     messageType: varchar('message_type', { length: 24 }).default('TEXT').notNull(),
     body: text('body').notNull(),
@@ -1325,7 +1376,8 @@ export const whatsappOutboundMessages = pgTable(
     uniqueIndex('whatsapp_outbound_messages_provider_id_uq').on(table.connectionId, table.providerMessageId)
       .where(sql`${table.providerMessageId} IS NOT NULL`),
     index('whatsapp_outbound_messages_link_date_idx').on(table.linkId, table.createdAt),
-    check('whatsapp_outbound_messages_type_chk', sql`${table.messageType} IN ('TEXT', 'TEMPLATE', 'DOCUMENT')`),
+    check('whatsapp_outbound_messages_type_chk', sql`${table.messageType} IN ('TEXT', 'TEMPLATE', 'DOCUMENT', 'INTERACTIVE')`),
+    check('whatsapp_outbound_messages_interactive_chk', sql`(${table.messageType} = 'INTERACTIVE') = (${table.interactive} IS NOT NULL)`),
     check('whatsapp_outbound_messages_status_chk', sql`${table.status} IN ('QUEUED', 'SENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'CANCELED')`),
     check('whatsapp_outbound_messages_body_chk', sql`length(btrim(${table.body})) > 0`),
   ],
@@ -1400,6 +1452,8 @@ export const assistantRuns = pgTable(
   ],
 );
 
+export type NeroProposedOperation = { tool: string; args: Record<string, unknown> };
+
 export const assistantActions = pgTable(
   'assistant_actions',
   {
@@ -1409,16 +1463,24 @@ export const assistantActions = pgTable(
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
     toolName: varchar('tool_name', { length: 80 }).notNull(),
     riskLevel: varchar('risk_level', { length: 16 }).default('READ').notNull(),
-    status: varchar('status', { length: 20 }).default('REQUESTED').notNull(),
+    status: varchar('status', { length: 24 }).default('REQUESTED').notNull(),
     arguments: jsonb('arguments').$type<Record<string, unknown>>().notNull(),
     result: jsonb('result').$type<Record<string, unknown>>(),
     confirmationTokenHash: char('confirmation_token_hash', { length: 64 }),
     confirmationExpiresAt: timestamp('confirmation_expires_at', { withTimezone: true }),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     executedAt: timestamp('executed_at', { withTimezone: true }),
+    conversationId: uuid('conversation_id').references(() => neroConversations.id, { onDelete: 'restrict' }),
+    operations: jsonb('operations').$type<NeroProposedOperation[]>(),
+    summaryText: text('summary_text'),
+    summaryHash: char('summary_hash', { length: 64 }),
+    failure: jsonb('failure').$type<Record<string, unknown>>(),
+    lastError: text('last_error'),
     ...timestamps,
   },
   (table) => [
+    index('assistant_actions_conversation_status_idx').on(table.conversationId, table.status),
+    uniqueIndex('assistant_actions_conversation_pending_uq').on(table.conversationId).where(sql`${table.status} = 'AWAITING_CONFIRMATION' AND ${table.conversationId} IS NOT NULL`),
     index('assistant_actions_run_idx').on(table.assistantRunId, table.createdAt),
     index('assistant_actions_confirmation_idx').on(table.confirmationTokenHash, table.confirmationExpiresAt),
     foreignKey({
@@ -1427,7 +1489,7 @@ export const assistantActions = pgTable(
       foreignColumns: [companyUsers.companyId, companyUsers.userId],
     }).onDelete('restrict'),
     check('assistant_actions_risk_chk', sql`${table.riskLevel} IN ('READ', 'WRITE', 'SENSITIVE')`),
-    check('assistant_actions_status_chk', sql`${table.status} IN ('REQUESTED', 'AWAITING_CONFIRMATION', 'CONFIRMED', 'EXECUTED', 'REJECTED', 'FAILED')`),
+    check('assistant_actions_status_chk', sql`${table.status} IN ('REQUESTED', 'AWAITING_CONFIRMATION', 'CONFIRMED', 'EXECUTED', 'REJECTED', 'FAILED', 'EXPIRED', 'SUPERSEDED')`),
   ],
 );
 

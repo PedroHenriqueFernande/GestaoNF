@@ -1,0 +1,3 @@
+DROP INDEX "nero_messages_conversation_date_idx";--> statement-breakpoint
+ALTER TABLE "nero_messages" ADD COLUMN "seq" bigint NOT NULL GENERATED ALWAYS AS IDENTITY (sequence name "nero_messages_seq_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1);--> statement-breakpoint
+CREATE INDEX "nero_messages_conversation_seq_idx" ON "nero_messages" USING btree ("conversation_id","seq");

@@ -1,8 +1,8 @@
 import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
-import { companies, companyUsers, users, whatsappConnections, whatsappConsentEvents, whatsappLinkChallenges, whatsappLinkCompanies, whatsappLinks, whatsappOutboundMessages, whatsappRequests, whatsappSessions } from '@gestaonf/database/schema';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { assistantActions, companies, companyUsers, neroConversations, users, whatsappConnections, whatsappConsentEvents, whatsappLinkChallenges, whatsappLinkCompanies, whatsappLinks, whatsappOutboundMessages, whatsappRequests, whatsappSessions } from '@gestaonf/database/schema';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -55,6 +55,14 @@ export class WhatsAppLinkService {
       .from(whatsappLinkCompanies).innerJoin(whatsappLinks, eq(whatsappLinks.id, whatsappLinkCompanies.linkId))
       .where(and(eq(whatsappLinkCompanies.connectionId, connection.id), eq(whatsappLinkCompanies.userId, userId), eq(whatsappLinkCompanies.companyId, companyId), eq(whatsappLinkCompanies.status, 'ACTIVE'), eq(whatsappLinks.status, 'ACTIVE'))).limit(1);
     return { configured: true, linked: Boolean(association), connection: { displayPhoneNumber: connection.displayPhoneNumber, environment: connection.environment }, link: association ?? null, verifiedNumbers };
+  }
+
+  /** Respostas do Nero que a Meta não entregou nesta empresa (últimos 7 dias). O motivo técnico fica só no banco. */
+  async undelivered(userId: string, companyId: string) {
+    return this.database.db.select({ id: whatsappOutboundMessages.id, body: whatsappOutboundMessages.body, createdAt: whatsappOutboundMessages.createdAt, failedAt: whatsappOutboundMessages.failedAt })
+      .from(whatsappOutboundMessages).innerJoin(whatsappLinks, eq(whatsappLinks.id, whatsappOutboundMessages.linkId))
+      .where(and(eq(whatsappLinks.userId, userId), or(eq(whatsappOutboundMessages.companyId, companyId), isNull(whatsappOutboundMessages.companyId)), eq(whatsappOutboundMessages.status, 'FAILED'), gte(whatsappOutboundMessages.createdAt, new Date(Date.now() - 7 * 86_400_000))))
+      .orderBy(desc(whatsappOutboundMessages.createdAt)).limit(20);
   }
 
   async createChallenge(userId: string, companyId: string, input: LinkChallengeInput = {}) {
@@ -155,6 +163,17 @@ export class WhatsAppLinkService {
     }
   }
 
+  /** Encerra conversas abertas do vínculo (de uma empresa, ou todas) e invalida as propostas que aguardavam confirmação. */
+  private async revokeConversations(tx: Pick<DatabaseService['db'], 'update'>, linkId: string, companyLinkId?: string) {
+    const closed = await tx.update(neroConversations).set({ status: 'CLOSED', closedAt: new Date(), closedReason: 'LINK_REVOKED', updatedAt: new Date() })
+      .where(and(eq(neroConversations.linkId, linkId), ne(neroConversations.status, 'CLOSED'), ...(companyLinkId ? [eq(neroConversations.companyLinkId, companyLinkId)] : [])))
+      .returning({ id: neroConversations.id });
+    if (closed.length) {
+      await tx.update(assistantActions).set({ status: 'SUPERSEDED', updatedAt: new Date() })
+        .where(and(inArray(assistantActions.conversationId, closed.map((item) => item.id)), eq(assistantActions.status, 'AWAITING_CONFIRMATION')));
+    }
+  }
+
   async disconnect(userId: string, companyId: string) {
     const connection = await this.ensurePlatformConnection();
     if (!connection) return;
@@ -163,16 +182,25 @@ export class WhatsAppLinkService {
       await tx.update(whatsappLinkChallenges).set({ status: 'CANCELED', updatedAt: new Date() }).where(and(eq(whatsappLinkChallenges.connectionId, connection.id), eq(whatsappLinkChallenges.userId, userId), eq(whatsappLinkChallenges.companyId, companyId), inArray(whatsappLinkChallenges.status, ['PENDING', 'CANDIDATE'])));
       const [association] = await tx.update(whatsappLinkCompanies).set({ status: 'REVOKED', revokedAt: new Date(), updatedAt: new Date() }).where(and(eq(whatsappLinkCompanies.connectionId, connection.id), eq(whatsappLinkCompanies.userId, userId), eq(whatsappLinkCompanies.companyId, companyId), eq(whatsappLinkCompanies.status, 'ACTIVE'))).returning();
       if (!association) return;
+      await this.revokeConversations(tx, association.linkId, association.id);
       await tx.update(whatsappRequests).set({ status: 'CANCELED', updatedAt: new Date() }).where(and(eq(whatsappRequests.companyLinkId, association.id), inArray(whatsappRequests.status, ['AWAITING_COMPANY', 'AWAITING_REPLY', 'READY', 'PROCESSING'])));
       await tx.update(whatsappOutboundMessages).set({ status: 'CANCELED', failureReason: 'Vínculo empresarial removido', updatedAt: new Date() }).where(and(eq(whatsappOutboundMessages.companyLinkId, association.id), inArray(whatsappOutboundMessages.status, ['QUEUED', 'SENDING'])));
       await tx.insert(whatsappConsentEvents).values({ linkId: association.linkId, companyLinkId: association.id, event: 'REVOKED', source: 'WEB', actorUserId: userId });
       const [remaining] = await tx.select({ id: whatsappLinkCompanies.id }).from(whatsappLinkCompanies).where(and(eq(whatsappLinkCompanies.linkId, association.linkId), eq(whatsappLinkCompanies.status, 'ACTIVE'))).limit(1);
       if (!remaining) {
+        await this.revokeConversations(tx, association.linkId);
         await tx.update(whatsappLinks).set({ status: 'REVOKED', revokedAt: new Date(), updatedAt: new Date() }).where(eq(whatsappLinks.id, association.linkId));
         await tx.update(whatsappSessions).set({ mode: 'PAUSED', activeCompanyId: null, updatedAt: new Date() }).where(eq(whatsappSessions.linkId, association.linkId));
         await tx.update(whatsappRequests).set({ status: 'CANCELED', updatedAt: new Date() }).where(and(eq(whatsappRequests.linkId, association.linkId), inArray(whatsappRequests.status, ['AWAITING_COMPANY', 'AWAITING_REPLY', 'READY', 'PROCESSING'])));
       }
     });
+  }
+
+  /** Há um QR deste remetente aguardando confirmação na web? */
+  async hasPendingCandidate(connectionId: string, senderId: string) {
+    const [challenge] = await this.database.db.select({ id: whatsappLinkChallenges.id }).from(whatsappLinkChallenges)
+      .where(and(eq(whatsappLinkChallenges.connectionId, connectionId), eq(whatsappLinkChallenges.candidateSenderId, senderId), eq(whatsappLinkChallenges.status, 'CANDIDATE'), gt(whatsappLinkChallenges.expiresAt, new Date()))).limit(1);
+    return Boolean(challenge);
   }
 
   async disconnectNumber(linkId: string, userId: string) {
@@ -188,6 +216,7 @@ export class WhatsAppLinkService {
         .where(and(eq(whatsappRequests.linkId, linkId), inArray(whatsappRequests.status, ['AWAITING_COMPANY', 'AWAITING_REPLY', 'READY', 'PROCESSING'])));
       await tx.update(whatsappOutboundMessages).set({ status: 'CANCELED', failureReason: 'Número desconectado', updatedAt: new Date() })
         .where(and(eq(whatsappOutboundMessages.linkId, linkId), inArray(whatsappOutboundMessages.status, ['QUEUED', 'SENDING'])));
+      await this.revokeConversations(tx, linkId);
       await tx.update(whatsappLinks).set({ status: 'REVOKED', revokedAt: new Date(), updatedAt: new Date() }).where(eq(whatsappLinks.id, linkId));
       await tx.update(whatsappSessions).set({ mode: 'PAUSED', activeCompanyId: null, updatedAt: new Date() }).where(eq(whatsappSessions.linkId, linkId));
       await tx.insert(whatsappConsentEvents).values([
@@ -197,14 +226,21 @@ export class WhatsAppLinkService {
     });
   }
 
-  async canSend(message: { linkId: string | null; connectionId: string; recipientId: string; companyId: string | null; companyLinkId: string | null; requestId: string | null }) {
-    if (!message.linkId) return !message.companyId && !message.companyLinkId && !message.requestId;
+  async canSend(message: { linkId: string | null; connectionId: string; recipientId: string; companyId: string | null; companyLinkId: string | null; requestId: string | null; conversationId?: string | null }) {
+    if (!message.linkId) return !message.companyId && !message.companyLinkId && !message.requestId && !message.conversationId;
     const [identity] = await this.database.db.select({ userId: whatsappLinks.userId }).from(whatsappLinks).innerJoin(users, eq(users.id, whatsappLinks.userId))
       .where(and(eq(whatsappLinks.id, message.linkId), eq(whatsappLinks.connectionId, message.connectionId), eq(whatsappLinks.senderId, message.recipientId), eq(whatsappLinks.status, 'ACTIVE'), eq(users.status, 'ACTIVE'))).limit(1);
     if (!identity) return false;
     const eligible = await this.eligibleCompanies(message.linkId, identity.userId);
     if (message.companyId && !eligible.some((item) => item.companyId === message.companyId && item.companyLinkId === message.companyLinkId)) return false;
     if (message.companyLinkId && !message.companyId) return false;
+    if (message.conversationId) {
+      const [conversation] = await this.database.db.select({ companyId: neroConversations.companyId, companyLinkId: neroConversations.companyLinkId })
+        .from(neroConversations).where(and(eq(neroConversations.id, message.conversationId), eq(neroConversations.linkId, message.linkId), eq(neroConversations.userId, identity.userId))).limit(1);
+      if (!conversation) return false;
+      if (message.companyId) return conversation.companyId === message.companyId && conversation.companyLinkId === message.companyLinkId;
+      return true;
+    }
     if (message.requestId) {
       const [request] = await this.database.db.select().from(whatsappRequests).where(and(eq(whatsappRequests.id, message.requestId), eq(whatsappRequests.linkId, message.linkId), eq(whatsappRequests.userId, identity.userId))).limit(1);
       if (!request || ['CANCELED', 'EXPIRED'].includes(request.status)) return false;

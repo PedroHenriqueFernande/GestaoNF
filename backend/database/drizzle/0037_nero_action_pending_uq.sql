@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "assistant_actions_conversation_pending_uq" ON "assistant_actions" USING btree ("conversation_id") WHERE "assistant_actions"."status" = 'AWAITING_CONFIRMATION' AND "assistant_actions"."conversation_id" IS NOT NULL;

@@ -1,0 +1,3 @@
+ALTER TABLE "nero_conversations" ADD CONSTRAINT "nero_conversations_company_context_fk" FOREIGN KEY ("company_link_id","link_id","company_id","user_id") REFERENCES "public"."whatsapp_link_companies"("id","link_id","company_id","user_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "nero_conversations" ADD CONSTRAINT "nero_conversations_context_chk" CHECK (("nero_conversations"."company_link_id" IS NULL) = ("nero_conversations"."company_id" IS NULL));--> statement-breakpoint
+ALTER TABLE "whatsapp_outbound_messages" ADD CONSTRAINT "whatsapp_outbound_messages_interactive_chk" CHECK (("whatsapp_outbound_messages"."message_type" = 'INTERACTIVE') = ("whatsapp_outbound_messages"."interactive" IS NOT NULL));
