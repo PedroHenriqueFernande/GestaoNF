@@ -8,6 +8,7 @@ import { DatabaseService } from '../../database/database.module.js';
 import type { DbExecutor } from '../db-types.js';
 import type { ExecutionContext } from '../execution-context.js';
 import { ToolRegistry } from '../tools/registry.js';
+import type { OperationResult } from '../tools/types.js';
 import { buildSummary } from './action-summary.js';
 import { translateError, type FailureCause } from './error-translator.js';
 
@@ -58,7 +59,7 @@ export class ActionService {
   ) {}
 
   private async runOperations(tx: DbExecutor, ctx: ExecutionContext, operations: ProposedOperation[], actionId: string, dryRun: boolean) {
-    const results: { entityId: string | null; label: string }[] = [];
+    const results: OperationResult[] = [];
     for (const [index, operation] of operations.entries()) {
       const handler = this.registry.write(operation.tool);
       try {
@@ -76,16 +77,17 @@ export class ActionService {
     if (!operations.length || operations.length > MAX_OPERATIONS) {
       return { ok: false, cause: { kind: 'VALIDATION', operationIndex: null, operation: null, message: `Envie de 1 a ${MAX_OPERATIONS} operações por confirmação`, fields: [] } };
     }
-    let labels: string[] = [];
+    let dryResults: OperationResult[] = [];
     try {
       await this.database.db.transaction(async (tx) => {
-        labels = (await this.runOperations(tx, ctx, operations, randomUUID(), true)).map((result) => result.label);
+        dryResults = await this.runOperations(tx, ctx, operations, randomUUID(), true);
         throw new RollbackSignal();
       });
     } catch (error) {
       if (!(error instanceof RollbackSignal)) return { ok: false, cause: failureOf(error) };
     }
-    const lines = operations.map((operation) => this.registry.write(operation.tool)!.summarize(operation.args, labels));
+    const labels = dryResults.map((result) => result.label);
+    const lines = operations.map((operation, index) => dryResults[index]?.summary ?? this.registry.write(operation.tool)!.summarize(operation.args, labels));
     const summary = buildSummary(ctx.companyName, lines, ttlMinutes());
     if (summary.length > 1024) {
       return { ok: false, cause: { kind: 'VALIDATION', operationIndex: null, operation: null, message: 'O resumo ficou grande demais para uma confirmação. Divida em partes menores.', fields: [] } };

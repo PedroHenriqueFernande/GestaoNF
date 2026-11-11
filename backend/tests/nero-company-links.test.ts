@@ -11,14 +11,25 @@ import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '@gestaonf/database/schema';
 import { DatabaseService } from '../src/database/database.module.js';
+import { MetaMediaClient } from '../src/whatsapp/meta-media.client.js';
 import { WhatsAppLinkService } from '../src/whatsapp/whatsapp-link.service.js';
 import { WhatsAppOutboundService } from '../src/whatsapp/whatsapp-outbound.service.js';
 import { ActionService } from '../src/assistant/actions/action.service.js';
 import { AgentOrchestrator } from '../src/assistant/agent-orchestrator.service.js';
+import { AudioTranscriptionService } from '../src/assistant/audio/audio-transcription.service.js';
+import { OpenAITranscriber } from '../src/assistant/audio/transcriber.js';
 import { ConversationService } from '../src/assistant/conversation.service.js';
 import { OpenAINeroModel } from '../src/assistant/model/nero-model.js';
 import { NiloService } from '../src/assistant/nilo.service.js';
 import { createToolRegistry } from '../src/assistant/tools/index.js';
+import { CustomersService } from '../src/customers/customers.service.js';
+import { ServicesService } from '../src/services/services.service.js';
+import { SalesService } from '../src/sales/sales.service.js';
+import { FinanceReadService } from '../src/finance/finance-read.service.js';
+import { ReportsReadService } from '../src/reports/reports-read.service.js';
+import { CrmPolicyService } from '../src/crm/crm-policy.service.js';
+import type { FilesService } from '../src/files/files.service.js';
+import type { FiscalService } from '../src/fiscal/fiscal.service.js';
 
 config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 const testDatabaseName = `gestaonf_nero_test_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
@@ -54,9 +65,13 @@ beforeAll(async () => {
   db = drizzle(client, { schema });
   const database = { db } as DatabaseService;
   links = new WhatsAppLinkService(database); outbound = new WhatsAppOutboundService(database);
-  const registry = createToolRegistry(database);
+  const registry = createToolRegistry(database, {
+    customers: new CustomersService(database), services: new ServicesService(database),
+    sales: new SalesService(database, {} as FilesService, {} as FiscalService),
+    finance: new FinanceReadService(database), reports: new ReportsReadService(database, new CrmPolicyService(database)),
+  });
   const actions = new ActionService(database, registry);
-  nero = new NiloService(database, links, outbound, new ConversationService(database), actions, new AgentOrchestrator(database, new OpenAINeroModel(), registry, actions));
+  nero = new NiloService(database, links, outbound, new ConversationService(database), actions, new AgentOrchestrator(database, new OpenAINeroModel(), registry, actions), new AudioTranscriptionService(database, new MetaMediaClient(), new OpenAITranscriber()));
   vi.stubEnv('META_WHATSAPP_ENABLED', 'true'); vi.stubEnv('META_APP_ID', 'nero-test-app'); vi.stubEnv('META_WABA_ID', 'nero-test-waba'); vi.stubEnv('META_PHONE_NUMBER_ID', 'nero-test-phone'); vi.stubEnv('META_DISPLAY_PHONE_NUMBER', '15550000000');
   vi.stubEnv('NILO_ENABLED', 'false'); vi.stubEnv('OPENAI_API_KEY', '');
 }, 60000);

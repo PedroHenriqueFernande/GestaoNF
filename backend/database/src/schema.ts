@@ -1291,10 +1291,16 @@ export const whatsappInboxEvents = pgTable(
     receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
     processedAt: timestamp('processed_at', { withTimezone: true }),
     processingError: text('processing_error'),
+    transcriptionStatus: varchar('transcription_status', { length: 16 }),
+    mediaSeconds: integer('media_seconds'),
+    transcribedAt: timestamp('transcribed_at', { withTimezone: true }),
   },
   (table) => [
     unique('whatsapp_inbox_events_connection_message_uq').on(table.connectionId, table.providerMessageId),
     index('whatsapp_inbox_events_processing_idx').on(table.processedAt, table.receivedAt),
+    index('whatsapp_inbox_events_sender_transcribed_idx').on(table.connectionId, table.senderId, table.transcribedAt),
+    check('whatsapp_inbox_events_transcription_chk', sql`${table.transcriptionStatus} IS NULL OR ${table.transcriptionStatus} IN ('DONE', 'EMPTY', 'REJECTED', 'FAILED')`),
+    check('whatsapp_inbox_events_media_seconds_chk', sql`${table.mediaSeconds} IS NULL OR ${table.mediaSeconds} >= 0`),
   ],
 );
 

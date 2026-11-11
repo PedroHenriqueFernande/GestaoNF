@@ -9,6 +9,7 @@ import { ActionService } from './actions/action.service.js';
 import { actionButtons, parseActionButton } from './actions/action-summary.js';
 import { describeCause } from './actions/error-translator.js';
 import { AgentOrchestrator } from './agent-orchestrator.service.js';
+import { AUDIO_REPLIES, AudioTranscriptionService } from './audio/audio-transcription.service.js';
 import { COMPANY_BUTTON_PREFIX, companyQuestion, findCompanyByName, resolveCompany, type CompanyOption } from './company-selection.js';
 import { ConversationService, type Conversation, type NewMessage } from './conversation.service.js';
 import { loadExecutionContext, type ExecutionContext } from './execution-context.js';
@@ -44,6 +45,8 @@ const TEXT = {
 export class NiloService {
   /** Eventos que já receberam alguma resposta nesta execução: um erro posterior não deve mandar o aviso de falha por cima. */
   private readonly replied = new Set<string>();
+  /** Áudios recusados nesta execução: a recusa responde só ao áudio, não ao turno, então não conta em `replied`. */
+  private readonly audioRefused = new Set<string>();
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -52,6 +55,7 @@ export class NiloService {
     @Inject(ConversationService) private readonly conversations: ConversationService,
     @Inject(ActionService) private readonly actions: ActionService,
     @Inject(AgentOrchestrator) private readonly orchestrator: AgentOrchestrator,
+    @Inject(AudioTranscriptionService) private readonly audio: AudioTranscriptionService,
   ) {}
 
   async processInboxEvent(eventId: string) {
@@ -74,7 +78,7 @@ export class NiloService {
   }
 
   /** Envia texto ou botões dentro da conversa e grava a fala do Nero no histórico, na mesma transação. */
-  private async say(event: Event, link: Link, conversation: Conversation, body: string, key: string, options: { buttons?: OutboundButton[]; memory?: string } = {}) {
+  private async say(event: Event, link: Link, conversation: Conversation, body: string, key: string, options: { buttons?: OutboundButton[]; memory?: string; audioRefusal?: boolean } = {}) {
     await this.database.db.transaction(async (tx) => {
       const input = {
         connectionId: event.connectionId, recipientId: event.senderId, linkId: link.id, conversationId: conversation.id,
@@ -84,7 +88,7 @@ export class NiloService {
       const outboundMessageId = options.buttons ? await this.outbound.enqueueInteractive({ ...input, buttons: options.buttons }, tx) : await this.outbound.enqueueText(input, tx);
       await this.conversations.append(conversation.id, [{ role: 'ASSISTANT', content: options.memory ?? body, source: 'SYSTEM', outboundMessageId }], tx);
     });
-    this.replied.add(event.id);
+    if (options.audioRefusal) this.audioRefused.add(event.id); else this.replied.add(event.id);
     await this.conversations.touch(conversation.id);
   }
 
@@ -95,13 +99,29 @@ export class NiloService {
     return link ?? null;
   }
 
-  /** Mensagens de texto ainda não processadas do mesmo remetente formam um único turno (rajada). */
+  /** Mensagens de texto e áudios ainda não processados do mesmo remetente formam um único turno (rajada). */
   private async collectBurst(event: Event) {
     const rows = await this.database.db.select().from(whatsappInboxEvents)
-      .where(and(eq(whatsappInboxEvents.connectionId, event.connectionId), eq(whatsappInboxEvents.senderId, event.senderId), eq(whatsappInboxEvents.messageType, 'text'), isNull(whatsappInboxEvents.processedAt), lte(whatsappInboxEvents.receivedAt, new Date())))
+      .where(and(eq(whatsappInboxEvents.connectionId, event.connectionId), eq(whatsappInboxEvents.senderId, event.senderId), inArray(whatsappInboxEvents.messageType, ['text', 'audio']), isNull(whatsappInboxEvents.processedAt), lte(whatsappInboxEvents.receivedAt, new Date())))
       .orderBy(asc(whatsappInboxEvents.receivedAt), asc(whatsappInboxEvents.id));
-    const batch = rows.filter((row) => row.id === event.id || (row.messageText?.trim() && !connectionToken(row.messageText) && !OPT_OUT.test(row.messageText.trim())));
+    const batch = rows.filter((row) => row.id === event.id || row.messageType === 'audio'
+      || (row.messageText?.trim() && !connectionToken(row.messageText) && !OPT_OUT.test(row.messageText.trim())));
     return batch.some((row) => row.id === event.id) ? batch : [event];
+  }
+
+  /** Transcreve os áudios do lote. Recusas recebem resposta própria e saem do turno; os textos seguem. */
+  private async transcribeBatch(batch: Event[], link: Link, conversation: Conversation) {
+    const ready: Event[] = [];
+    for (const item of batch) {
+      if (item.messageType !== 'audio') { ready.push(item); continue; }
+      if (!this.orchestrator.enabled()) continue;
+      // Retentativa de um áudio que já foi recusado (ou ficou vazio): ele já recebeu resposta, só sai do turno.
+      if (item.transcriptionStatus && item.transcriptionStatus !== 'DONE') continue;
+      const outcome = await this.audio.transcribe(item);
+      if (outcome.ok) ready.push({ ...item, messageText: outcome.text });
+      else await this.say(item, link, conversation, AUDIO_REPLIES[outcome.reason], `nero-audio:${item.id}`, { audioRefusal: true });
+    }
+    return ready;
   }
 
   private async processLockedEvent(eventId: string) {
@@ -109,7 +129,9 @@ export class NiloService {
     if (!event || event.processedAt) return;
     let batchIds = [event.id];
     try {
-      const text = event.messageText?.trim() ?? '';
+      const isAudio = event.messageType === 'audio';
+      // A fala transcrita de um áudio nunca vira token de vínculo, desconexão ou confirmação de vínculo.
+      const text = isAudio ? '' : event.messageText?.trim() ?? '';
       // Um remetente conhecido pode provar outra empresa; token de QR nunca vai para a IA.
       if (text) {
         const challenge = await this.links.captureCandidate(event.connectionId, event.senderId, event.senderId, text);
@@ -131,7 +153,7 @@ export class NiloService {
       if (text && !buttonId && LINK_ACK.test(text) && await this.links.hasPendingCandidate(event.connectionId, event.senderId)) {
         await this.plain(event, TEXT.pendingLink, 'link-pending', link.id); await this.finish(batchIds); return;
       }
-      if (!buttonId && (event.messageType !== 'text' || !text)) { await this.plain(event, TEXT.unsupported, 'unsupported', link.id); await this.finish(batchIds); return; }
+      if (!buttonId && !isAudio && (event.messageType !== 'text' || !text)) { await this.plain(event, TEXT.unsupported, 'unsupported', link.id); await this.finish(batchIds); return; }
       const eligible: CompanyOption[] = await this.links.eligibleCompanies(link.id, link.userId);
       if (!eligible.length) { await this.plain(event, TEXT.noCompany, 'no-company', link.id); await this.finish(batchIds); return; }
       const conversation = await this.conversations.resumeOrOpen(link, eligible);
@@ -139,7 +161,9 @@ export class NiloService {
       else {
         const batch = await this.collectBurst(event);
         batchIds = batch.map((item) => item.id);
-        await this.handleTurn(batch, link, conversation, eligible);
+        const ready = await this.transcribeBatch(batch, link, conversation);
+        if (ready.length) await this.handleTurn(ready, link, conversation, eligible);
+        else if (!this.orchestrator.enabled()) await this.say(event, link, conversation, TEXT.disabled, `nero:${event.id}`);
       }
       await this.database.db.update(whatsappSessions).set({ lastInboundAt: event.receivedAt, updatedAt: new Date() }).where(eq(whatsappSessions.linkId, link.id));
       await this.finish(batchIds);
@@ -150,14 +174,14 @@ export class NiloService {
       if (!batchIds.some((id) => this.replied.has(id))) await this.plain(event, TEXT.failure, 'nilo-error');
       await this.finish(batchIds, message);
     } finally {
-      for (const id of [event.id, ...batchIds]) this.replied.delete(id);
+      for (const id of [event.id, ...batchIds]) { this.replied.delete(id); this.audioRefused.delete(id); }
     }
   }
 
   private async handleTurn(batch: Event[], link: Link, conversation: Conversation, eligible: CompanyOption[]) {
     const last = batch.at(-1)!;
     const texts = batch.map((item) => item.messageText!.trim());
-    const userMessages: NewMessage[] = batch.map((item) => ({ role: 'USER', content: item.messageText!.trim(), source: 'TEXT', inboxEventId: item.id }));
+    const userMessages: NewMessage[] = batch.map((item) => ({ role: 'USER', content: item.messageText!.trim(), source: item.messageType === 'audio' ? 'AUDIO' : 'TEXT', inboxEventId: item.id }));
 
     if (conversation.status === 'AWAITING_COMPANY') {
       // Só interpreta "1"/nome como escolha se já houver um pedido guardado nesta conversa.

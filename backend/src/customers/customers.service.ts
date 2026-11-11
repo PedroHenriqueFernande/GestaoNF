@@ -27,8 +27,14 @@ export class CustomersService {
   async createInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, input: CreateCustomer) {
     validateCustomerTaxId(input.kind, input.taxId, input.tradeName);
     this.validateFiscalData(input);
-    const [customer] = await db.insert(customers).values({ ...input, companyId, createdByUserId: userId }).returning();
-    return customer;
+    try {
+      const [customer] = await db.insert(customers).values({ ...input, companyId, createdByUserId: userId }).returning();
+      return customer;
+    } catch (error) {
+      // Dentro de uma transação Postgres o erro a aborta; quem chama deve relançar e não reutilizar o tx.
+      if (isUniqueViolation(error)) throw new ConflictException('CPF/CNPJ já cadastrado nesta empresa');
+      throw error;
+    }
   }
 
   async list(companyId: string, input: ListCustomers) {
@@ -60,23 +66,26 @@ export class CustomersService {
     return customer;
   }
 
-  async update(companyId: string, id: string, input: UpdateCustomer) {
+  /** Altera dentro da transação recebida; devolve a linha antes e depois. Duplicidade vira ConflictException. */
+  async updateInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, id: string, input: UpdateCustomer) {
+    const [existing] = await db.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, id))).for('update');
+    if (!existing) throw new NotFoundException('Cliente não encontrado');
+    const merged = { ...existing, ...input };
+    if (merged.kind !== 'PF' && merged.kind !== 'PJ') throw new BadRequestException('Tipo inválido');
+    validateCustomerTaxId(merged.kind, merged.taxId, merged.tradeName);
+    this.validateFiscalData(merged);
     try {
-      return await this.database.db.transaction(async (tx) => {
-        const [existing] = await tx.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, id))).for('update');
-        if (!existing) throw new NotFoundException('Cliente não encontrado');
-        const merged = { ...existing, ...input };
-        if (merged.kind !== 'PF' && merged.kind !== 'PJ') throw new BadRequestException('Tipo inválido');
-        validateCustomerTaxId(merged.kind, merged.taxId, merged.tradeName);
-        this.validateFiscalData(merged);
-        const [customer] = await tx.update(customers).set({ ...input, updatedAt: new Date() })
-          .where(and(eq(customers.companyId, companyId), eq(customers.id, id))).returning();
-        return customer;
-      });
+      const [customer] = await db.update(customers).set({ ...input, updatedAt: new Date() })
+        .where(and(eq(customers.companyId, companyId), eq(customers.id, id))).returning();
+      return { before: existing, after: customer };
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('CPF/CNPJ já cadastrado nesta empresa');
       throw error;
     }
+  }
+
+  async update(companyId: string, id: string, input: UpdateCustomer) {
+    return (await this.database.db.transaction((tx) => this.updateInTx(tx, companyId, id, input))).after;
   }
 
   private validateFiscalData(input: { kind: string; caepfCode?: string | null; foreignTaxId?: string | null; noForeignTaxIdReason?: string | null }) {

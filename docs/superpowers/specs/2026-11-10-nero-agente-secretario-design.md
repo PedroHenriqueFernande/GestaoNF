@@ -145,14 +145,15 @@ Referências entre ações em um lote: uma operação pode referenciar o resulta
 
 ## 9. Áudio (Fase 1)
 
-1. Evento `audio` de remetente vinculado → job de mídia. Remetente não vinculado: mídia nunca baixada.
-2. Obtém URL pelo media ID, baixa com token apenas de host Meta validado, limite de tamanho; descarta acima de `NERO_AUDIO_MAX_SECONDS` (padrão 300).
-3. Converte para formato aceito pela API quando necessário (ffmpeg no worker, argumentos fixos). A implementação confirma na documentação vigente da OpenAI se OGG/Opus é aceito diretamente.
-4. Transcreve com a OpenAI (`OPENAI_TRANSCRIBE_MODEL`).
-5. Apaga temporários em `finally`.
-6. Transcrição entra no turno como mensagem `USER` com `source=AUDIO` e segue o fluxo normal (inclusive agrupamento de rajada).
-7. Transcrição vazia/ininteligível → "Não consegui entender bem o áudio, pode repetir ou escrever?"
-8. Teto diário de minutos por usuário (`NERO_AUDIO_DAILY_MINUTES`); ao exceder, Nero pede texto.
+1. Evento `audio` de remetente vinculado é transcrito no mesmo job de entrada, sob o lock do remetente (sem fila separada). Remetente não vinculado: mídia nunca baixada.
+2. Obtém URL pelo media ID, baixa com token apenas de host Meta validado (HTTPS, domínios da Meta, redirecionamento revalidado), confere tamanho e o `sha256` informado pela Meta.
+3. **Sem conversão:** a API de transcrição da OpenAI aceita `flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm` (confirmado no SDK `openai` 7 instalado), o que cobre a nota de voz do WhatsApp (`audio/ogg; codecs=opus`). Formatos fora da lista (ex.: `audio/amr`, `audio/aac`) recebem "Não consigo ouvir esse formato de áudio. Pode mandar uma mensagem de voz ou escrever?". Não há ffmpeg.
+4. Transcreve com a OpenAI (`OPENAI_TRANSCRIBE_MODEL`, padrão `gpt-transcribe`, idioma `pt`), enviando os bytes **direto da memória** (`toFile`). Não há arquivo temporário em disco.
+5. Duração: lida do próprio OGG/Opus (granule da última página menos o pre-skip, a 48 kHz); nos demais formatos, estimada pelo tamanho. Acima de `NERO_AUDIO_MAX_SECONDS` (padrão 300) → "Seu áudio é longo demais para eu ouvir (o limite é de 5 minutos). Pode mandar um mais curto ou escrever?". Como a duração declarada no OGG vem do arquivo do usuário, a duração considerada nunca é menor que o tamanho a 8.000 B/s, nem que a duração informada pela OpenAI; Ogg encadeado ou fora do padrão cai na estimativa por tamanho. Tamanho acima de `NERO_AUDIO_MAX_BYTES` (padrão 16 MB, limite da Meta) é recusado antes do download.
+6. A transcrição é gravada no **próprio evento de entrada** (`message_text`, `transcription_status`, `media_seconds`, `transcribed_at`). Assim ela entra no turno como mensagem `USER` com `source=AUDIO` e segue o fluxo normal: agrupamento de rajada com textos, memória, e confirmação por "sim" falado (mesma regra do texto: só logo depois do resumo da proposta). No histórico enviado ao modelo a fala aparece marcada como mensagem de voz transcrita, e o prompt avisa que nomes e números podem ter saído errados.
+7. Transcrição vazia/ininteligível → "Não consegui entender bem o áudio, pode repetir ou escrever?". Falha de download/transcrição → "Não consegui ouvir seu áudio agora. Pode tentar de novo ou escrever?".
+8. Teto de minutos por usuário (somando todos os números vinculados dele) em janela móvel de 24 horas (`NERO_AUDIO_DAILY_MINUTES`, padrão 30). Conta toda transcrição paga: transcrita, vazia (`EMPTY`) e falha depois de chamar a OpenAI; ao exceder, "Você atingiu o limite de áudios por hoje. Pode escrever sua mensagem?".
+9. Com o Nero desligado, o áudio não é baixado nem transcrito (resposta de indisponível).
 
 ## 10. Catálogo de ferramentas por fase
 

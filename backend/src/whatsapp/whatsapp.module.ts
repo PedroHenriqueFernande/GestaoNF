@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { MetaCloudClient } from './meta-cloud.client.js';
+import { MetaMediaClient } from './meta-media.client.js';
 import { MetaSignatureService } from './meta-signature.service.js';
 import { MetaWebhookController } from './meta-webhook.controller.js';
 import { WhatsAppIngressService } from './whatsapp-ingress.service.js';
@@ -12,7 +13,7 @@ import { WhatsAppSendService } from './whatsapp-send.service.js';
 @Module({
   imports: [AuthModule],
   controllers: [MetaWebhookController, WhatsAppLinkController],
-  providers: [MetaCloudClient, MetaSignatureService, WhatsAppIngressService, WhatsAppLinkService, WhatsAppOutboundService, WhatsAppSendService],
-  exports: [MetaCloudClient, WhatsAppLinkService, WhatsAppOutboundService, WhatsAppSendService],
+  providers: [MetaCloudClient, MetaMediaClient, MetaSignatureService, WhatsAppIngressService, WhatsAppLinkService, WhatsAppOutboundService, WhatsAppSendService],
+  exports: [MetaCloudClient, MetaMediaClient, WhatsAppLinkService, WhatsAppOutboundService, WhatsAppSendService],
 })
 export class WhatsAppModule {}

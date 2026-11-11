@@ -4,5 +4,5 @@ import { FinanceController } from './finance.controller.js';
 import { FinanceDatesService } from './finance-dates.service.js';
 import { FinanceReadService } from './finance-read.service.js';
 
-@Module({ imports: [AuthModule], controllers: [FinanceController], providers: [FinanceReadService, FinanceDatesService] })
+@Module({ imports: [AuthModule], controllers: [FinanceController], providers: [FinanceReadService, FinanceDatesService], exports: [FinanceReadService] })
 export class FinanceModule {}

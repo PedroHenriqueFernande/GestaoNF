@@ -20,6 +20,9 @@ export type ReadTool = {
 
 export type OperationOptions = { idempotencyKey: string; dryRun: boolean };
 
+/** `summary`: linha do resumo calculada no ensaio (com dados do banco); se ausente, usa `summarize`. */
+export type OperationResult = { entityId: string | null; label: string; summary?: string };
+
 export type WriteOperation<A = any> = {
   kind: 'WRITE';
   name: string;
@@ -33,5 +36,5 @@ export type WriteOperation<A = any> = {
    * Executa dentro da transação recebida. Em dryRun a transação é revertida depois;
    * operações com efeito externo (ex.: emissão fiscal) só validam quando dryRun = true.
    */
-  execute(tx: DbExecutor, ctx: ExecutionContext, args: A, options: OperationOptions): Promise<{ entityId: string | null; label: string }>;
+  execute(tx: DbExecutor, ctx: ExecutionContext, args: A, options: OperationOptions): Promise<OperationResult>;
 };

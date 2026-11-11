@@ -1,0 +1,2 @@
+ALTER TABLE "whatsapp_inbox_events" DROP CONSTRAINT "whatsapp_inbox_events_transcription_chk";--> statement-breakpoint
+ALTER TABLE "whatsapp_inbox_events" ADD CONSTRAINT "whatsapp_inbox_events_transcription_chk" CHECK ("whatsapp_inbox_events"."transcription_status" IS NULL OR "whatsapp_inbox_events"."transcription_status" IN ('DONE', 'EMPTY', 'REJECTED', 'FAILED'));

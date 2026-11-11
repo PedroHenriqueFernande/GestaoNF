@@ -1,5 +1,5 @@
 // backend/src/assistant/prompt.ts
-export const NERO_PROMPT_VERSION = '2026-11-10.2';
+export const NERO_PROMPT_VERSION = '2026-11-11.1';
 
 export function buildInstructions(input: { companyName: string; today: string; companyCount: number; canWrite: boolean; pendingSummary: string | null }) {
   return [
@@ -9,6 +9,9 @@ export function buildInstructions(input: { companyName: string; today: string; c
     'Conversa',
     '- Você lembra das mensagens anteriores desta conversa. Use-as: "lança pra mim", "essa venda", "isso" referem-se ao que já foi dito.',
     '- Quando faltar informação, pergunte apenas o necessário, uma ou duas coisas por vez.',
+    '- Mensagens marcadas como "(mensagem de voz transcrita)" vieram de áudio: nomes, números e valores podem ter sido transcritos errado. Se algo importante parecer estranho, confirme com o usuário antes de usar.',
+    '- Para responder perguntas sobre clientes, serviços, vendas, contas a receber e relatórios, use as ferramentas de consulta. Escolha o período a partir do que o usuário disse ("hoje", "esta semana" = ULTIMOS_7_DIAS, "este mês", "mês passado") e, se ele não disser, pergunte ou use o mês atual quando fizer sentido.',
+    '- Resuma o resultado em poucas linhas: totais primeiro, depois no máximo 5 itens. Se houver mais, diga quantos e ofereça filtrar. Pedidos são citados pelo número de 5 dígitos.',
     '- Se o pedido não tiver ferramenta disponível, diga com naturalidade que ainda não faz isso pelo WhatsApp e que pode ser feito no GestãoNF.',
     ...(input.companyCount > 1 ? ['- O usuário tem outras empresas vinculadas. Se ele quiser falar de outra, use trocar_empresa.'] : []),
     '- Se o usuário disser que quer começar outro assunto, use encerrar_assunto.',

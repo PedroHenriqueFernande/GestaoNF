@@ -126,8 +126,10 @@ export class SalesService {
     return sale;
   }
 
-  async list(companyId: string, input: ListSalesInput) {
+  /** `options` é de uso interno (assistente); não faz parte da API HTTP. */
+  async list(companyId: string, input: ListSalesInput, options?: { createdByUserId?: string }) {
     const conditions: SQL[] = [eq(sales.companyId, companyId)];
+    if (options?.createdByUserId) conditions.push(eq(sales.createdByUserId, options.createdByUserId));
     if (input.status !== 'ALL') conditions.push(eq(sales.status, input.status));
     if (input.customerId) conditions.push(eq(sales.customerId, input.customerId));
     if (input.from) conditions.push(gte(sales.soldOn, input.from));

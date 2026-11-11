@@ -31,8 +31,14 @@ export class ServicesService {
   }
 
   async createInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, input: CreateService) {
-    const [service] = await db.insert(services).values({ ...input, companyId, createdByUserId: userId }).returning();
-    return this.withFiscalClassification(service);
+    try {
+      const [service] = await db.insert(services).values({ ...input, companyId, createdByUserId: userId }).returning();
+      return this.withFiscalClassification(service);
+    } catch (error) {
+      // Dentro de uma transação Postgres o erro a aborta; quem chama deve relançar e não reutilizar o tx.
+      if (isUniqueViolation(error)) throw new ConflictException('Código interno já cadastrado nesta empresa');
+      throw error;
+    }
   }
 
   async list(companyId: string, input: ListServices) {
@@ -67,17 +73,22 @@ export class ServicesService {
     return this.withFiscalClassification(service);
   }
 
-  async update(companyId: string, id: string, input: UpdateService) {
+  /** Altera dentro da transação recebida; devolve a linha antes e depois. Código interno repetido vira ConflictException. */
+  async updateInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, id: string, input: UpdateService) {
+    const [existing] = await db.select().from(services).where(and(eq(services.companyId, companyId), eq(services.id, id))).for('update');
+    if (!existing) throw new NotFoundException('Serviço não encontrado');
     try {
-      const [service] = await this.database.db.update(services)
-        .set({ ...input, updatedAt: new Date() })
+      const [service] = await db.update(services).set({ ...input, updatedAt: new Date() })
         .where(and(eq(services.companyId, companyId), eq(services.id, id))).returning();
-      if (!service) throw new NotFoundException('Serviço não encontrado');
-      return this.withFiscalClassification(service);
+      return { before: this.withFiscalClassification(existing), after: this.withFiscalClassification(service) };
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException('Código interno já cadastrado nesta empresa');
       throw error;
     }
+  }
+
+  async update(companyId: string, id: string, input: UpdateService) {
+    return (await this.database.db.transaction((tx) => this.updateInTx(tx, companyId, id, input))).after;
   }
 
   async remove(companyId: string, id: string) {
