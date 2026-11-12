@@ -25,6 +25,8 @@
 - **Campos aceitos:** os mesmos do formulário da web, com as chaves dos schemas de domínio (em inglês) descritas em português ao modelo. Mínimo para cliente: `kind` (PF/PJ) e `name`; para serviço: `name`.
 - **Duplicidade:** CPF/CNPJ e código interno únicos (índices existentes) → `ConflictException` com a mensagem do site ("CPF/CNPJ já cadastrado nesta empresa" / "Código interno já cadastrado nesta empresa"), detectada já no ensaio. Nomes repetidos não são bloqueados pelo sistema; o prompt manda buscar antes de criar e perguntar se o cliente já existe.
 - **Resumo:** criação lista os dados informados; alteração mostra "campo: antes → depois" só dos campos que mudam. Rótulos de campo em português.
+- **Revisão de segurança da gravação:** alterações devem verificar, na confirmação e sob bloqueio da linha, a versão observada no ensaio. Se o cadastro mudar nesse intervalo, o lote é revertido e uma nova proposta é necessária. O marcador é gerado pelo servidor; referências e alterações repetidas no próprio lote não podem gerar conflito artificial.
+- **Fidelidade do resumo:** incluir situação e país quando informados; traduzir apenas campos de enumeração, preservando textos livres; preços numericamente iguais não constituem alteração.
 - **Lote atômico** já garantido pela Fase 0: se uma operação falha na confirmação, nada é gravado.
 
 ---
@@ -50,7 +52,7 @@
 
 **Files:** Create `backend/tests/nero-fixture.ts`, `backend/tests/nero-fixture.test.ts`
 
-- [ ] **Step 1:** Recriar a fixture da Fase 2 (ver `docs/superpowers/plans/2026-11-11-nero-fase-2-leituras.md`, Task 1, e o que a Fase 2 efetivamente usou: `createNeroTestEnv`, `randomSender`, `seedOperator`, `insertInbound`, `readServices`, `activeConversation`, `contextFor`, `ScriptedModel`, `say`, `callTool`, `seenText`), acrescentando:
+- [x] **Step 1:** Recriar a fixture da Fase 2 (ver `docs/superpowers/plans/2026-11-11-nero-fase-2-leituras.md`, Task 1, e o que a Fase 2 efetivamente usou: `createNeroTestEnv`, `randomSender`, `seedOperator`, `insertInbound`, `readServices`, `activeConversation`, `contextFor`, `ScriptedModel`, `say`, `callTool`, `seenText`), acrescentando:
 
 ```ts
 /** Payload de clique em botão, no formato do webhook da Meta. */
@@ -67,7 +69,7 @@ export function buildNero(env: NeroTestEnv, model: NeroModel) { /* monta registr
 
 Implementar `buildNero` de verdade (o comentário acima descreve o conteúdo) conferindo as assinaturas reais em `backend/src/assistant/*` e no teste permanente `backend/tests/nero-company-links.test.ts`.
 
-- [ ] **Step 2:** Teste de fumaça: `seedOperator` + `buildNero(env, new ScriptedModel([say('oi')]))` processa um inbound "olá" e grava 1 mensagem de saída. Rodar até passar. Sem commit.
+- [x] **Step 2:** Teste de fumaça: `seedOperator` + `buildNero(env, new ScriptedModel([say('oi')]))` processa um inbound "olá" e grava 1 mensagem de saída. Rodar até passar. Sem commit.
 
 ---
 
@@ -75,7 +77,7 @@ Implementar `buildNero` de verdade (o comentário acima descreve o conteúdo) co
 
 **Files:** Modify `backend/src/customers/customers.service.ts`, `backend/src/services/services.service.ts`; Test `backend/tests/nero-domain-intx.test.ts`
 
-- [ ] **Step 1: Testes**
+- [x] **Step 1: Testes**
 
 ```ts
 // backend/tests/nero-domain-intx.test.ts — TEMPORÁRIO
@@ -88,7 +90,7 @@ Implementar `buildNero` de verdade (o comentário acima descreve o conteúdo) co
 
 Escrever os testes concretos para os 4 cenários (usar `VALID_CPF`/`VALID_CPF_2`).
 
-- [ ] **Step 2: `CustomersService.updateInTx`**
+- [x] **Step 2: `CustomersService.updateInTx`**
 
 ```ts
   /** Altera dentro da transação recebida; devolve a linha antes e depois. Duplicidade vira ConflictException. */
@@ -116,9 +118,9 @@ Escrever os testes concretos para os 4 cenários (usar `VALID_CPF`/`VALID_CPF_2`
 
 E em `createInTx`, envolver o insert no mesmo `try/catch` de unicidade (lançando a `ConflictException`), mantendo `create` como está (o catch externo fica redundante mas inofensivo — pode ser removido).
 
-- [ ] **Step 3: `ServicesService.updateInTx`** — mesmo padrão: `select ... for('update')` para obter `before` (NotFound se não existir), `update ... returning`, `ConflictException('Código interno já cadastrado nesta empresa')` em unicidade, devolve `{ before: withFiscalClassification(before), after: withFiscalClassification(after) }`; `update` chama dentro de transação e devolve `after`. `createInTx` com o mesmo `try/catch` de unicidade.
+- [x] **Step 3: `ServicesService.updateInTx`** — mesmo padrão: `select ... for('update')` para obter `before` (NotFound se não existir), `update ... returning`, `ConflictException('Código interno já cadastrado nesta empresa')` em unicidade, devolve `{ before: withFiscalClassification(before), after: withFiscalClassification(after) }`; `update` chama dentro de transação e devolve `after`. `createInTx` com o mesmo `try/catch` de unicidade.
 
-- [ ] **Step 4:** Rodar até passar; `npm run backend:typecheck`. Sem commit.
+- [x] **Step 4:** Rodar até passar; `npm run backend:typecheck`. Sem commit.
 
 ---
 
@@ -126,15 +128,15 @@ E em `createInTx`, envolver o insert no mesmo `try/catch` de unicidade (lançand
 
 **Files:** Modify `backend/src/assistant/tools/types.ts`, `backend/src/assistant/actions/action.service.ts`; Test `backend/tests/nero-action-summary.test.ts`
 
-- [ ] **Step 1:** Em `types.ts`, o retorno de `execute` passa a ser `{ entityId: string | null; label: string; summary?: string }`, com o comentário: "`summary`: linha do resumo calculada no ensaio (com dados do banco); se ausente, usa `summarize`."
+- [x] **Step 1:** Em `types.ts`, o retorno de `execute` passa a ser `{ entityId: string | null; label: string; summary?: string }`, com o comentário: "`summary`: linha do resumo calculada no ensaio (com dados do banco); se ausente, usa `summarize`."
 
-- [ ] **Step 2:** Em `ActionService.propose`, guardar os resultados do ensaio (não só os rótulos) e montar as linhas assim:
+- [x] **Step 2:** Em `ActionService.propose`, guardar os resultados do ensaio (não só os rótulos) e montar as linhas assim:
 
 ```ts
     const lines = operations.map((operation, index) => dryResults[index]?.summary ?? this.registry.write(operation.tool)!.summarize(operation.args, labels));
 ```
 
-- [ ] **Step 3: Teste** — uma operação fictícia (registrada só no teste) que devolve `summary: 'Telefone: A → B'` no ensaio aparece exatamente assim no resumo; outra sem `summary` continua usando `summarize`. Rodar até passar; typecheck. Sem commit.
+- [x] **Step 3: Teste** — uma operação fictícia (registrada só no teste) que devolve `summary: 'Telefone: A → B'` no ensaio aparece exatamente assim no resumo; outra sem `summary` continua usando `summarize`. Rodar até passar; typecheck. Sem commit.
 
 ---
 
@@ -142,7 +144,7 @@ E em `createInTx`, envolver o insert no mesmo `try/catch` de unicidade (lançand
 
 **Files:** Create `write-support.ts`, `customer-operations.ts`, `service-operations.ts`; Modify `tools/index.ts`; Test `backend/tests/nero-write-operations.test.ts`
 
-- [ ] **Step 1: `write-support.ts`**
+- [x] **Step 1: `write-support.ts`**
 
 ```ts
 // backend/src/assistant/tools/write-support.ts
@@ -191,7 +193,7 @@ export function describeChanges(before: Record<string, unknown>, changes: Record
 
 Conferir se `label()` de `read-support.ts` traduz `PF`/`PJ`/`ACTIVE`/`INACTIVE` (a Fase 2 criou o mapa) e acrescentar o que faltar.
 
-- [ ] **Step 2: `customer-operations.ts`**
+- [x] **Step 2: `customer-operations.ts`**
 
 ```ts
 // backend/src/assistant/tools/customer-operations.ts
@@ -236,9 +238,9 @@ export function updateCustomerOperation(customers: CustomersService): WriteOpera
 }
 ```
 
-- [ ] **Step 3: `service-operations.ts`** — mesmo padrão com `createServiceSchema`/`updateServiceSchema`, `ServicesService.createInTx`/`updateInTx`, nomes `criar_servico`/`alterar_servico`, campos `name (obrigatório na criação), internalCode, description, unitLabel, suggestedUnitPrice (ex.: "5000.00"), nationalTaxCode (6 dígitos), nbsCode (9 dígitos), simplesActivityCode, status`, descrição "Antes de criar, busque com buscar_servicos para não duplicar.", resumo `Novo serviço: …` / `Alterar serviço <nome>: …`, rótulo `Serviço <nome>`.
+- [x] **Step 3: `service-operations.ts`** — mesmo padrão com `createServiceSchema`/`updateServiceSchema`, `ServicesService.createInTx`/`updateInTx`, nomes `criar_servico`/`alterar_servico`, campos `name (obrigatório na criação), internalCode, description, unitLabel, suggestedUnitPrice (ex.: "5000.00"), nationalTaxCode (6 dígitos), nbsCode (9 dígitos), simplesActivityCode, status`, descrição "Antes de criar, busque com buscar_servicos para não duplicar.", resumo `Novo serviço: …` / `Alterar serviço <nome>: …`, rótulo `Serviço <nome>`.
 
-- [ ] **Step 4: Registro** — em `tools/index.ts`, acrescentar ao `ReadServices` nada de novo (os serviços já estão lá) e registrar:
+- [x] **Step 4: Registro** — em `tools/index.ts`, acrescentar ao `ReadServices` nada de novo (os serviços já estão lá) e registrar:
 
 ```ts
     .registerWrite(createCustomerOperation(readers.customers))
@@ -247,7 +249,7 @@ export function updateCustomerOperation(customers: CustomersService): WriteOpera
     .registerWrite(updateServiceOperation(readers.services))
 ```
 
-- [ ] **Step 5: Testes** (`ActionService` + operações reais sobre o banco temporário):
+- [x] **Step 5: Testes** (`ActionService` + operações reais sobre o banco temporário):
   1. Lote "alterar 1 + criar 2" (cliente existente com telefone A; criar Ana PF com `VALID_CPF`; criar serviço "Criação de site" com preço `5000.00`): ensaio não grava; resumo único contém `Alterar cliente Roberto Almeida: Telefone: … → …`, `Novo cliente: Tipo: Pessoa física · Nome: Ana … · CPF/CNPJ: 529.982.247-25` e `Novo serviço: … Preço sugerido: R$ 5.000,00`; `confirm` grava os três; segundo `confirm` → `ALREADY_EXECUTED`.
   2. CPF inválido (`12345678900`) → proposta recusada com `cause.message 'CPF inválido'` e `operationIndex` certo; nada gravado.
   3. CPF já usado por outro cliente → `kind 'CONFLICT'`, mensagem "CPF/CNPJ já cadastrado nesta empresa".
@@ -266,7 +268,7 @@ Rodar até passar; typecheck. Sem commit.
 
 **Files:** Modify `backend/src/assistant/prompt.ts`; Test `backend/tests/nero-write-flow.test.ts`
 
-- [ ] **Step 1: Prompt** — na seção "Gravações" (quando `canWrite`), acrescentar e incrementar `NERO_PROMPT_VERSION`:
+- [x] **Step 1: Prompt** — na seção "Gravações" (quando `canWrite`), acrescentar e incrementar `NERO_PROMPT_VERSION`:
 
 ```ts
       '- Cadastros: antes de criar cliente ou serviço, procure com buscar_clientes/buscar_servicos. Se já existir algo parecido, pergunte se é o mesmo antes de criar outro.',
@@ -276,7 +278,7 @@ Rodar até passar; typecheck. Sem commit.
 
 Remover/ajustar a linha antiga que dizia "Nesta versão você ainda não grava dados pelo WhatsApp" — ela só aparece quando não há operações de escrita (`canWrite` falso), então continua válida para usuários sem permissão; manter.
 
-- [ ] **Step 2: Testes de fluxo** (`buildNero` + `ScriptedModel`):
+- [x] **Step 2: Testes de fluxo** (`buildNero` + `ScriptedModel`):
   1. "cadastra o cliente Ana Souza, CPF 529.982.247-25" → roteiro: `buscar_clientes` (nada) → `propor_operacoes` com `criar_cliente` → mensagem INTERACTIVE com o resumo e botões; tocar Confirmar → cliente gravado e resposta "✅ Pronto! Gravei…: • Cliente Ana Souza".
   2. CPF inválido no roteiro → o modelo recebe a recusa ("CPF inválido") e responde pedindo o CPF certo; nada gravado.
   3. Lote alterar 1 + criar 2 com uma única mensagem de confirmação e uma única gravação.
@@ -288,7 +290,7 @@ Rodar todos os `tests/nero-` e typecheck. Sem commit.
 
 ### Task 6: Avaliação real, verificação e limpeza
 
-- [ ] **Step 1: Avaliação** `backend/tests/nero-write-eval.live.test.ts` (só com `NERO_LIVE_EVAL=1`), com `OpenAINeroModel` real e `buildNero`; cada cenário com operador novo:
+- [x] **Step 1: Avaliação** `backend/tests/nero-write-eval.live.test.ts` (só com `NERO_LIVE_EVAL=1`), com `OpenAINeroModel` real e `buildNero`; cada cenário com operador novo:
   1. "Cadastra o cliente Ana Souza, pessoa física, CPF 529.982.247-25, telefone 61 98888-7777" → última mensagem é INTERACTIVE, resumo contém "Ana Souza" e "529.982.247-25"; simular o clique em Confirmar (evento com `buttonPayload` do primeiro botão) → cliente existe no banco com esse CPF.
   2. Cliente "Roberto Almeida" semeado com telefone 61999990000. "O telefone do Roberto mudou para 61 97777-6666" → resumo contém "Roberto Almeida" e "→"; confirmar → telefone alterado.
   3. "Cadastra o cliente João Lima com CPF 123.456.789-00" → resposta em TEXTO (sem proposta) explicando que o CPF é inválido; nada gravado.
@@ -296,6 +298,49 @@ Rodar todos os `tests/nero-` e typecheck. Sem commit.
   Em todas: sem UUID, sem nome de ferramenta.
   Run: `cd /c/Users/pedro/Documents/GitHub/GestaoNF/backend && cd .. && NERO_LIVE_EVAL=1 npm exec -w backend -- vitest run tests/nero-write-eval.live.test.ts --silent=false --reporter=verbose`. Registrar respostas. Falha de comportamento → ajustar só `prompt.ts`/descrições das operações (incrementando a versão), no máximo 3 rodadas, sem afrouxar asserções.
 
-- [ ] **Step 2: Verificação** — todos os `tests/nero-`, `npm run backend:test`, `npm run backend:typecheck && npm run frontend:typecheck`.
+- [x] **Step 2: Verificação** — todos os `tests/nero-`, `npm run backend:test`, `npm run backend:typecheck && npm run frontend:typecheck`.
 
-- [ ] **Step 3: Limpeza** — apagar a fixture e todos os testes `nero-*` desta fase (exceto `nero-company-links.test.ts`), `test-results`/`coverage`; conferir bancos `gestaonf_nero_test_*` = 0 (se sobrar, `DROP DATABASE ... WITH (FORCE)` só desses). Sem commit.
+- [x] **Step 3: Limpeza** — apagar a fixture e todos os testes `nero-*` desta fase (exceto `nero-company-links.test.ts`), `test-results`/`coverage`; conferir bancos `gestaonf_nero_test_*` = 0 (se sobrar, `DROP DATABASE ... WITH (FORCE)` só desses). Sem commit.
+
+## Registro da execução — 11/11/2026
+
+Implementação concluída, com revisão independente de conformidade e de qualidade. Nenhum commit, alteração de índice do Git ou migração foi feito nesta continuação. O prompt final usa a versão `2026-11-11.3`.
+
+Os exemplos de código acima representam o plano original. Na implementação final, a revisão acrescentou as seguintes correções:
+
+- A proposta guarda as versões observadas no ensaio em `assistant_actions.arguments.operationVersions`, separadas dos argumentos do modelo. A confirmação verifica a primeira alteração de cada cadastro, sob bloqueio da linha; conflito desfaz o lote e pede nova proposta. Referências e alterações repetidas no próprio lote não geram conflitos artificiais. Propostas antigas de alteração sem versão são recusadas.
+- O resumo de criação mostra os campos explicitamente informados, usando os valores normalizados, inclusive situação e país. Textos livres permanecem intactos; preços equivalentes não geram alteração. Opções fiscais usam os mesmos textos dos formulários.
+- As descrições das operações incluem os campos fiscais e estrangeiros, com o significado dos motivos de ausência de documento.
+- O prompt permite propor pessoa física para nome pessoal inequívoco, mostrando o tipo no resumo; em caso de dúvida, pergunta ao usuário.
+
+### Verificações
+
+| Verificação | Resultado |
+| --- | --- |
+| Testes Nero antes da última melhoria de apresentação | 39 passaram; 4 avaliações reais ignoradas sem a variável de ativação |
+| Testes da apresentação fiscal | 13 passaram |
+| Suíte completa final, antes da limpeza (`npm run test --workspace=@gestaonf/api`) | 262 passaram; 4 avaliações reais ignoradas; saída 0 |
+| Suíte completa após a limpeza, mesmo comando | 221 passaram; saída 0 |
+| `npm run backend:typecheck` e `npm run frontend:typecheck`, após a limpeza | Ambos passaram; saída 0 |
+| `git diff --check` | Sem erros de whitespace |
+| Bancos `gestaonf_nero_test_*` ao terminar | Nenhum |
+
+O comando previsto `npm run backend:test` também foi executado: 249 testes passaram naquela etapa. Seu código de saída 1 veio exclusivamente do workspace `backend/database` sem testes, comportamento já descrito no cabeçalho do plano. A seleção pelo nome exato `@gestaonf/api` foi usada na verificação final para obter saída 0 sem esse ruído.
+
+### Avaliação com modelo real
+
+Foram feitas exatamente três rodadas, sem afrouxar as asserções:
+
+1. Primeira: 3/4; o lote com Pedro Costa perguntava o tipo. O prompt foi ajustado para inferir pessoa física em nomes pessoais inequívocos, com conferência no resumo.
+2. Segunda: 4/4, incluindo ausência de cadastros/propostas no caso de CPF inválido.
+3. Última, com o código final: 3/4 no teste automático. Ana, Roberto e lote passaram. No caso João, o Nero respondeu corretamente: “Não consegui preparar o cadastro porque o CPF informado não passou na validação. Pode conferir e me enviar o CPF correto?”. A asserção textual aceitava somente “inválido”, “não é válido” ou “não parece válido”, portanto falhou por variação de redação. O revisor classificou como falso negativo lexical. As consultas de ausência de gravação desse caso ficaram depois da asserção e não executaram nessa última rodada; essa evidência vem da segunda rodada e dos testes determinísticos. Não houve quarta rodada nem mudança no produto para satisfazer um sinônimo específico.
+
+Resumos observados na última rodada, com uma mensagem interativa por proposta:
+
+- Ana: `Novo cliente: Tipo: Pessoa física · Nome: Ana Souza · CPF/CNPJ: 529.982.247-25 · Telefone: 61988887777`; o clique em Confirmar persistiu o cadastro.
+- Roberto: `Alterar cliente Roberto Almeida: Telefone: 61999990000 → 61977776666`; o clique em Confirmar persistiu o novo telefone.
+- Lote: `Novo serviço: Nome: Manutenção mensal · Preço sugerido: R$ 300,00` e `Novo cliente: Tipo: Pessoa física · Nome: Pedro Costa`, na mesma proposta.
+
+### Limpeza
+
+As nove fixtures e arquivos de teste temporários da fase foram removidos após as revisões, inclusive os testes de regressão e de avaliação real. `backend/tests/nero-company-links.test.ts` foi preservado sem alterações nesta continuação. Não restaram diretórios `test-results`/`coverage` nos locais de saída do projeto nem bancos temporários do Nero. Todo o trabalho permanece no working tree.

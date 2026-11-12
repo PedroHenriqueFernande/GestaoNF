@@ -163,11 +163,28 @@ Referências entre ações em um lote: uma operação pode referenciar o resulta
 | 1 | — | — |
 | 2 | `buscar_clientes`, `buscar_servicos`, `consultar_vendas`, `consultar_venda`, `contas_a_receber`, `relatorio` (8 relatórios, resposta em texto) | — |
 | 3 | — | `criar_cliente`, `alterar_cliente`, `criar_servico`, `alterar_servico` |
-| 4 | — | `criar_venda` (rascunho + confirmação no mesmo lote), `baixar_recebimento` |
+| 4 | — | `criar_venda` (rascunho + confirmação no mesmo lote), `baixar_recebimento`, `estornar_recebimento`, `cancelar_venda` (decisão de 11/11/2026: cancelar e estornar entram na Fase 4) |
 | 5 | `enviar_relatorio_pdf`, `enviar_pdf_nota` | `anexar_arquivo` (mídia recebida → venda/cliente, via módulo de arquivos/R2) |
 | 6 | `status_nota` | `emitir_nfse` (OWNER/ADMIN; emissão assíncrona; Nero avisa autorização/rejeição) |
 
 Envio de documentos (Fase 5) exige `sendDocument` no `MetaCloudClient` (upload de mídia + mensagem `document`).
+
+### 10.1 Detalhamento da Fase 4 — Vendas
+
+**Identificação:** o modelo sempre se refere a um pedido pelo **número de 5 dígitos** e a uma parcela pelo **número da parcela** (1, 2…); nunca por UUID. Cliente e serviço da venda vêm de `buscar_clientes`/`buscar_servicos` ou de `{"$ref": n}` de um cadastro criado no mesmo lote.
+
+**Permissões:** as mesmas do site — qualquer membro ativo lança, baixa, estorna e cancela (`rules.anyMember`). As regras de domínio continuam valendo (ex.: pedido com NFS-e emitida não pode ser cancelado; o motivo vem de `saleFiscalState`).
+
+| Operação | Dados que o modelo envia | O que o sistema faz | Resumo (calculado no ensaio) |
+| --- | --- | --- | --- |
+| `criar_venda` | cliente, data da venda, itens (serviço, quantidade, valor unitário, desconto, descrição opcional), parcelas (forma de pagamento, valor e **ou** vencimento **ou** data em que já foi recebida), OS e observações opcionais | Cria o rascunho (`createDraftInTx`, com nova tentativa em savepoint se o número do pedido colidir) e confirma no mesmo lote (`confirmInTx`), montando sozinho o recebimento inicial de cada parcela já recebida. Série fiscal padrão da empresa, como no site. | "Venda para *Cliente* em dd/mm/aaaa: Serviço 1 × R$ … · Total R$ … · Parcelas: 1) Pix R$ … recebida em …; 2) Boleto R$ … vence em …". O número do pedido só aparece depois de gravar. |
+| `baixar_recebimento` | número do pedido, número da parcela, valor (padrão: saldo da parcela), forma de pagamento, data do recebimento (padrão: hoje), referência opcional | `receiptInTx`: pedido confirmado, valor ≤ saldo | "Baixa no pedido 12345 (Cliente), parcela 2: R$ … via Pix em dd/mm/aaaa — saldo da parcela R$ … → R$ …" |
+| `estornar_recebimento` | número do pedido, número da parcela, valor e/ou data do recebimento quando a parcela tiver mais de um, motivo | Localiza exatamente um recebimento não estornado (se houver mais de um candidato, recusa listando-os para o usuário escolher) e chama `reverseInTx` | "Estorno no pedido 12345 (Cliente), parcela 1: R$ … recebido em dd/mm/aaaa — motivo: …" |
+| `cancelar_venda` | número do pedido, motivo | `cancelInTx` com a versão lida no ensaio; o domínio exige que não haja valor recebido (estornos podem vir antes, **no mesmo lote**) | "Cancelar pedido 12345 (Cliente, R$ …) — motivo: …" |
+
+**Mudança de dados entre o resumo e a confirmação:** baixa, estorno e cancelamento guardam no ensaio uma versão (movimentos da parcela; versão do pedido) e a confirmação recusa se ela mudou, com a mensagem de conflito já usada nos cadastros. Como essas operações identificam o registro pelo número do pedido, o controle de versão passa a aceitar uma chave por operação (`versionKey`), além do `id`.
+
+**Valores:** o modelo pode mandar "5000" ou "5000.00"; a ferramenta normaliza para o formato do domínio (duas casas no dinheiro, quatro na quantidade). Antes de gravar, a ferramenta confere que as parcelas somam o total e explica a diferença em reais se não somarem.
 
 ## 11. Critérios de aceite por fase
 
@@ -186,7 +203,7 @@ Envio de documentos (Fase 5) exige `sendDocument` no `MetaCloudClient` (upload d
 
 **Fase 3 — Cadastros:** lote "alterar 1 + criar 2" com uma confirmação; caractere inválido detectado no ensaio com sugestão; conflito de versão na execução explicado.
 
-**Fase 4 — Vendas:** caso Roberto completo (cliente novo + serviço novo + venda com parcela recebida e parcela a vencer) em uma confirmação; parcelas que não somam o total detectadas no ensaio; baixa idempotente.
+**Fase 4 — Vendas:** caso Roberto completo (cliente novo + serviço novo + venda com parcela recebida e parcela a vencer) em uma confirmação; parcelas que não somam o total detectadas no ensaio com a diferença em reais; baixa idempotente e recusada acima do saldo; estorno + cancelamento do mesmo pedido em uma única confirmação; cancelamento com valor recebido sem estorno explicado; pedido com NFS-e emitida não cancela; baixa/estorno/cancelamento recusados se o pedido mudou depois do resumo; nenhum UUID nas mensagens.
 
 **Fase 5 — Documentos:** PDF de relatório e de nota entregues como documento; arquivo recebido anexado à venda certa; nenhum documento de outra empresa.
 

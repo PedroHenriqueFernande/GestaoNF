@@ -7,6 +7,7 @@ import { FinanceReadService } from '../finance/finance-read.service.js';
 import { ReportsModule } from '../reports/reports.module.js';
 import { ReportsReadService } from '../reports/reports-read.service.js';
 import { SalesModule } from '../sales/sales.module.js';
+import { SalesPaymentsService } from '../sales/sales-payments.service.js';
 import { SalesService } from '../sales/sales.service.js';
 import { ServicesModule } from '../services/services.module.js';
 import { ServicesService } from '../services/services.service.js';
@@ -26,9 +27,9 @@ import { ToolRegistry } from './tools/registry.js';
   providers: [
     {
       provide: ToolRegistry,
-      useFactory: (database: DatabaseService, customers: CustomersService, services: ServicesService, sales: SalesService, finance: FinanceReadService, reports: ReportsReadService) =>
-        createToolRegistry(database, { customers, services, sales, finance, reports }),
-      inject: [DatabaseService, CustomersService, ServicesService, SalesService, FinanceReadService, ReportsReadService],
+      useFactory: (database: DatabaseService, customers: CustomersService, services: ServicesService, sales: SalesService, payments: SalesPaymentsService, finance: FinanceReadService, reports: ReportsReadService) =>
+        createToolRegistry(database, { customers, services, sales, payments, finance, reports }),
+      inject: [DatabaseService, CustomersService, ServicesService, SalesService, SalesPaymentsService, FinanceReadService, ReportsReadService],
     },
     { provide: NERO_MODEL, useFactory: () => new OpenAINeroModel() },
     { provide: NERO_TRANSCRIBER, useFactory: () => new OpenAITranscriber() },

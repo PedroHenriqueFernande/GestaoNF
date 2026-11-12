@@ -1,5 +1,5 @@
 // backend/src/assistant/prompt.ts
-export const NERO_PROMPT_VERSION = '2026-11-11.1';
+export const NERO_PROMPT_VERSION = '2026-11-11.4';
 
 export function buildInstructions(input: { companyName: string; today: string; companyCount: number; canWrite: boolean; pendingSummary: string | null }) {
   return [
@@ -21,6 +21,14 @@ export function buildInstructions(input: { companyName: string; today: string; c
       '- Nunca diga que gravou algo. Para gravar, reúna os dados e chame propor_operacoes com tudo o que o usuário pediu em uma única proposta; o sistema mostra o resumo com os botões Confirmar, Corrigir e Cancelar.',
       '- Se a proposta for recusada, explique o motivo em palavras simples e sugira uma correção concreta (por exemplo, remover um caractere especial), pedindo a concordância do usuário.',
       '- Você não confirma propostas. Só o usuário confirma, tocando em Confirmar. Se ele quiser confirmar depois de outra mensagem, peça que toque no botão Confirmar do resumo.',
+      '- Cadastros: antes de criar cliente ou serviço, procure com buscar_clientes/buscar_servicos. Se já existir algo parecido, pergunte se é o mesmo antes de criar outro.',
+      '- Para cadastrar cliente basta tipo (pessoa física ou jurídica) e nome; CPF/CNPJ, telefone e e-mail são opcionais — peça só se o usuário quiser informar. Para alterar, use o cliente/serviço encontrado na busca e mande só os campos que mudam.',
+      '- Se o tipo não for informado e o nome for claramente de uma pessoa (por exemplo, Pedro Costa), proponha pessoa física: o tipo aparecerá no resumo para o usuário conferir antes de confirmar. Pergunte o tipo quando houver dúvida ou indicação de empresa.',
+      '- Se o usuário pedir vários cadastros e alterações de uma vez, junte tudo em uma única proposta.',
+      '- Vendas: para lançar uma venda você precisa de cliente, serviço, valor, data da venda e como foi ou será pago (forma de pagamento; se já recebeu, a data; se vai vencer, o vencimento). Se o usuário disser "hoje" ou não disser a data de uma venda que acabou de fazer, use a data de hoje — o resumo mostra a data para ele conferir.',
+      '- Procure cliente e serviço antes. Se não existirem, ofereça cadastrar e, se ele aceitar, junte cadastros e venda na mesma proposta usando {"$ref": n}.',
+      '- "Metade agora e metade depois" vira duas parcelas que somam o total. Nunca invente forma de pagamento ou vencimento: pergunte.',
+      '- Baixa, estorno e cancelamento: identifique o pedido pelo número de 5 dígitos e a parcela pelo número; se o usuário não souber, use consultar_vendas/consultar_venda para achar. Estorno e cancelamento exigem um motivo. Para cancelar um pedido com valor recebido, proponha o estorno e o cancelamento juntos.',
     ] : ['- Nesta versão você ainda não grava dados pelo WhatsApp. Explique isso com naturalidade e diga o que seria necessário para fazer no GestãoNF.']),
     '',
     'Linguagem',

@@ -1,5 +1,5 @@
 // backend/src/assistant/actions/action.service.ts
-import { BadRequestException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { assistantActions, neroConversations, type NeroProposedOperation } from '@gestaonf/database/schema';
 import { and, desc, eq } from 'drizzle-orm';
@@ -9,6 +9,7 @@ import type { DbExecutor } from '../db-types.js';
 import type { ExecutionContext } from '../execution-context.js';
 import { ToolRegistry } from '../tools/registry.js';
 import type { OperationResult } from '../tools/types.js';
+import { VERSION_CONFLICT_MESSAGE } from '../tools/write-support.js';
 import { buildSummary } from './action-summary.js';
 import { translateError, type FailureCause } from './error-translator.js';
 
@@ -50,6 +51,7 @@ function resolveRefs(value: unknown, results: { entityId: string | null }[]): un
 }
 
 const failureOf = (error: unknown) => error instanceof OperationError ? translateError(error.original, error.index, error.tool) : translateError(error, null, null);
+type OperationVersion = { entityId: string; updatedAt: string } | null;
 
 @Injectable()
 export class ActionService {
@@ -58,14 +60,26 @@ export class ActionService {
     @Inject(ToolRegistry) private readonly registry: ToolRegistry,
   ) {}
 
-  private async runOperations(tx: DbExecutor, ctx: ExecutionContext, operations: ProposedOperation[], actionId: string, dryRun: boolean) {
+  private async runOperations(tx: DbExecutor, ctx: ExecutionContext, operations: ProposedOperation[], actionId: string, dryRun: boolean, versions?: OperationVersion[]) {
     const results: OperationResult[] = [];
+    const touched = new Set<string>();
     for (const [index, operation] of operations.entries()) {
       const handler = this.registry.write(operation.tool);
       try {
         if (!handler || !handler.allowed(ctx)) throw new ForbiddenException('Operação não permitida para o seu usuário');
         const args = handler.schema.parse(resolveRefs(operation.args, results));
-        results.push(await handler.execute(tx, ctx, args, { idempotencyKey: operationKey(actionId, index), dryRun }));
+        let expectedVersion: string | undefined;
+        // A chave é calculada uma única vez, dos argumentos, e é a mesma gravada na proposta e conferida na confirmação.
+        const key = handler.versionKey?.(args) ?? (args as { id?: string }).id;
+        if (!dryRun && handler.requiresVersion && !touched.has(`${handler.versionScope}:${key}`)) {
+          const version = versions?.[index];
+          if (!key || !version || version.entityId !== key || typeof version.updatedAt !== 'string') throw new ConflictException(VERSION_CONFLICT_MESSAGE);
+          expectedVersion = version.updatedAt;
+        }
+        const result = await handler.execute(tx, ctx, args, { idempotencyKey: operationKey(actionId, index), dryRun, expectedVersion });
+        results.push({ ...result, versionKey: key ?? result.versionKey });
+        const touchedKey = key ?? result.versionKey ?? result.entityId;
+        if (handler.versionScope && touchedKey) touched.add(`${handler.versionScope}:${touchedKey}`);
       } catch (error) {
         throw new OperationError(index, operation.tool, error);
       }
@@ -101,7 +115,8 @@ export class ActionService {
       const [action] = await tx.insert(assistantActions).values({
         assistantRunId: ctx.runId, companyId: ctx.companyId, userId: ctx.userId, conversationId: ctx.conversationId,
         toolName: 'propor_operacoes', riskLevel: 'WRITE', status: 'AWAITING_CONFIRMATION',
-        arguments: { operations }, operations, summaryText: summary,
+        // Metadados calculados pelo servidor, separados dos argumentos controlados pelo modelo.
+        arguments: { operations, operationVersions: dryResults.map((result): OperationVersion => (result.versionKey ?? result.entityId) && result.version ? { entityId: (result.versionKey ?? result.entityId)!, updatedAt: result.version } : null) }, operations, summaryText: summary,
         summaryHash: createHash('sha256').update(JSON.stringify(operations)).digest('hex'),
         confirmationExpiresAt: new Date(now.getTime() + ttlMinutes() * 60_000),
       }).returning({ id: assistantActions.id });
@@ -163,7 +178,8 @@ export class ActionService {
           await tx.update(assistantActions).set({ status: 'EXPIRED', updatedAt: new Date() }).where(eq(assistantActions.id, action.id));
           return { status: 'NOT_PENDING', current: 'EXPIRED' };
         }
-        const results = await this.runOperations(tx, ctx, action.operations ?? [], action.id, false);
+        const storedVersions = action.arguments.operationVersions;
+        const results = await this.runOperations(tx, ctx, action.operations ?? [], action.id, false, Array.isArray(storedVersions) ? storedVersions as OperationVersion[] : undefined);
         const labels = results.map((result) => result.label);
         const now = new Date();
         await tx.update(assistantActions).set({ status: 'EXECUTED', confirmedAt: now, executedAt: now, result: { labels, entityIds: results.map((result) => result.entityId) }, updatedAt: now })

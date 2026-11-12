@@ -25,6 +25,7 @@ import { createToolRegistry } from '../src/assistant/tools/index.js';
 import { CustomersService } from '../src/customers/customers.service.js';
 import { ServicesService } from '../src/services/services.service.js';
 import { SalesService } from '../src/sales/sales.service.js';
+import { SalesPaymentsService } from '../src/sales/sales-payments.service.js';
 import { FinanceReadService } from '../src/finance/finance-read.service.js';
 import { ReportsReadService } from '../src/reports/reports-read.service.js';
 import { CrmPolicyService } from '../src/crm/crm-policy.service.js';
@@ -65,9 +66,10 @@ beforeAll(async () => {
   db = drizzle(client, { schema });
   const database = { db } as DatabaseService;
   links = new WhatsAppLinkService(database); outbound = new WhatsAppOutboundService(database);
+  const sales = new SalesService(database, {} as FilesService, {} as FiscalService);
   const registry = createToolRegistry(database, {
     customers: new CustomersService(database), services: new ServicesService(database),
-    sales: new SalesService(database, {} as FilesService, {} as FiscalService),
+    sales, payments: new SalesPaymentsService(database, sales),
     finance: new FinanceReadService(database), reports: new ReportsReadService(database, new CrmPolicyService(database)),
   });
   const actions = new ActionService(database, registry);
