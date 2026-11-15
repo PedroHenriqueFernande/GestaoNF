@@ -48,40 +48,70 @@
 }
 .header-trigger:hover:not(:disabled) { background: #f6f8fa; border-color: #e4e9ed; }
 .header-trigger[aria-expanded="true"] { background: var(--surface); border-color: #cfe1e8; box-shadow: 0 0 0 4px rgba(23, 107, 135, .08); }
-/* Cartão com profundidade: superfície levemente mais escura que o header, borda,
-   realce de luz no topo e sombra curta que cresce no hover. */
+/* Botão "tecla": borda sólida com base mais escura e degrau de 2px sem desfoque.
+   Sem gradiente nem brilho. Hover/aberto só trocam cores (nada se desloca), e a
+   transição fica restrita a propriedades de pintura, sem recalcular layout. */
 .header-trigger--surface {
-  gap: 14px;
-  height: 56px;
-  padding: 0 16px 0 18px;
-  border-color: #e6ebee;
-  background: linear-gradient(180deg, #fff 0%, #f9fbfc 100%);
-  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(16, 32, 42, .045), 0 2px 6px -4px rgba(16, 32, 42, .08);
+  gap: 12px;
+  height: 50px;
+  padding: 0 14px 0 9px;
+  border-color: #d5dde2;
+  border-bottom-color: #bfc9d0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 0 #e2e8ec;
+  transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
 .header-trigger--surface:hover:not(:disabled) {
-  border-color: #d8e3e8;
-  background: linear-gradient(180deg, #fff 0%, #fbfcfd 100%);
-  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(16, 32, 42, .05), 0 8px 18px -12px rgba(16, 32, 42, .35);
+  border-color: #cfdde3;
+  border-bottom-color: #bdcfd6;
+  background: #f9fbfc;
+  box-shadow: 0 2px 0 #e0eaee;
 }
 .header-trigger--surface[aria-expanded="true"] {
-  border-color: #b9d6e0;
-  background: var(--surface);
-  box-shadow: inset 0 1px 0 #fff, 0 0 0 4px rgba(23, 107, 135, .09), 0 8px 18px -12px rgba(16, 32, 42, .35);
+  border-color: #c6d9e0;
+  border-bottom-color: #b2cad3;
+  background: #f5f9fa;
+  box-shadow: 0 2px 0 #dce8ec;
 }
-.header-trigger:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* Foco por teclado: halo suave no lugar do contorno escuro. */
+.header-trigger--surface:focus-visible:not(:disabled) {
+  outline: none;
+  border-color: #b2cad3;
+  box-shadow: 0 2px 0 #dce8ec, 0 0 0 3px rgba(23, 107, 135, .14);
+}
+.header-trigger--surface .dropdown-chevron { transition: transform .28s cubic-bezier(.22, .8, .24, 1), color .2s ease; }
+.header-trigger--surface:hover:not(:disabled) .dropdown-chevron,
+.header-trigger--surface[aria-expanded="true"] .dropdown-chevron { color: var(--primary); }
+.header-trigger:not(.header-trigger--surface):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .header-trigger:disabled { cursor: default; opacity: 1; }
-.header-trigger__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; line-height: 1.2; }
-.header-trigger__eyebrow { color: var(--muted); font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.header-trigger__title { color: var(--text); font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-trigger__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.2; }
+.header-trigger__eyebrow { color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-trigger__title { color: var(--text); font-size: 14px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-trigger--surface .dropdown-chevron { flex: none; color: #7a868f; }
 
 /* Empresa ativa */
 .header-company { min-width: 0; }
-.header-company .header-trigger { min-width: 320px; max-width: min(440px, 46vw); }
-.header-company .header-trigger .dropdown-chevron { margin-left: 8px; }
-.header-company__icon { flex: none; color: var(--primary); }
-.header-company .header-trigger__text { flex: 1; }
-.header-company__name { color: var(--primary-dark); font-size: 15.5px; }
-.header-company__panel { top: calc(100% + 10px); width: 360px; min-width: 100%; }
+.header-company .header-trigger { min-width: 240px; max-width: min(380px, 46vw); }
+.header-company .header-trigger .dropdown-chevron { margin-left: auto; padding-left: 4px; }
+.header-company__badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--primary);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .2);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.header-company__name { flex: 1; min-width: 0; }
+/* Painéis centralizados no botão: acompanham a largura dele, com um mínimo que
+   sobra pouco para os lados, para não invadir a sidebar nem a borda da tela. */
+.header-company__panel { top: calc(100% + 10px); width: 100%; min-width: 280px; }
 .header-company__search {
   display: flex;
   align-items: center;
@@ -144,10 +174,10 @@
 }
 .header-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .header-avatar--lg { width: 44px; height: 44px; font-size: 15px; }
-.header-user .header-trigger { min-width: 244px; padding-left: 8px; }
-.header-user .header-trigger .dropdown-chevron { margin-left: 8px; }
-.header-user__text { flex: 1; max-width: 200px; }
-.header-user__panel { top: calc(100% + 10px); width: 280px; min-width: 100%; }
+.header-user .header-avatar:not(.header-avatar--lg) { width: 32px; height: 32px; font-size: 12px; }
+.header-user .header-trigger .dropdown-chevron { margin-left: 6px; }
+.header-user__text { flex: 1; max-width: 180px; }
+.header-user__panel { top: calc(100% + 10px); width: 100%; min-width: 248px; }
 .header-user__card { display: flex; align-items: center; gap: 12px; padding: 8px 10px 6px; }
 .header-user__card > div { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .header-user__card strong { overflow: hidden; color: var(--text); font-size: 14.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -156,14 +186,13 @@
 @media (max-width: 959px) {
   .workspace-layout { --header-height: 64px; }
   .workspace-header { gap: 8px; padding: 0 12px; }
-  .header-trigger--surface { gap: 10px; height: 48px; }
-  .header-trigger__text { gap: 1px; }
+  .header-trigger--surface { gap: 10px; height: 44px; }
   .workspace-header__menu { display: grid; }
   .header-company .header-trigger { max-width: none; }
   .header-company__panel { position: fixed; top: calc(var(--header-height) + 6px); left: 12px; right: 12px; width: auto; min-width: 0; max-width: 420px; }
   .header-user__text { display: none; }
-  .header-user .header-trigger { min-width: 0; padding: 0 8px 0 6px; }
-  .header-company .header-trigger { min-width: 0; padding: 0 12px; }
+  .header-user .header-trigger { min-width: 0; padding: 0 8px 0 5px; }
+  .header-company .header-trigger { min-width: 0; padding: 0 8px 0 5px; }
   .header-company__panel, .header-company__panel.is-open, .header-user__panel, .header-user__panel.is-open { transform-origin: top center; }
   .header-company__panel { transform: translateY(-8px) scale(.97); }
   .header-company__panel.is-open { transform: none; }
@@ -171,10 +200,7 @@
   .header-user__panel.is-open { transform: none; }
 }
 @media (max-width: 480px) {
-  .header-company__icon { display: none; }
   .header-company { flex: 1; }
-  .header-company .header-trigger { padding-left: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .header-trigger, .workspace-header__menu { transition: none; }
-}
+  .header-trigger, .workspace-header__menu { transition: none; }}

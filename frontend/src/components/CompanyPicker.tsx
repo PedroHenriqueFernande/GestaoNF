@@ -32,11 +32,10 @@ export function CompanyPicker({ companies, companyId, onCompanyChange }: {
 
   return <div ref={dropdown.rootRef} className="dropdown header-company">
     <button ref={dropdown.triggerRef} type="button" className="header-trigger header-trigger--surface" aria-label={`Empresa ativa: ${activeCompany?.name ?? 'nenhuma selecionada'}. Trocar empresa`} aria-expanded={dropdown.open} aria-controls="workspace-company-menu" disabled={!companies?.length} onClick={dropdown.toggle} onKeyDown={dropdown.onTriggerKeyDown}>
-      <Building2 className="header-company__icon" size={20} strokeWidth={1.8} aria-hidden="true" />
-      <span className="header-trigger__text">
-        <span className="header-trigger__eyebrow">Empresa ativa</span>
-        <span className="header-trigger__title header-company__name" title={activeCompany?.name}>{activeCompany?.name ?? 'Selecionar empresa'}</span>
+      <span className="header-company__badge" aria-hidden="true">
+        {activeCompany ? initials(activeCompany.name) : <Building2 size={16} strokeWidth={2} />}
       </span>
+      <span className="header-trigger__title header-company__name" title={activeCompany?.name}>{activeCompany?.name ?? 'Selecionar empresa'}</span>
       <ChevronDown className="dropdown-chevron" size={17} strokeWidth={2.2} aria-hidden="true" />
     </button>
 
