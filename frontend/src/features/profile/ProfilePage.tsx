@@ -5,7 +5,7 @@ import { Camera, CircleAlert, RotateCcw, Trash2, UserRound } from 'lucide-react'
 import { api, ApiError, type AvatarUpload, type Company, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { UserAvatar } from '../../components/UserAvatar';
-import { putAvatar } from './upload-avatar';
+import { putSignedUpload } from '../../api/signed-upload';
 import './profile.css';
 
 type Selection = { file: File; key: string; preview: string };
@@ -110,7 +110,7 @@ export function ProfilePage({ user, companies }: { user: User; companies?: Compa
             if (session.upload) {
               setPhase('Enviando foto…'); setProgress(0);
               const controller = new AbortController(); abortRef.current = controller;
-              await putAvatar(selection.file, session.upload, setProgress, controller.signal);
+              await putSignedUpload(selection.file, session.upload, setProgress, controller.signal);
               abortRef.current = null;
             }
             setPhase('Processando foto…');

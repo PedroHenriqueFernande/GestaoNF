@@ -4,7 +4,8 @@ import { PDFDocument } from 'pdf-lib';
 import { createHash } from 'node:crypto';
 import { contentDisposition, readFilesConfig, safeFileName } from '../src/files/files.config.js';
 import { validateFileContent } from '../src/files/file-content.js';
-import { R2StorageService } from '../src/files/r2-storage.service.js';
+import { S3ServiceException, type S3Client } from '@aws-sdk/client-s3';
+import { InvalidStoredContent, R2StorageService } from '../src/files/r2-storage.service.js';
 
 afterEach(() => vi.unstubAllEnvs());
 describe('conteúdo e assinatura R2', () => {
@@ -32,6 +33,21 @@ describe('conteúdo e assinatura R2', () => {
       expect(download.searchParams.get('X-Amz-Expires')).toBe('120');
       expect(download.searchParams.get('response-content-disposition')).toMatch(/^attachment;/);
       expect(download.searchParams.get('response-cache-control')).toBe('private, no-store');
+    } finally { storage.onModuleDestroy(); }
+  });
+  it('GET com ETag divergente (412) vira InvalidStoredContent; outras falhas do R2 propagam', async () => {
+    for (const [key, value] of Object.entries({ R2_ENABLED: 'true', R2_ACCOUNT_ID: 'a'.repeat(32), R2_BUCKET: 'private-files', R2_ACCESS_KEY_ID: 'testing-access-key', R2_SECRET_ACCESS_KEY: 'testing-secret-access-key', R2_ENDPOINT: '' })) vi.stubEnv(key, value);
+    const storage = new R2StorageService();
+    try {
+      const send = vi.fn()
+        .mockRejectedValueOnce(new S3ServiceException({ name: 'PreconditionFailed', $fault: 'client', $metadata: { httpStatusCode: 412 }, message: 'At least one of the pre-conditions you specified did not hold' }))
+        .mockRejectedValueOnce(new S3ServiceException({ name: 'InternalError', $fault: 'server', $metadata: { httpStatusCode: 500 }, message: 'internal' }));
+      vi.spyOn(storage, 'requireClient').mockReturnValue({ send } as unknown as S3Client);
+      await expect(storage.read('private-files', 'uploads/x', '"etag"', 1024)).rejects.toBeInstanceOf(InvalidStoredContent);
+      expect(send.mock.calls[0][0].input).toMatchObject({ IfMatch: '"etag"' });
+      const other = storage.read('private-files', 'uploads/x', '"etag"', 1024);
+      await expect(other).rejects.toThrow('internal');
+      await expect(other).rejects.not.toBeInstanceOf(InvalidStoredContent);
     } finally { storage.onModuleDestroy(); }
   });
   it('normaliza nomes e não permite injeção de cabeçalhos', () => {

@@ -20,7 +20,7 @@ import * as s from '@gestaonf/database/schema';
 import { DatabaseService } from '../src/database/database.module.js';
 import { FilesModule } from '../src/files/files.module.js';
 import { FilesService } from '../src/files/files.service.js';
-import { ObjectNotUploaded, R2StorageService } from '../src/files/r2-storage.service.js';
+import { InvalidStoredContent, ObjectNotUploaded, R2StorageService } from '../src/files/r2-storage.service.js';
 import { SalesModule } from '../src/sales/sales.module.js';
 
 config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
@@ -131,6 +131,13 @@ describe('arquivos: HTTP, PostgreSQL e armazenamento simulado', () => {
     expect(objects.has(bad.row.objectKey)).toBe(false);
     expect((await http('GET', `/files/${bad.id}`)).json().status).toBe('REJECTED');
     expect((await http('GET', `/files/${bad.id}/access`)).statusCode).toBe(410);
+  });
+  it('conteúdo alterado durante a finalização (ETag divergente) dá 400 e REJECTED, sem publicar objeto', async () => {
+    const upload = await pending(); objects.set(upload.row.stagingKey, { body: pdf, mimeType: 'application/pdf' });
+    vi.mocked(storage.read).mockRejectedValueOnce(new InvalidStoredContent('O arquivo foi alterado durante o envio. Selecione o arquivo novamente.'));
+    expect((await http('POST', `/files/${upload.id}/complete`, {})).statusCode).toBe(400);
+    expect(objects.has(upload.row.objectKey)).toBe(false);
+    expect((await http('GET', `/files/${upload.id}`)).json().status).toBe('REJECTED');
   });
   it('verifica MIME/tamanho real, processa imagem e permite download apenas após READY', async () => {
     const upload = await pending(png, 'image/png'); objects.set(upload.row.stagingKey, { body: png, mimeType: 'application/pdf' });

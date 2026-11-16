@@ -1,19 +1,20 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { companies, companyFiscalCertificates, companyUsers } from '@gestaonf/database/schema';
-import { and, eq, exists, inArray, sql } from 'drizzle-orm';
+import { and, eq, exists, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { isValidCpf, isValidCnpj } from '../customers/tax-id.js';
 import { DatabaseService } from '../database/database.module.js';
 import type { createCompanySchema, updateCompanySchema } from './companies.schemas.js';
 import { AccountsService } from '../accounts/accounts.service.js';
 import { companyAvailable } from '../accounts/account-policy.js';
+import { companyManagerQuery, isCompanyManagerRole } from './company-access.js';
 
 @Injectable()
 export class CompaniesService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(AccountsService) private readonly accounts: AccountsService) {}
 
   list(userId: string) {
-    return this.database.db.select({ id: companies.id, name: companies.name, role: companyUsers.role, accountId: companies.accountId }).from(companyUsers)
+    return this.database.db.select({ id: companies.id, name: companies.name, role: companyUsers.role, accountId: companies.accountId, logoId: companies.logoId }).from(companyUsers)
       .innerJoin(companies, eq(companies.id, companyUsers.companyId))
       .where(and(eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id)));
   }
@@ -42,7 +43,7 @@ export class CompaniesService {
 
   async update(companyId: string, userId: string, input: z.output<typeof updateCompanySchema>) {
     const current = await this.get(companyId, userId);
-    if (current.role !== 'OWNER' && current.role !== 'ADMIN') throw new ForbiddenException('Sem permissão para alterar a empresa');
+    if (!isCompanyManagerRole(current.role)) throw new ForbiddenException('Sem permissão para alterar a empresa');
     this.validateTaxId(input.kind ?? current.kind as 'PF' | 'PJ', input.taxId === undefined ? current.taxId : input.taxId);
     this.validateTradeName(input.kind ?? current.kind as 'PF' | 'PJ', input.tradeName === undefined ? current.tradeName : input.tradeName);
     this.validateTaxRegime(
@@ -51,8 +52,7 @@ export class CompaniesService {
       input.simplesIbsCbsRegime === undefined ? current.simplesIbsCbsRegime : input.simplesIbsCbsRegime,
     );
     this.validateCaepf(input.kind ?? current.kind, input.caepfCode === undefined ? current.caepfCode : input.caepfCode);
-    const allowed = this.database.db.select({ userId: companyUsers.userId }).from(companyUsers)
-      .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), inArray(companyUsers.role, ['OWNER', 'ADMIN'])));
+    const allowed = companyManagerQuery(this.database.db, companyId, userId);
     const [updated] = await this.database.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`);
       const [locked] = await tx.select({ kind: companies.kind, taxId: companies.taxId, countryCode: companies.countryCode }).from(companies)

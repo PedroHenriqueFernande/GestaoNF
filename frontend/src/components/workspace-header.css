@@ -204,3 +204,12 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .header-trigger, .workspace-header__menu { transition: none; }}
+
+/* Foto da empresa (CompanyLogo): a imagem ocupa o badge; o fundo colorido sai para não tingir logos com transparência. */
+.header-company__badge,
+.header-company__initials { overflow: hidden; }
+.header-company__badge.is-image,
+.header-company__initials.is-image,
+.header-company__option.is-selected .header-company__initials.is-image { background: #fff; box-shadow: inset 0 0 0 1px rgba(16, 78, 100, .14); }
+.header-company__badge img,
+.header-company__initials img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }

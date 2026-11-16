@@ -226,6 +226,7 @@ export const companies = pgTable(
     timezone: varchar('timezone', { length: 64 }).default('America/Sao_Paulo').notNull(),
     locale: varchar('locale', { length: 16 }).default('pt-BR').notNull(),
     status: varchar('status', { length: 16 }).default('ACTIVE').notNull(),
+    logoId: uuid('logo_id'),
     ...timestamps,
   },
   (table) => [
@@ -245,6 +246,7 @@ export const companies = pgTable(
     check('companies_simples_ibs_cbs_chk', sql`${table.simplesIbsCbsRegime} IS NULL OR ${table.simplesIbsCbsRegime} IN ('1','2','3')`),
     check('companies_caepf_chk', sql`${table.caepfCode} IS NULL OR (${table.kind} = 'PF' AND ${table.caepfCode} ~ '^[0-9]{14}$')`),
     check('companies_status_chk', sql`${table.status} IN ('ACTIVE', 'INACTIVE')`),
+    foreignKey({ name: 'companies_logo_owner_fk', columns: [table.id, table.logoId], foreignColumns: [companyLogoFiles.companyId, companyLogoFiles.id] }).onDelete('restrict'),
   ],
 );
 
@@ -339,6 +341,51 @@ export const userAvatarFiles = pgTable('user_avatar_files', {
   check('user_avatar_files_status_chk', sql`${t.status} IN ('PENDING','READY','ACTIVE','REJECTED','EXPIRED','DELETING','DELETED')`),
   check('user_avatar_files_input_chk', sql`${t.inputMimeType} IN ('image/jpeg','image/png','image/webp') AND ${t.expectedBytes} BETWEEN 1 AND 5242880`),
   check('user_avatar_files_ready_chk', sql`${t.status} NOT IN ('READY','ACTIVE') OR (${t.mimeType} IS NOT NULL AND ${t.sizeBytes} IS NOT NULL AND ${t.width} IS NOT NULL AND ${t.height} IS NOT NULL AND ${t.mimeType} = 'image/webp' AND ${t.sizeBytes} BETWEEN 1 AND 1048576 AND ${t.width} BETWEEN 1 AND 512 AND ${t.height} BETWEEN 1 AND 512 AND ${t.sha256} IS NOT NULL AND ${t.readyAt} IS NOT NULL AND ${t.objectDeletedAt} IS NULL)`),
+]);
+
+export const companyLogoFiles = pgTable('company_logo_files', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  companyId: uuid('company_id').notNull().references((): AnyPgColumn => companies.id, { onDelete: 'restrict' }),
+  createdByUserId: uuid('created_by_user_id').notNull().references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
+  requestKey: varchar('request_key', { length: 200 }).notNull(),
+  requestHash: char('request_hash', { length: 64 }).notNull(),
+  inputMimeType: varchar('input_mime_type', { length: 32 }).notNull(),
+  expectedBytes: integer('expected_bytes').notNull(),
+  mimeType: varchar('mime_type', { length: 32 }),
+  sizeBytes: integer('size_bytes'),
+  width: integer('width'),
+  height: integer('height'),
+  sha256: char('sha256', { length: 64 }),
+  thumbSizeBytes: integer('thumb_size_bytes'),
+  thumbWidth: integer('thumb_width'),
+  thumbHeight: integer('thumb_height'),
+  bucket: text('bucket').notNull(),
+  stagingKey: text('staging_key').notNull(),
+  objectKey: text('object_key').notNull(),
+  thumbObjectKey: text('thumb_object_key').notNull(),
+  status: varchar('status', { length: 16 }).default('PENDING').notNull(),
+  uploadExpiresAt: timestamp('upload_expires_at', { withTimezone: true }).notNull(),
+  unattachedExpiresAt: timestamp('unattached_expires_at', { withTimezone: true }),
+  readyAt: timestamp('ready_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  stagingCleanedAt: timestamp('staging_cleaned_at', { withTimezone: true }),
+  objectDeletedAt: timestamp('object_deleted_at', { withTimezone: true }),
+  ...timestamps,
+}, t => [
+  unique('company_logo_files_company_id_id_uq').on(t.companyId, t.id),
+  unique('company_logo_files_request_uq').on(t.companyId, t.createdByUserId, t.requestKey),
+  unique('company_logo_files_staging_key_uq').on(t.stagingKey),
+  unique('company_logo_files_object_key_uq').on(t.objectKey),
+  unique('company_logo_files_thumb_object_key_uq').on(t.thumbObjectKey),
+  uniqueIndex('company_logo_files_active_company_uq').on(t.companyId).where(sql`${t.status} = 'ACTIVE'`),
+  index('company_logo_files_company_status_idx').on(t.companyId, t.status),
+  index('company_logo_files_upload_expiry_idx').on(t.uploadExpiresAt),
+  index('company_logo_files_unattached_expiry_idx').on(t.unattachedExpiresAt),
+  index('company_logo_files_cleanup_idx').on(t.status, t.stagingCleanedAt, t.objectDeletedAt),
+  check('company_logo_files_status_chk', sql`${t.status} IN ('PENDING','READY','ACTIVE','REJECTED','EXPIRED','DELETING','DELETED')`),
+  check('company_logo_files_input_chk', sql`${t.inputMimeType} IN ('image/jpeg','image/png','image/webp') AND ${t.expectedBytes} BETWEEN 1 AND 5242880`),
+  // Os IS NOT NULL são necessários: um CHECK com resultado NULL (coluna nula) passa, ao contrário de FALSE.
+  check('company_logo_files_ready_chk', sql`${t.status} NOT IN ('READY','ACTIVE') OR (${t.mimeType} IS NOT NULL AND ${t.sizeBytes} IS NOT NULL AND ${t.width} IS NOT NULL AND ${t.height} IS NOT NULL AND ${t.thumbSizeBytes} IS NOT NULL AND ${t.thumbWidth} IS NOT NULL AND ${t.thumbHeight} IS NOT NULL AND ${t.mimeType} = 'image/webp' AND ${t.sizeBytes} BETWEEN 1 AND 2097152 AND ${t.width} BETWEEN 1 AND 1080 AND ${t.height} BETWEEN 1 AND 1080 AND ${t.sha256} IS NOT NULL AND ${t.thumbSizeBytes} BETWEEN 1 AND 131072 AND ${t.thumbWidth} = 128 AND ${t.thumbHeight} = 128 AND ${t.readyAt} IS NOT NULL AND ${t.objectDeletedAt} IS NULL)`),
 ]);
 
 export const userCredentials = pgTable('user_credentials', {

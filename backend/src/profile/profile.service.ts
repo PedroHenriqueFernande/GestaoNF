@@ -4,7 +4,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.module.js';
 import { InvalidStoredContent, ObjectNotUploaded, R2StorageService } from '../files/r2-storage.service.js';
-import { normalizeAvatar } from './avatar-content.js';
+import { AVATAR_IMAGE, normalizeImage } from '../files/image-normalize.js';
 import type { BeginAvatarUpload, PatchProfile } from './profile.schemas.js';
 
 type Avatar = typeof userAvatarFiles.$inferSelect;
@@ -56,7 +56,7 @@ export class ProfileService {
         if (head.sizeBytes !== row.expectedBytes || head.mimeType !== row.inputMimeType || !head.etag) throw new InvalidStoredContent('Tipo ou tamanho diferente do declarado');
         const read = await this.storage.read(row.bucket, row.stagingKey, head.etag, row.expectedBytes);
         if (read.body.length !== row.expectedBytes || read.mimeType !== row.inputMimeType) throw new InvalidStoredContent('Upload incompleto ou alterado');
-        const normalized = await normalizeAvatar(read.body, row.inputMimeType);
+        const [normalized] = await normalizeImage(read.body, row.inputMimeType, AVATAR_IMAGE);
         await this.storage.put(row.bucket, row.objectKey, normalized.body, 'image/webp', 'avatar.webp');
         const now = new Date();
         const [saved] = await tx.update(userAvatarFiles).set({ status: 'READY', mimeType: 'image/webp', sizeBytes: normalized.body.length, width: normalized.width, height: normalized.height,

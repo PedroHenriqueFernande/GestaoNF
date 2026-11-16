@@ -5,6 +5,8 @@ import { AlertCircle, Building2, ChevronRight, FileCheck2, MapPin, Plus, Save, S
 import { api, type Company, type CompanyInput, type CompanyProfile, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { CountryOptions } from '../../components/CountryOptions';
+import { CompanyLogo } from '../../components/CompanyLogo';
+import { CompanyLogoField, type LogoSelection } from './CompanyLogoField';
 
 type FormState = Record<keyof CompanyInput, string>;
 type FormKey = keyof FormState;
@@ -48,6 +50,8 @@ export function CompanyPage({ user }: { user: User }) {
   const [toast, setToast] = useState('');
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [certificatePassword, setCertificatePassword] = useState('');
+  const [logoSelection, setLogoSelection] = useState<LogoSelection | null>(null);
+  const [autoLogo, setAutoLogo] = useState<LogoSelection | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const savePendingRef = useRef(false);
@@ -93,13 +97,22 @@ export function CompanyPage({ user }: { user: User }) {
     onSuccess: async (result, { target }) => {
       queryClient.setQueryData(['company', result.id], result);
       queryClient.setQueryData<Company[]>(['companies'], (previous) => {
-        const summary = { id: result.id, name: result.name, role: result.role, accountId: result.accountId };
+        const summary = { id: result.id, name: result.name, role: result.role, accountId: result.accountId, logoId: result.logoId };
         return previous?.some((item) => item.id === result.id)
           ? previous.map((item) => item.id === result.id ? summary : item)
           : [...(previous ?? []), summary];
       });
       await queryClient.invalidateQueries({ queryKey: ['companies'] });
       if (target.mode === 'create') setCompanyId(result.id);
+      if (target.mode === 'create' && logoSelection) {
+        // A foto escolhida no cadastro sobe logo após criar; o modal continua aberto, agora em edição.
+        setAutoLogo(logoSelection);
+        setLogoSelection(null);
+        setModal({ mode: 'edit', companyId: result.id });
+        setToast('Empresa cadastrada com sucesso.');
+        save.reset();
+        return;
+      }
       setModal(null);
       setToast(target.mode === 'create' ? 'Empresa cadastrada com sucesso.' : 'Dados da empresa atualizados com sucesso.');
       save.reset();
@@ -146,9 +159,9 @@ export function CompanyPage({ user }: { user: User }) {
     event.preventDefault();
     if (modal) save.mutate({ input: toInput(form), target: modal });
   }
-  function newCompany(opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'create' }); setForm(emptyForm); setCertificateFile(null); setCertificatePassword(''); save.reset(); setToast(''); }
-  function openCompany(id: string, opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'edit', companyId: id }); setForm(emptyForm); setCertificateFile(null); setCertificatePassword(''); save.reset(); uploadCertificate.reset(); disableCertificate.reset(); setToast(''); }
-  function closeModal() { if (!savePendingRef.current) { setModal(null); setCertificateFile(null); setCertificatePassword(''); save.reset(); } }
+  function newCompany(opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'create' }); setForm(emptyForm); setLogoSelection(null); setAutoLogo(null); setCertificateFile(null); setCertificatePassword(''); save.reset(); setToast(''); }
+  function openCompany(id: string, opener: HTMLElement) { openerRef.current = opener; setModal({ mode: 'edit', companyId: id }); setForm(emptyForm); setLogoSelection(null); setAutoLogo(null); setCertificateFile(null); setCertificatePassword(''); save.reset(); uploadCertificate.reset(); disableCertificate.reset(); setToast(''); }
+  function closeModal() { if (!savePendingRef.current) { setModal(null); setLogoSelection(null); setAutoLogo(null); setCertificateFile(null); setCertificatePassword(''); save.reset(); } }
 
   return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onboarding={companies.data?.length === 0} onCompanyChange={(id) => { setCompanyId(id); setToast(''); }} onLogout={() => logout.mutate()} loggingOut={logout.isPending}>
     <main id="workspace-main" className="client-workspace__main company-main" tabIndex={-1}>
@@ -164,7 +177,7 @@ export function CompanyPage({ user }: { user: User }) {
           {companies.isSuccess && companies.data.length > 0 && <>
             <div className="company-list__head"><span>EMPRESA</span><span>SEU ACESSO</span><span>AÇÃO</span></div>
             {companies.data.map((item) => <button key={item.id} type="button" className={`company-list__item${item.id === companyId ? ' is-current' : ''}`} onClick={(event) => openCompany(item.id, event.currentTarget)} aria-label={`Abrir cadastro de ${item.name}`}>
-              <span className="company-list__identity"><strong>{item.name}</strong><small>{item.id === companyId ? 'Empresa selecionada' : 'Clique para abrir o cadastro'}</small></span>
+              <span className="company-list__identity-row"><CompanyLogo company={item} className="company-list__logo" /><span className="company-list__identity"><strong>{item.name}</strong><small>{item.id === companyId ? 'Empresa selecionada' : 'Clique para abrir o cadastro'}</small></span></span>
               <span className="company-list__role">{item.role === 'OWNER' ? 'Proprietário' : item.role === 'ADMIN' ? 'Administrador' : item.role === 'MANAGER' ? 'Gerente' : 'Colaborador'}</span>
               <span className="company-list__action">Abrir cadastro <ChevronRight size={16} /></span>
             </button>)}
@@ -180,7 +193,9 @@ export function CompanyPage({ user }: { user: User }) {
         {modal.mode === 'edit' && company.isError && <div className="company-modal__message" role="alert"><AlertCircle size={18} /> Não foi possível carregar os dados. <button type="button" onClick={() => company.refetch()}>Tentar novamente</button></div>}
         {(modal.mode === 'create' || company.isSuccess) && <form className="company-form" onSubmit={submit}>
         <div className="company-form__scroll">
-        <div className="company-form__intro"><div className="company-form__mark"><Building2 size={22} /></div><div><strong>{modal.mode === 'create' ? 'Cadastrar empresa' : company.data?.name}</strong><span>{modal.mode === 'create' ? 'A empresa será vinculada ao seu usuário como proprietário.' : `ID da empresa: ${editingId}`}</span></div><span className="company-form__status">{modal.mode === 'create' ? 'NOVA' : 'ATIVA'}</span></div>
+        <div className="company-form__intro">{modal.mode === 'create'
+            ? <CompanyLogoField mode="create" pending={logoSelection} onPendingChange={setLogoSelection} />
+            : <CompanyLogoField key={editingId} mode="edit" company={companies.data?.find((item) => item.id === editingId)} editable={editable} initialSelection={autoLogo} />}<div><strong>{modal.mode === 'create' ? 'Cadastrar empresa' : company.data?.name}</strong><span>{modal.mode === 'create' ? 'A empresa será vinculada ao seu usuário como proprietário.' : `ID da empresa: ${editingId}`}</span></div><span className="company-form__status">{modal.mode === 'create' ? 'NOVA' : 'ATIVA'}</span></div>
         {!editable && <div className="company-form__readonly">Você tem acesso de consulta. Apenas proprietário ou administrador pode alterar estes dados.</div>}
         <section className="company-form__section"><div className="company-form__section-title"><UserRound size={19} /><div><h2>Identificação</h2><p>Identidade e contato da empresa</p></div></div>
           <div className="company-form__grid company-form__grid--two">

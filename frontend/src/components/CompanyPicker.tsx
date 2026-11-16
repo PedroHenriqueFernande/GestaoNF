@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Link } from 'react-router';
-import { Building2, Check, ChevronDown, Search, Settings2 } from 'lucide-react';
+import { Check, ChevronDown, Search, Settings2 } from 'lucide-react';
 import type { Company } from '../api/client';
-import { companyRoleLabel, initials } from '../utils/format';
+import { companyRoleLabel } from '../utils/format';
+import { CompanyLogo } from './CompanyLogo';
 import { useDropdown } from './useDropdown';
 
 const SEARCH_THRESHOLD = 6;
@@ -32,9 +33,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange }: {
 
   return <div ref={dropdown.rootRef} className="dropdown header-company">
     <button ref={dropdown.triggerRef} type="button" className="header-trigger header-trigger--surface" aria-label={`Empresa ativa: ${activeCompany?.name ?? 'nenhuma selecionada'}. Trocar empresa`} aria-expanded={dropdown.open} aria-controls="workspace-company-menu" disabled={!companies?.length} onClick={dropdown.toggle} onKeyDown={dropdown.onTriggerKeyDown}>
-      <span className="header-company__badge" aria-hidden="true">
-        {activeCompany ? initials(activeCompany.name) : <Building2 size={16} strokeWidth={2} />}
-      </span>
+      <CompanyLogo company={activeCompany} className="header-company__badge" />
       <span className="header-trigger__title header-company__name" title={activeCompany?.name}>{activeCompany?.name ?? 'Selecionar empresa'}</span>
       <ChevronDown className="dropdown-chevron" size={17} strokeWidth={2.2} aria-hidden="true" />
     </button>
@@ -49,7 +48,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange }: {
         {visible.map((item, index) => {
           const selected = item.id === companyId;
           return <button key={item.id} type="button" className={`dropdown-item header-company__option${selected ? ' is-selected' : ''}`} style={stagger(index)} aria-pressed={selected} onClick={() => choose(item.id)}>
-            <span className="header-company__initials" aria-hidden="true">{initials(item.name)}</span>
+            <CompanyLogo company={item} className="header-company__initials" />
             <span className="header-company__option-text">
               <strong title={item.name}>{item.name}</strong>
               <small>{companyRoleLabel(item.role)}</small>

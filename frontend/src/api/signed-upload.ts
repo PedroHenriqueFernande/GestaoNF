@@ -1,4 +1,4 @@
-export function putAvatar(file: File, upload: { url: string; method: 'PUT'; headers: Record<string, string> }, onProgress: (percent: number) => void, signal: AbortSignal): Promise<void> {
+export function putSignedUpload(file: File, upload: { url: string; method: 'PUT'; headers: Record<string, string> }, onProgress: (percent: number) => void, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const abort = () => xhr.abort();

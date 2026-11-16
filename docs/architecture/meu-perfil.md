@@ -286,12 +286,12 @@ Os itens abaixo são destinos previstos, não arquivos já criados nem um plano 
 | Área | Alterações previstas |
 | --- | --- |
 | Banco | `backend/database/src/schema.ts` e nova migration em `backend/database/drizzle/`. |
-| Perfil | `backend/src/profile/profile.module.ts`, `profile.controller.ts`, `profile.service.ts`, `profile.schemas.ts`, `profile.config.ts`, `avatar-content.ts`. |
+| Perfil | `backend/src/profile/profile.module.ts`, `profile.controller.ts`, `profile.service.ts`, `profile.schemas.ts`, `profile.config.ts`, `backend/src/files/image-normalize.ts`. |
 | Registro de módulos | `backend/src/app.module.ts` e `backend/src/jobs/worker.module.ts`. |
 | Worker | `backend/src/jobs/profile-avatar-cleanup-worker.service.ts`. |
 | Identidade pública | `backend/src/auth/auth.service.ts` e projeções no aceite de `backend/src/users/users.service.ts`. |
 | API frontend | `frontend/src/api/client.ts`, com DTOs e operações pessoais sem empresa. |
-| Página e uploads | `frontend/src/features/profile/ProfilePage.tsx`, `profile.css`, `upload-avatar.ts`. |
+| Página e uploads | `frontend/src/features/profile/ProfilePage.tsx`, `profile.css` e `frontend/src/api/signed-upload.ts` (envio por PUT assinado, compartilhado com a foto da empresa). |
 | Avatar e navegação | `frontend/src/components/UserAvatar.tsx`, `WorkspaceLayout.tsx` e `frontend/src/main.tsx`. |
 | Testes | Cobertura de backend/banco e `frontend/e2e/profile.spec.ts`, conforme padrões existentes. |
 

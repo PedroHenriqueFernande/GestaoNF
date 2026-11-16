@@ -29,7 +29,14 @@ export class R2StorageService implements OnModuleDestroy {
   }
   async read(bucket: string, key: string, etag: string, limit: number) {
     const abort = AbortSignal.timeout(30_000);
-    const object = await this.requireClient().send(new GetObjectCommand({ Bucket: bucket, Key: key, IfMatch: etag }), { abortSignal: abort });
+    let object;
+    try {
+      object = await this.requireClient().send(new GetObjectCommand({ Bucket: bucket, Key: key, IfMatch: etag }), { abortSignal: abort });
+    } catch (error) {
+      // O temporário foi regravado entre o HEAD e o GET: o conteúdo já não é o que foi conferido.
+      if (isPreconditionFailed(error)) throw new InvalidStoredContent('O arquivo foi alterado durante o envio. Selecione o arquivo novamente.');
+      throw error;
+    }
     if (!object.Body || !object.ContentLength || object.ContentLength > limit || object.ContentEncoding) {
       (object.Body as { destroy?: () => void } | undefined)?.destroy?.();
       throw new InvalidStoredContent('Conteúdo ou tamanho inválido');
@@ -60,6 +67,9 @@ export class R2StorageService implements OnModuleDestroy {
     await this.requireClient().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(15_000) });
   }
   onModuleDestroy() { this.client?.destroy(); }
+}
+function isPreconditionFailed(error: unknown) {
+  return typeof error === 'object' && error !== null && (('name' in error && String(error.name) === 'PreconditionFailed') || ('$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 412));
 }
 function isMissingObject(error: unknown) {
   return typeof error === 'object' && error !== null && (('name' in error && ['NotFound', 'NoSuchKey'].includes(String(error.name))) || ('$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404));
