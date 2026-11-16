@@ -6,6 +6,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { CompanyPicker } from './CompanyPicker';
 import type { CompanyScope } from './company-scope';
+import { UserAvatar } from './UserAvatar';
 import { UserMenu } from './UserMenu';
 import { useDropdown } from './useDropdown';
 import { companyRoleLabel } from '../utils/format';
@@ -222,10 +223,17 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
           })}
         </nav>
 
-        <div className="workspace-sidebar__footer">
+        <div className="workspace-sidebar__assistant">
           {onboarding
             ? <button type="button" className="workspace-nero workspace-nero--disabled" disabled title="Cadastre uma empresa para liberar esta opção"><span className="workspace-nero__icon"><Bot size={19} aria-hidden="true" /></span><span className="workspace-nero__text"><strong>Nero</strong><small>Seu secretário no WhatsApp</small></span></button>
             : <Link to="/nero" className={`workspace-nero${section === 'nilo' ? ' is-active' : ''}`} aria-current={section === 'nilo' ? 'page' : undefined} aria-label="Nero" title={isCollapsed ? 'Nero' : undefined} onClick={closeNavigation}><span className="workspace-nero__icon"><Bot size={19} aria-hidden="true" /></span><span className="workspace-nero__text"><strong>Nero</strong><small>Seu secretário no WhatsApp</small></span></Link>}
+        </div>
+
+        <div className="workspace-sidebar__footer">
+          <Link to="/meu-perfil" className="workspace-profile" aria-current={section === 'profile' ? 'page' : undefined} aria-label={`Meu perfil — ${user.name}`} title={isCollapsed ? 'Meu perfil' : undefined} onClick={closeNavigation}>
+            <UserAvatar user={user} className="header-avatar workspace-profile__avatar" />
+            <span className="workspace-profile__text"><strong title={user.name}>{user.name}</strong><small>Meu perfil</small></span>
+          </Link>
         </div>
       </div>
     </aside>
