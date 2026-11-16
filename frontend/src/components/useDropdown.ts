@@ -39,16 +39,21 @@ export function useDropdown<T extends HTMLElement = HTMLButtonElement>() {
       }
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
       if (!rootRef.current?.contains(document.activeElement)) return;
-      const inField = document.activeElement instanceof HTMLInputElement;
-      if (inField && event.key !== 'ArrowDown') return;
+      const active = document.activeElement as HTMLElement;
+      // Campo de texto (busca) usa ArrowUp/Home/End no cursor; só ArrowDown desce para a lista.
+      const textField = active instanceof HTMLInputElement && active.type !== 'checkbox' && active.type !== 'radio';
+      if (textField && event.key !== 'ArrowDown') return;
       const items = Array.from(panelRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? []);
       if (!items.length) return;
       event.preventDefault();
-      const index = items.indexOf(document.activeElement as HTMLElement);
+      // Foco fora dos itens (busca, checkbox, gatilho): a seta parte da posição do elemento no painel.
+      const index = items.indexOf(active);
+      const after = index >= 0 ? index + 1 : items.findIndex((item) => active.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const before = index >= 0 ? index - 1 : (after === -1 ? items.length : after) - 1;
       const next = event.key === 'Home' ? 0
         : event.key === 'End' ? items.length - 1
-          : event.key === 'ArrowDown' ? (index + 1) % items.length
-            : index <= 0 ? items.length - 1 : index - 1;
+          : event.key === 'ArrowDown' ? (after === -1 || after >= items.length ? 0 : after)
+            : before < 0 ? items.length - 1 : before;
       items[next].focus();
     };
     document.addEventListener('pointerdown', closeOutside);

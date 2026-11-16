@@ -2,7 +2,7 @@ import { companyAvailable } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { companies, companyUsers, customers, nfseSeries, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
-import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
 import { FilesService, publicFile } from '../files/files.service.js';
@@ -10,7 +10,7 @@ import { FiscalService } from '../fiscal/fiscal.service.js';
 import { saleFiscalState } from '../fiscal/sale-fiscal-state.js';
 import { amount, cents, itemAmounts } from './sales-money.js';
 import { orderCode, paycodes } from './sales-codes.js';
-import { createSaleSchema, type ConfirmSaleInput, type CreateSaleInput, type ListSalesInput, type UpdateConfirmedSaleInput, type UpdateSaleInput } from './sales.schemas.js';
+import { createSaleSchema, type ConfirmSaleInput, type CreateSaleInput, type ListSalesInput, type ListSalesOverviewInput, type UpdateConfirmedSaleInput, type UpdateSaleInput } from './sales.schemas.js';
 
 export type SalesTx = Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
 
@@ -156,9 +156,9 @@ export class SalesService {
     return { sale: confirmed, items, installments };
   }
 
-  /** `options` é de uso interno (assistente); não faz parte da API HTTP. */
-  async list(companyId: string, input: ListSalesInput, options?: { createdByUserId?: string }) {
-    const conditions: SQL[] = [eq(sales.companyId, companyId)];
+  /** Regra única de filtro da listagem de pedidos (por empresa e consolidada). */
+  private listConditions(companyIds: string[], input: { status: ListSalesInput['status']; search?: string; customerId?: string; from?: string; to?: string }, options?: { createdByUserId?: string }) {
+    const conditions: SQL[] = [companyIds.length === 1 ? eq(sales.companyId, companyIds[0]) : inArray(sales.companyId, companyIds)];
     if (options?.createdByUserId) conditions.push(eq(sales.createdByUserId, options.createdByUserId));
     if (input.status !== 'ALL') conditions.push(eq(sales.status, input.status));
     if (input.customerId) conditions.push(eq(sales.customerId, input.customerId));
@@ -168,17 +168,38 @@ export class SalesService {
       const escaped = input.search.replace(/[\\%_]/g, '\\$&');
       conditions.push(or(eq(sales.orderCode, input.search), ilike(sales.workOrderNumber, `%${escaped}%`), ilike(sales.customerNameSnapshot, `%${escaped}%`))!);
     }
-    const where = and(...conditions);
-    const [items, [total]] = await Promise.all([
-      this.database.db.select({ sale: sales, createdByUserName: users.name }).from(sales)
-        .innerJoin(users, eq(sales.createdByUserId, users.id))
-        .where(where).orderBy(desc(sales.createdAt), desc(sales.id)).limit(input.limit).offset(input.offset),
-      this.database.db.select({ count: count() }).from(sales).where(where),
-    ]);
-    return { items: items.map(({ sale, createdByUserName }) => {
+    return and(...conditions)!;
+  }
+
+  private async listItems(where: SQL, limit: number, offset: number) {
+    const rows = await this.database.db.select({ sale: sales, createdByUserName: users.name }).from(sales)
+      .innerJoin(users, eq(sales.createdByUserId, users.id))
+      .where(where).orderBy(desc(sales.createdAt), desc(sales.id)).limit(limit).offset(offset);
+    return rows.map(({ sale, createdByUserName }) => {
       const { idempotencyKey: _key, requestHash: _hash, ...publicSale } = sale;
       return { ...publicSale, createdByUserName };
-    }), total: total.count, limit: input.limit, offset: input.offset };
+    });
+  }
+
+  /** `options` é de uso interno (assistente); não faz parte da API HTTP. */
+  async list(companyId: string, input: ListSalesInput, options?: { createdByUserId?: string }) {
+    const where = this.listConditions([companyId], input, options);
+    const [items, [total]] = await Promise.all([this.listItems(where, input.limit, input.offset), this.database.db.select({ count: count() }).from(sales).where(where)]);
+    return { items, total: total.count, limit: input.limit, offset: input.offset };
+  }
+
+  async overview(companyIds: string[], input: ListSalesOverviewInput) {
+    const where = this.listConditions(companyIds, input);
+    const includeCanceled = input.status !== 'ALL';
+    // Soma em numeric (exata): todas as parcelas têm escala 2; o texto volta como "1234.56", igual aos demais valores da API.
+    const [items, [aggregate]] = await Promise.all([
+      this.listItems(where, input.limit, input.offset),
+      this.database.db.select({
+        total: sql<number>`count(*)::int`,
+        amount: sql<string>`coalesce(sum(${sales.totalAmount}) filter (where ${includeCanceled}::boolean or ${sales.status} <> 'CANCELED'), 0)::numeric(17,2)::text`,
+      }).from(sales).where(where),
+    ]);
+    return { items, total: aggregate.total, limit: input.limit, offset: input.offset, summary: { amount: aggregate.amount, excludesCanceled: !includeCanceled }, companyIds };
   }
 
   async get(companyId: string, id: string) {

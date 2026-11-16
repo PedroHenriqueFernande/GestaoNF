@@ -101,3 +101,13 @@
 @media(max-width:480px){.sale-editor-heading{align-items:flex-start;flex-direction:column}.sale-editor-heading__total{align-items:flex-start}.sale-identity-grid{grid-template-columns:1fr}.sale-payment-grid{grid-template-columns:1fr 1fr}.sale-payment-balance{align-items:flex-start;flex-direction:column}.sale-editor-footer>div:last-child{width:100%}.sale-editor-footer .button{flex:1}.sale-detail__payment-amount{align-items:flex-start;flex-direction:column;gap:2px}.sale-detail__payment-bottom{align-items:flex-start;flex-direction:column}.sale-detail__receive{grid-template-columns:1fr}.sale-service-modal__header{padding:18px 16px 14px}.sale-service-modal__fields{gap:12px;padding:16px}.sale-service-modal__summary{margin:0 16px;flex-wrap:wrap}.sale-service-modal__footer{padding:13px 16px}}
 @media(prefers-reduced-motion:reduce){.sale-detail-backdrop,.sales-loading div{animation:none}.sales-table tbody tr{transition:none}}
 .sales-mobile-card p.sales-mobile-card__creator{margin-top:5px;color:var(--primary-dark);font-weight:600}
+
+/* Visão consolidada: empresa do pedido após o nº e total somado. */
+.sales-company { display: inline-flex; align-items: center; margin-left: 8px; vertical-align: middle; }
+.sales-company__logo { display: grid; place-items: center; width: 24px; height: 24px; overflow: hidden; border-radius: 5px; background: #eef2f4; color: #4a5761; font-size: 9.5px; font-weight: 700; }
+.sales-company__logo.is-image { background: #fff; box-shadow: inset 0 0 0 1px rgba(16, 78, 100, .14); }
+.sales-company__logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.sales-company__name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.sales-mobile-card .sales-company__logo { width: 20px; height: 20px; }
+.sales-mobile-card__company { display: block; color: var(--muted); font-size: 11px; }
+.sales-ledger__sum { margin-left: 12px; color: var(--text); font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }

@@ -8,7 +8,7 @@ import { AuthService } from './auth.service.js';
 import { DatabaseService } from '../database/database.module.js';
 import { allowedWebOrigins } from '../common/origins.js';
 
-export type RequestContext = FastifyRequest & { userId?: string; companyId?: string };
+export type RequestContext = FastifyRequest & { userId?: string; companyId?: string; companyIds?: string[] };
 
 @Injectable()
 export class AccessGuard implements CanActivate {

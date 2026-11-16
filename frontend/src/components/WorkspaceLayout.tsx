@@ -5,6 +5,7 @@ import { Bot, BriefcaseBusiness, Building2, CalendarDays, Calculator, ChartColum
 import type { LucideIcon } from 'lucide-react';
 import type { Company, User } from '../api/client';
 import { CompanyPicker } from './CompanyPicker';
+import type { CompanyScope } from './company-scope';
 import { UserMenu } from './UserMenu';
 import { useDropdown } from './useDropdown';
 import { companyRoleLabel } from '../utils/format';
@@ -64,11 +65,14 @@ function readCollapsed() {
   try { return window.localStorage.getItem(COLLAPSED_KEY) === '1'; } catch { return false; }
 }
 
-export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, onLogout, loggingOut, onboarding = false, className = '', children }: {
+export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, allowMultiple, scope, onLogout, loggingOut, onboarding = false, className = '', children }: {
   user: User;
   companies?: Company[];
   companyId: string;
   onCompanyChange: (id: string) => void;
+  /** Só o Portal de Serviços: seletor com "Ver todas" e checkboxes. */
+  allowMultiple?: boolean;
+  scope?: CompanyScope;
   onLogout: () => void;
   loggingOut: boolean;
   onboarding?: boolean;
@@ -230,7 +234,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, o
         <button ref={menuRef} type="button" className="workspace-header__menu" onClick={() => setMobileOpen((value) => !value)} aria-label="Abrir menu de navegação" aria-controls="workspace-sidebar" aria-expanded={mobileOpen}>
           <Menu size={21} aria-hidden="true" />
         </button>
-        <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={onCompanyChange} />
+        <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={onCompanyChange} allowMultiple={allowMultiple} scope={scope} />
         <div className="workspace-header__end">
           <UserMenu user={user} roleLabel={onboarding ? 'Cadastro pendente' : companyRoleLabel(company?.role)} profileActive={section === 'profile'} onLogout={onLogout} loggingOut={loggingOut} />
         </div>

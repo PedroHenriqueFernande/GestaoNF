@@ -130,6 +130,8 @@ export type SaleItem = { id: string; serviceId: string; position: number; servic
   taxProfileRevisionId: string | null; taxSnapshot: TaxSnapshot | null };
 export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[]; attachments: StoredFile[] };
 export type SaleList = { items: SaleListItem[]; total: number; limit: number; offset: number };
+export type SalesOverview = SaleList & { summary: { amount: string; excludesCanceled: boolean }; companyIds: string[] };
+export type CompanyScopeParam = { companies: 'all' } | { companyIds: string };
 export type FinanceSettlement = 'ALL' | 'PENDING' | 'PARTIAL' | 'PAID';
 export type FinanceDateBasis = 'SALE' | 'DUE' | 'RECEIPT';
 export type FinanceOverdue = 'ALL' | 'ONLY' | 'EXCLUDE';
@@ -447,6 +449,11 @@ export const api = {
     const query = new URLSearchParams({ status: params.status, offset: String(params.page * params.limit), limit: String(params.limit) });
     if (params.search) query.set('search', params.search);
     return request<SaleList>(`/sales?${query}`, {}, { companyId });
+  },
+  salesOverview: (scope: CompanyScopeParam, params: { search: string; status: SaleStatus | 'ALL'; page: number; limit: number }) => {
+    const query = new URLSearchParams({ ...scope, status: params.status, offset: String(params.page * params.limit), limit: String(params.limit) });
+    if (params.search) query.set('search', params.search);
+    return request<SalesOverview>(`/sales/overview?${query}`);
   },
   sale: (companyId: string, id: string) => request<SaleDetail>(`/sales/${id}`, {}, { companyId }),
   createSale: (companyId: string, input: SaleInput, key: string) => request<SaleDetail>('/sales', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),

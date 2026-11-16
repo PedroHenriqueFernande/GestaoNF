@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { SalesController } from './sales.controller.js';
+import { SalesOverviewController } from './sales-overview.controller.js';
 import { SalesPaymentsService } from './sales-payments.service.js';
 import { SalesService } from './sales.service.js';
 import { FilesModule } from '../files/files.module.js';
 import { FiscalModule } from '../fiscal/fiscal.module.js';
 
-@Module({ imports: [AuthModule, FilesModule, FiscalModule], controllers: [SalesController], providers: [SalesService, SalesPaymentsService], exports: [SalesService, SalesPaymentsService] })
+@Module({ imports: [AuthModule, FilesModule, FiscalModule], controllers: [SalesOverviewController, SalesController], providers: [SalesService, SalesPaymentsService], exports: [SalesService, SalesPaymentsService] })
 export class SalesModule {}

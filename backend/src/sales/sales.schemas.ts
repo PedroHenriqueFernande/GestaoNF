@@ -73,6 +73,17 @@ export const listSalesSchema = z.strictObject({
   from: date.optional(),
   to: date.optional(),
 });
+// A validação do escopo (companies/companyIds) é do CompanyScopeGuard; aqui só se aceitam as chaves
+// e elas são descartadas, para que o serviço só receba o escopo autorizado (request.companyIds).
+export const listSalesOverviewSchema = z.strictObject({
+  companies: z.string().optional(),
+  companyIds: z.string().optional(),
+  limit: listSalesSchema.shape.limit,
+  offset: listSalesSchema.shape.offset,
+  status: listSalesSchema.shape.status,
+  search: listSalesSchema.shape.search,
+}).transform(({ companies: _companies, companyIds: _companyIds, ...filters }) => filters);
+export type ListSalesOverviewInput = z.output<typeof listSalesOverviewSchema>;
 export const saleIdSchema = z.uuid();
 export const idempotencyKeySchema = z.uuid();
 
