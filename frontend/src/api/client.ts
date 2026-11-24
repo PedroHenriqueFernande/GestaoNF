@@ -1,3 +1,4 @@
+import type { PermissionKey, RoleLabel } from '@gestaonf/permissions';
 import type { NfseCancelInput, NfseCancellation, NfseConnectionResult, NfseEmission, NfseReadiness, NfsePreview, NfsePreviewInput, NfseSaleState, NfseSubstitutionInput } from './nfse.types';
 const API_URL = (import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:4030`).replace(/\/$/, '');
 
@@ -5,7 +6,8 @@ export type User = { id: string; name: string; email: string; avatarId: string |
 export type AvatarUpload = { file: { id: string; status: string }; upload: { url: string; method: 'PUT'; headers: Record<string, string>; expiresAt: string } | null };
 export type AvatarCompletion = { file: { id: string; status: string; mimeType: string; width: number; height: number; sizeBytes: number }; expiresAt: string | null };
 export type AvatarAccess = { avatarId: string; url: string; expiresAt: string };
-export type Company = { id: string; name: string; role: string; accountId: string; logoId: string | null };
+export type Company = { id: string; name: string; accountId: string; logoId: string | null;
+  roleLabel: RoleLabel; accountOwner: boolean; permissions: PermissionKey[] };
 export type CompanyLogoMime = 'image/jpeg' | 'image/png' | 'image/webp';
 export type CompanyLogoUpload = { file: { id: string; status: string }; upload: { url: string; method: 'PUT'; headers: Record<string, string>; expiresAt: string } | null };
 export type CompanyLogoCompletion = { file: { id: string; status: string; mimeType: string; width: number; height: number; sizeBytes: number; thumbnail: { width: number; height: number; sizeBytes: number } | null }; expiresAt: string | null };
@@ -14,8 +16,13 @@ export type FiscalCertificate = { id: string; status: 'ACTIVE' | 'EXPIRED'; subj
   serialNumber: string; subjectSummary: string; issuerSummary: string; notBefore: string; notAfter: string; createdAt: string };
 export type Account = { id: string; name: string; status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELED'; planCode: string; additionalUsersPerCompany: number };
 export type UserCapacity = { companyId: string; name: string; status: string; limit: number; occupied: number; reserved: number; available: number; overLimit: number; ownerIncludedSeparately: boolean };
-export type ManagedMember = { id: string; type: 'MEMBER'; name: string; email: string; status: 'OWNER' | 'ACTIVE' | 'INACTIVE'; companies: { companyId: string; companyName: string; status: 'ACTIVE' | 'INACTIVE'; role: string; version: number }[]; version: string };
-export type ManagedInvitation = { id: string; type: 'INVITATION'; name: string; email: string; status: 'PENDING' | 'REVOKED' | 'EXPIRED'; expiresAt: string; version: number; createdAt: string; companies: { id: string; name: string }[]; delivery: { id: string; sendStatus: string } | null };
+export type AccessInput = { companyIds: string[]; roleLabel: RoleLabel; permissions: PermissionKey[] };
+export type ManagedMember = { id: string; type: 'MEMBER'; name: string; email: string; status: 'OWNER' | 'ACTIVE' | 'INACTIVE';
+  companies: { companyId: string; companyName: string; status: 'ACTIVE' | 'INACTIVE'; version: number }[];
+  accountOwner: boolean; roleLabel: RoleLabel; permissions: PermissionKey[]; version: string };
+export type ManagedInvitation = { id: string; type: 'INVITATION'; name: string; email: string; status: 'PENDING' | 'REVOKED' | 'EXPIRED';
+  expiresAt: string; version: number; createdAt: string; companies: { id: string; name: string }[];
+  delivery: { id: string; sendStatus: string } | null; roleLabel: RoleLabel; permissions: PermissionKey[] };
 export type ManagedUser = ManagedMember | ManagedInvitation;
 export type ManagedUsersList = { items: ManagedUser[]; total: number };
 export type InvitationPreview = { invitationId: string; name: string; accountName: string; email: string; companies: { id: string; name: string }[]; expiresAt: string; nextStep: 'LOGIN' | 'DEFINE_PASSWORD' };
@@ -128,10 +135,11 @@ export type SaleInstallment = { id: string; number: number; paycode: string | nu
 export type SaleItem = { id: string; serviceId: string; position: number; serviceNameSnapshot: string; descriptionSnapshot: string | null;
   quantity: string; unitPrice: string; grossAmount: string; discountAmount: string; totalAmount: string; performedOn: string | null;
   taxProfileRevisionId: string | null; taxSnapshot: TaxSnapshot | null };
-export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[]; attachments: StoredFile[] };
+export type SaleDetail = Sale & { items: SaleItem[]; installments: SaleInstallment[]; attachments: StoredFile[] | null };
 export type SaleList = { items: SaleListItem[]; total: number; limit: number; offset: number };
 export type SalesOverview = SaleList & { summary: { amount: string; excludesCanceled: boolean }; companyIds: string[] };
 export type CompanyScopeParam = { companies: 'all' } | { companyIds: string };
+type Consolidated = { companyIds: string[] };
 export type FinanceSettlement = 'ALL' | 'PENDING' | 'PARTIAL' | 'PAID';
 export type FinanceDateBasis = 'SALE' | 'DUE' | 'RECEIPT';
 export type FinanceOverdue = 'ALL' | 'ONLY' | 'EXCLUDE';
@@ -256,7 +264,7 @@ export type ProposalSettings = { companyId: string; winOpportunityOnProposalConv
 export type ApiIssue = { path: string; message: string };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public issues: ApiIssue[] = []) {
+  constructor(public status: number, message: string, public issues: ApiIssue[] = [], public code?: string) {
     super(message);
     this.name = 'ApiError';
   }
@@ -265,10 +273,10 @@ export class ApiError extends Error {
 let refreshPromise: Promise<void> | null = null;
 
 async function readError(response: Response): Promise<ApiError> {
-  const data = await response.json().catch(() => null) as { message?: string | { message?: string; errors?: ApiIssue[] }; errors?: ApiIssue[] } | null;
+  const data = await response.json().catch(() => null) as { message?: string | { message?: string; code?: string; errors?: ApiIssue[] }; code?: string; errors?: ApiIssue[] } | null;
   const nested = typeof data?.message === 'object' ? data.message : null;
   const message = typeof data?.message === 'string' ? data.message : nested?.message ?? 'Não foi possível concluir a operação.';
-  return new ApiError(response.status, message, data?.errors ?? nested?.errors ?? []);
+  return new ApiError(response.status, message, data?.errors ?? nested?.errors ?? [], typeof data?.code === 'string' ? data.code : typeof nested?.code === 'string' ? nested.code : undefined);
 }
 
 async function refreshSession(): Promise<void> {
@@ -320,6 +328,15 @@ async function requestBlob(path: string, companyId: string): Promise<Blob> {
 }
 
 const json = (value: unknown) => JSON.stringify(value);
+
+/** Filtros do cadastro de uma só empresa são recusados nas rotas consolidadas. */
+function overviewQuery<T extends object>(scope: CompanyScopeParam, filters: T, omitted: readonly (keyof T)[], offset: number, limit: number) {
+  const query = new URLSearchParams({ ...scope, offset: String(offset), limit: String(limit) });
+  for (const [key, value] of Object.entries(filters)) {
+    if (!omitted.includes(key as keyof T) && value !== undefined && value !== '' && value !== false) query.set(key, String(value));
+  }
+  return query;
+}
 
 export type ReportType = 'closed-services' | 'service-receipts' | 'lead-entries' | 'customers' | 'service-catalog' | 'meetings' | 'disqualification-rate' | 'loss-rate';
 export type ReportFilters = { from?: string; to?: string; search?: string; customerId?: string; serviceId?: string; assignedUserId?: string; status?: string; captureKind?: string; utmSource?: string; utmCampaign?: string; sourceFormReference?: string; paymentMethod?: string; limit?: number; cursor?: string };
@@ -401,11 +418,13 @@ export const api = {
   accounts: () => request<Account[]>('/accounts'),
   managedUsers: (accountId: string, search: string, offset = 0, limit = 25) => request<ManagedUsersList>(`/accounts/${accountId}/users?${new URLSearchParams({ search, offset: String(offset), limit: String(limit) })}`),
   userCapacity: (accountId: string) => request<UserCapacity[]>(`/accounts/${accountId}/users/capacity`),
-  inviteUser: (accountId: string, input: { name: string; email: string; companyIds: string[] }, key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }),
+  inviteUser: (accountId: string, input: { name: string; email: string } & AccessInput, key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }),
   resendInvitation: (accountId: string, invitationId: string, version: number, key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations/${invitationId}/resend`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ version }) }),
-  changeInvitationCompanies: (accountId: string, invitationId: string, version: number, companyIds: string[], key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations/${invitationId}/companies`, { method: 'PATCH', headers: { 'Idempotency-Key': key }, body: json({ version, companyIds }) }),
+  updateInvitationAccess: (accountId: string, invitationId: string, input: AccessInput & { version: number }, key: string) =>
+    request<ManagedInvitation>(`/accounts/${accountId}/user-invitations/${invitationId}/access`, { method: 'PATCH', headers: { 'Idempotency-Key': key }, body: json(input) }),
   revokeInvitation: (accountId: string, invitationId: string, version: number, key: string) => request<ManagedInvitation>(`/accounts/${accountId}/user-invitations/${invitationId}/revoke`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: json({ version }) }),
-  changeMemberCompanies: (accountId: string, userId: string, version: string, companyIds: string[], key: string) => request<{ userId: string; version: string }>(`/accounts/${accountId}/users/${userId}/companies`, { method: 'PATCH', headers: { 'Idempotency-Key': key }, body: json({ version, companyIds }) }),
+  updateMemberAccess: (accountId: string, userId: string, input: AccessInput & { version: string }, key: string) =>
+    request<{ userId: string; version: string }>(`/accounts/${accountId}/users/${userId}/access`, { method: 'PUT', headers: { 'Idempotency-Key': key }, body: json(input) }),
   previewInvitation: (token: string) => request<InvitationPreview>('/user-invitations/preview', { method: 'POST', body: json({ token }) }, { retryAuth: false }),
   acceptNewInvitation: (token: string, password: string, passwordConfirmation: string) => request<{ user: User }>('/user-invitations/accept-new', { method: 'POST', body: json({ token, password, passwordConfirmation, client: 'web' }) }, { retryAuth: false }),
   acceptExistingInvitation: (token: string) => request<{ accepted: boolean }>('/user-invitations/accept-existing', { method: 'POST', body: json({ token }) }),
@@ -463,8 +482,6 @@ export const api = {
     request<SaleDetail>(`/sales/${id}/confirmed`, { method: 'PATCH', body: json({ ...input, expectedVersion }) }, { companyId }),
   confirmSale: (companyId: string, id: string, expectedVersion: number, initialReceipts: { installmentId: string; amount: string; paymentMethod: PaymentMethod; receivedOn: string }[]) =>
     request<SaleDetail>(`/sales/${id}/confirm`, { method: 'POST', body: json({ expectedVersion, initialReceipts }) }, { companyId }),
-  updateSaleWorkOrder: (companyId: string, id: string, expectedVersion: number, workOrderNumber: string | null) =>
-    request<SaleDetail>(`/sales/${id}/work-order-number`, { method: 'PATCH', body: json({ expectedVersion, workOrderNumber }) }, { companyId }),
   cancelSale: (companyId: string, id: string, expectedVersion: number, reason: string) =>
     request<SaleDetail>(`/sales/${id}/cancel`, { method: 'POST', body: json({ expectedVersion, reason }) }, { companyId }),
   receiveSaleInstallment: (companyId: string, saleId: string, installmentId: string, input: { amount: string; paymentMethod: PaymentMethod; receivedOn: string; reference?: string | null }, key: string) =>
@@ -490,6 +507,8 @@ export const api = {
     for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== '' && value !== false) query.set(key, String(value));
     return request<CrmOpportunityList>(`/crm/opportunities?${query}`, {}, { companyId });
   },
+  crmOverviewOpportunities: (scope: CompanyScopeParam, filters: CrmFilters, page = 0, limit = 20) =>
+    request<CrmOpportunityList & Consolidated>(`/crm/overview/opportunities?${overviewQuery(scope, filters, ['contactId', 'pipelineId', 'stageId', 'primaryServiceId'], page * limit, limit)}`),
   crmLead: (companyId: string, id: string) => request<CrmLeadDetail>(`/crm/leads/${id}`, {}, { companyId }),
   crmLeads: (companyId: string, search = '') => request<{ items: CrmLead[]; total: number }>(`/crm/leads?limit=30&offset=0${search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''}`, {}, { companyId }),
   crmOpportunity: (companyId: string, id: string) => request<CrmOpportunityDetail>(`/crm/opportunities/${id}`, {}, { companyId }),
@@ -511,6 +530,8 @@ export const api = {
     for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
     return request<ProposalList>(`/crm/proposals?${query}`, {}, { companyId });
   },
+  crmOverviewProposals: (scope: CompanyScopeParam, filters: ProposalFilters, page = 0, limit = 20) =>
+    request<ProposalList & Consolidated>(`/crm/overview/proposals?${overviewQuery(scope, filters, ['contactId', 'customerId', 'opportunityId', 'serviceId'], page * limit, limit)}`),
   proposal: (companyId: string, id: string) => request<ProposalDetail>(`/crm/proposals/${id}`, {}, { companyId }),
   proposalPrefill: (companyId: string, input: { opportunityId?: string; customerId?: string; contactId?: string }) => request<ProposalPrefill>(`/crm/proposals/prefill?${new URLSearchParams(input as Record<string, string>)}`, {}, { companyId }),
   createProposal: (companyId: string, input: ProposalInput, key: string) => request<ProposalResult>('/crm/proposals', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
@@ -525,6 +546,10 @@ export const api = {
     for (const [key, value] of Object.entries(filters)) if (key !== 'from' && key !== 'to' && value) query.set(key, value);
     return request<MeetingList>(`/crm/meetings?${query}`, {}, { companyId });
   },
+  crmOverviewMeetings: (scope: CompanyScopeParam, filters: MeetingFilters, offset = 0, limit = 100) =>
+    request<MeetingList & Consolidated>(`/crm/overview/meetings?${overviewQuery(scope, filters, ['contactId', 'opportunityId'], offset, limit)}`),
+  crmOverviewResponsibles: (scope: CompanyScopeParam) =>
+    request<{ items: { id: string; name: string }[] } & Consolidated>(`/crm/overview/responsibles?${new URLSearchParams(scope)}`),
   meeting: (companyId: string, id: string) => request<MeetingDetail>(`/crm/meetings/${id}`, {}, { companyId }),
   meetingResponsibles: (companyId: string) => request<{ items: { id: string; name: string }[] }>('/crm/meetings/responsibles', {}, { companyId }),
   meetingConflicts: (companyId: string, input: { assignedUserId: string; startsAt: string; endsAt: string; excludeMeetingId?: string }) => request<{ hasConflict: boolean; items: { id: string; title: string; startsAt: string; endsAt: string }[] }>('/crm/meetings/conflicts', { method: 'POST', body: json(input) }, { companyId }),

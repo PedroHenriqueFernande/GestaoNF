@@ -8,6 +8,7 @@ import { NfsePreviewService } from './nfse-preview.service.js';
 import { saleFiscalState } from './sale-fiscal-state.js';
 import type { NfseCancelInput, NfseSubstitutionInput } from './nfse.schemas.js';
 import type { NfseSnapshot } from './nfse.types.js';
+import { requireMembershipPermission, requireMembershipPolicy } from '../permissions/permission-resolver.js';
 
 /** JSON with sorted keys: PostgreSQL's jsonb does not preserve key order, so stored and freshly built snapshots must be compared canonically. */
 export function canonicalJson(value: unknown): string {
@@ -29,7 +30,7 @@ export class NfseDocumentActionsService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(NfsePreviewService) private readonly previews: NfsePreviewService) {}
 
   async requestCancellation(companyId: string, userId: string, documentId: string, key: string, input: NfseCancelInput) {
-    await this.previews.manager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'sales.nfse_cancel', 'POST /fiscal/nfse/documents/:id/cancel');
     const reasonText = input.reasonText.trim();
     const requestHash = hash(JSON.stringify({ documentId, reasonCode: input.reasonCode, reasonText }));
     const [previous] = await this.database.db.select().from(nfseDocumentEvents).where(and(eq(nfseDocumentEvents.companyId, companyId), eq(nfseDocumentEvents.requestKey, key))).limit(1);
@@ -58,7 +59,7 @@ export class NfseDocumentActionsService {
 
   /** Opens a substitution: the sale becomes editable and the next emission replaces this note. */
   async openSubstitution(companyId: string, userId: string, documentId: string, input: NfseSubstitutionInput) {
-    await this.previews.manager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'sales.nfse_edit', 'POST /fiscal/nfse/documents/:id/substitution');
     return this.database.db.transaction(async tx => {
       const context = await this.lockDocument(tx, companyId, documentId);
       if (context.document.status !== 'AUTHORIZED') throw new ConflictException({ code: 'NFSE_NOT_ACTIVE', message: 'Esta NFS-e já foi cancelada ou substituída.' });
@@ -83,7 +84,7 @@ export class NfseDocumentActionsService {
    * would produce today must be identical to the ones the authorized note was issued with.
    */
   async discardSubstitution(companyId: string, userId: string, documentId: string) {
-    await this.previews.manager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'sales.nfse_edit', 'DELETE /fiscal/nfse/documents/:id/substitution');
     await this.database.db.transaction(async tx => {
       const context = await this.lockDocument(tx, companyId, documentId);
       if (context.document.status !== 'AUTHORIZED' || !context.document.substitutionReasonCode) throw new ConflictException({ code: 'SUBSTITUTION_NOT_OPEN', message: 'Não há substituição aberta para esta NFS-e.' });
@@ -110,7 +111,8 @@ export class NfseDocumentActionsService {
   }
 
   async reconcileEvent(companyId: string, userId: string, id: string) {
-    await this.previews.manager(companyId, userId);
+    // Único tipo de evento de documento hoje é o cancelamento (nfse_document_events_type_chk).
+    await requireMembershipPermission(this.database.db, userId, companyId, 'sales.nfse_cancel', 'POST /fiscal/nfse/document-events/:id/reconcile');
     const [event] = await this.database.db.select().from(nfseDocumentEvents).where(and(eq(nfseDocumentEvents.companyId, companyId), eq(nfseDocumentEvents.id, id))).limit(1);
     if (!event) throw new NotFoundException('Evento fiscal não encontrado.');
     if (!['PENDING', 'READY', 'SENDING', 'UNKNOWN'].includes(event.status)) throw new ConflictException('Este cancelamento já tem resultado definitivo.');

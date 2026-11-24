@@ -5,6 +5,7 @@ import type { ToolSpec } from './tool-types.js';
 export function helpTool(catalog: SupportHelpCatalog): ToolSpec<{ topico: string }> {
   const ids = catalog.ids();
   return {
+    permission: 'ANY_MEMBER',
     definition: {
       type: 'function', name: 'buscar_ajuda', strict: true,
       description: 'Lê o artigo de ajuda do GestãoNF sobre um tópico. Use antes de explicar qualquer funcionalidade.',

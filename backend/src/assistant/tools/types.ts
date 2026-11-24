@@ -1,6 +1,7 @@
 // backend/src/assistant/tools/types.ts
 import type { z } from 'zod';
 import type { DbExecutor } from '../db-types.js';
+import type { ToolPermission } from '../../permissions/actor.js';
 import type { ExecutionContext } from '../execution-context.js';
 
 export type ToolControl = { kind: 'SWITCH_COMPANY'; companyName: string | null } | { kind: 'NEW_TOPIC' };
@@ -14,7 +15,10 @@ export type ReadTool = {
   description: string;
   /** JSON Schema estrito (strict: true na OpenAI): todos os campos em required e additionalProperties false. */
   parameters: Record<string, unknown>;
-  allowed(ctx: ExecutionContext): boolean;
+  /** Permissão exigida (Spec 9). Filtra o catálogo enviado ao modelo. */
+  permission: ToolPermission;
+  /** Condição de contexto que não é permissão (só `trocar_empresa`: mais de uma empresa). */
+  available?(ctx: ExecutionContext): boolean;
   run(ctx: ExecutionContext, args: unknown): Promise<ToolResult>;
 };
 
@@ -35,7 +39,8 @@ export type WriteOperation<A = any> = {
   requiresVersion?: boolean;
   /** Chave do registro versionado a partir dos argumentos (padrão: args.id). Use quando o registro é identificado por outro dado, como o número do pedido. */
   versionKey?(args: A): string;
-  allowed(ctx: ExecutionContext): boolean;
+  /** Permissão exigida (Spec 9). Conferida ao propor e de novo ao confirmar, em `ActionService.runOperations`. */
+  permission: ToolPermission;
   /** Uma linha em português, sem IDs. args ainda pode conter {"$ref": n}; labels são os rótulos das operações do lote. */
   summarize(args: Record<string, unknown>, labels: string[]): string;
   /**

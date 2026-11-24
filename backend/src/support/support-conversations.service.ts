@@ -2,9 +2,10 @@ import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { supportConversations, supportMessages } from '@gestaonf/database/schema';
 import { and, count, desc, asc, eq, sql } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
+import type { Actor } from '../permissions/actor.js';
 import { withExpiredActions, type ActionBlock, type SupportBlock } from './support-blocks.js';
 
-export type SupportContext = { companyId: string; userId: string };
+export type SupportContext = { companyId: string; userId: string; actor: Actor };
 export type SupportMessageView = { id: string; role: 'user' | 'assistant'; createdAt: string; blocks: SupportBlock[] };
 export type FinishAssistantMessage = {
   blocks: SupportBlock[]; llmItems: unknown[]; inputTokens: number | null; outputTokens: number | null; toolCallCount: number; errorCode: string | null;

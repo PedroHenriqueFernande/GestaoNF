@@ -1,11 +1,13 @@
 import 'reflect-metadata';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { config } from 'dotenv';
 import { fileURLToPath } from 'node:url';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { saleFiscalState } from '../src/fiscal/sale-fiscal-state.js';
 import { and, eq } from 'drizzle-orm';
 import * as s from '@gestaonf/database/schema';
+import { closure, type PermissionKey } from '@gestaonf/permissions';
+import { grantMember } from './permission-fixtures.js';
 import { createConfirmedSale, createIsolatedDatabase, createWorld, emitAndAuthorize, fiscalServices, governmentEventResponse, officialNfseResponse, previewAndEmit, salesService, seedCancellationEvent, seedEmission, type TestDb } from './nfse-fixtures.js';
 
 config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
@@ -24,7 +26,7 @@ const editInput = () => ({
   items: sale.items.map(i => ({ id: i.id, serviceId: i.serviceId, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount })),
   installments: sale.installments.map(p => ({ id: p.id, paymentMethod: p.paymentMethod, amount: p.amount, dueOn: p.dueOn! })),
 });
-const canEdit = async () => { try { await salesService(db).updateConfirmed(world.company, sale.id, world.owner, editInput() as never); return true; } catch (e) { if (e instanceof ConflictException) return false; throw e; } };
+const canEdit = async () => { try { await salesService(db).updateConfirmed(world.actor, sale.id, editInput() as never, 'test:nfse-edit'); return true; } catch (e) { if (e instanceof ConflictException) return false; throw e; } };
 const canCancel = async () => { try { await salesService(db).cancel(world.company, sale.id, world.owner, sale.version, 'Cancelamento de teste'); return true; } catch (e) { if (e instanceof ConflictException) return false; throw e; } };
 
 describe('trava fiscal da venda', () => {
@@ -274,11 +276,11 @@ describe('substituição', () => {
   /** Edits the description of the (single) item through the real sale service. */
   async function editDescription(description: string, serviceId?: string) {
     const current = await salesService(db).get(world.company, sale.id);
-    await salesService(db).updateConfirmed(world.company, sale.id, world.owner, {
+    await salesService(db).updateConfirmed(world.actor, sale.id, {
       customerId: current.customerId, soldOn: current.soldOn!, expectedVersion: current.version,
       items: current.items.map(i => ({ id: i.id, serviceId: serviceId ?? i.serviceId, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, description })),
       installments: current.installments.map(p => ({ id: p.id, paymentMethod: p.paymentMethod, amount: p.amount, dueOn: p.dueOn! })),
-    } as never);
+    } as never, 'test:nfse-edit');
   }
 
   it('abrir a substituição destrava a venda e registra o motivo', async () => {
@@ -381,13 +383,13 @@ describe('substituição', () => {
     expect(first.emission.items).toHaveLength(1);
     await services.actions.openSubstitution(world.company, world.owner, first.document.id, reason);
     const current = await salesService(db).get(world.company, two.id);
-    await salesService(db).updateConfirmed(world.company, two.id, world.owner, {
+    await salesService(db).updateConfirmed(world.actor, two.id, {
       customerId: current.customerId, soldOn: current.soldOn!, expectedVersion: current.version,
       // The service of an existing item cannot change: keep the first item and replace the second with another service.
       items: [{ id: current.items[0].id, serviceId: current.items[0].serviceId, quantity: current.items[0].quantity, unitPrice: current.items[0].unitPrice, discountAmount: current.items[0].discountAmount },
         { serviceId: world.secondService.id, quantity: '1.0000', unitPrice: current.items[1].unitPrice, discountAmount: '0.00' }],
       installments: current.installments.map(p => ({ id: p.id, paymentMethod: p.paymentMethod, amount: p.amount, dueOn: p.dueOn! })),
-    } as never);
+    } as never, 'test:nfse-edit');
     const preview = await services.previews.create(world.company, world.owner, two.id, crypto.randomUUID(), {});
     expect(preview.groups).toHaveLength(2);
     expect(preview.canEmit).toBe(false);
@@ -472,11 +474,11 @@ describe('substituição: o que o governo não deixa mudar (E0061/E0063)', () =>
   async function edit(changes: { amount?: string; soldOn?: string; customerId?: string; description?: string }) {
     const current = await salesService(db).get(world.company, sale.id);
     const amount = changes.amount ?? current.items[0].unitPrice;
-    await salesService(db).updateConfirmed(world.company, sale.id, world.owner, {
+    await salesService(db).updateConfirmed(world.actor, sale.id, {
       customerId: changes.customerId ?? current.customerId, soldOn: changes.soldOn ?? current.soldOn!, expectedVersion: current.version,
       items: current.items.map(i => ({ id: i.id, serviceId: i.serviceId, quantity: i.quantity, unitPrice: amount, discountAmount: i.discountAmount, ...(changes.description ? { description: changes.description } : {}) })),
       installments: current.installments.map(p => ({ id: p.id, paymentMethod: p.paymentMethod, amount, dueOn: p.dueOn! })),
-    } as never);
+    } as never, 'test:nfse-edit');
   }
   async function openedSubstitution() {
     const services = fiscalServices(db, world, accepts);
@@ -529,5 +531,91 @@ describe('substituição: o que o governo não deixa mudar (E0061/E0063)', () =>
     const services = fiscalServices(db, world, accepts);
     await edit({ amount: '120.00', soldOn: daysAgo(2) });
     expect(codes(await services.previews.create(world.company, world.owner, sale.id, crypto.randomUUID(), {}))).toEqual([]);
+  });
+});
+
+describe('chave por tipo de emissão: emitir × substituir (D7, Etapa 6)', () => {
+  const reason = { reasonCode: '99' as const, reasonText: 'Correção da descrição do serviço prestado' };
+  type Call = NonNullable<Parameters<typeof fiscalServices>[2]>;
+  const accepts: Call = async (method, _path, xml) => { if (method !== 'POST') throw new Error('consulta inesperada'); return officialNfseResponse(xml!); };
+  const revoked = 'O solicitante não possui mais permissão fiscal na empresa ativa.';
+  let member: string, accountId: string;
+  const as = (keys: PermissionKey[]) => grantMember(db, accountId, member, [...closure(keys)]);
+  afterEach(() => vi.restoreAllMocks());
+  const dpsRow = async (emissionId: string) => (await db.select().from(s.nfseDps).where(eq(s.nfseDps.emissionId, emissionId)))[0];
+
+  beforeEach(async () => {
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    [{ accountId }] = await db.select({ accountId: s.companies.accountId }).from(s.companies).where(eq(s.companies.id, world.company));
+    [member] = (await db.insert(s.users).values({ name: 'Membro', email: `${crypto.randomUUID()}@example.test` }).returning()).map(u => u.id);
+    await db.insert(s.companyUsers).values({ companyId: world.company, userId: member, role: 'COLLABORATOR' });
+  });
+
+  /** Autoriza a nota, abre a substituição e edita a venda (o titular faz o preparo). */
+  async function openSubstitutionReady() {
+    const services = fiscalServices(db, world, accepts);
+    const first = await emitAndAuthorize(services, world, sale.id);
+    await services.actions.openSubstitution(world.company, world.owner, first.document.id, reason);
+    const current = await salesService(db).get(world.company, sale.id);
+    await salesService(db).updateConfirmed(world.actor, sale.id, {
+      customerId: current.customerId, soldOn: current.soldOn!, expectedVersion: current.version,
+      items: current.items.map(i => ({ id: i.id, serviceId: i.serviceId, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, description: 'Descrição corrigida' })),
+      installments: current.installments.map(p => ({ id: p.id, paymentMethod: p.paymentMethod, amount: p.amount, dueOn: p.dueOn! })),
+    } as never, 'test:nfse-edit');
+    return services;
+  }
+
+  it('A: só nfse_issue não emite a substituta (403 nfse_edit); com nfse_edit, emite', async () => {
+    const services = await openSubstitutionReady();
+    await as(['sales.nfse_issue']);
+    const preview = await services.previews.create(world.company, member, sale.id, crypto.randomUUID(), {});
+    expect(preview.substitution).toBeTruthy();
+    await expect(services.issuance.emit(world.company, member, sale.id, preview.id, crypto.randomUUID())).rejects.toMatchObject({ response: { code: 'PERMISSION_DENIED', permission: 'sales.nfse_edit' } });
+    await as(['sales.nfse_edit']);
+    await expect(services.issuance.emit(world.company, member, sale.id, preview.id, crypto.randomUUID())).resolves.toBeTruthy();
+  });
+
+  it('B: só nfse_issue não retoma DPS de substituição (403 nfse_edit); com nfse_edit, retoma', async () => {
+    const services = fiscalServices(db, world, accepts);
+    const first = await seedEmission(db, world, sale, { dpsStatus: 'AUTHORIZED', number: 1 });
+    const { dps } = await seedEmission(db, world, sale, { dpsStatus: 'UNKNOWN', number: 2, kind: 'SUBSTITUTION', substitutesDocumentId: first.document!.id, previousEmissionId: first.emission.id });
+    await as(['sales.nfse_issue']);
+    await expect(services.issuance.resume(world.company, member, dps.id)).rejects.toMatchObject({ response: { code: 'PERMISSION_DENIED', permission: 'sales.nfse_edit' } });
+    await as(['sales.nfse_edit']);
+    await expect(services.issuance.resume(world.company, member, dps.id)).resolves.toBeTruthy();
+  });
+
+  it('C: quem perde nfse_edit antes do worker não envia a substituta; a DPS fica RESERVED e o motivo é registrado', async () => {
+    const services = await openSubstitutionReady();
+    await as(['sales.nfse_edit']);
+    const preview = await services.previews.create(world.company, member, sale.id, crypto.randomUUID(), {});
+    const emission = await services.issuance.emit(world.company, member, sale.id, preview.id, crypto.randomUUID());
+    await as(['sales.nfse_issue']);
+    const { id } = await dpsRow(emission.id);
+    await services.processor.process(world.company, id).catch((error: Error) => error);
+    expect(await dpsRow(emission.id)).toMatchObject({ status: 'RESERVED', sentAt: null, lastError: revoked });
+  });
+
+  it('E: quem perde nfse_cancel antes do worker de eventos não transmite o cancelamento; o evento fica pendente com o motivo (critério 10)', async () => {
+    const transmitted: string[] = [];
+    const registersCancellation: Call = async (method, path, xml) => { transmitted.push(`${method} ${path}`); return governmentEventResponse(xml!); };
+    const services = fiscalServices(db, world, registersCancellation);
+    const { document } = await seedEmission(db, world, sale, { dpsStatus: 'AUTHORIZED', number: 1 });
+    await as(['sales.nfse_cancel']);
+    const event = await services.actions.requestCancellation(world.company, member, document!.id, crypto.randomUUID(), { reasonCode: '1', reasonText: 'Erro de digitação no valor do serviço' });
+    await as(['sales.nfse_issue']);
+    expect(await services.events.process(world.company, event.id)).toBe('DONE');
+    const [row] = await db.select().from(s.nfseDocumentEvents).where(eq(s.nfseDocumentEvents.id, event.id));
+    expect(row).toMatchObject({ status: 'PENDING', sentAt: null, signedXml: null, lastError: revoked, leaseToken: null });
+    expect(transmitted).toEqual([]);
+    expect((await db.select().from(s.nfseDocuments).where(eq(s.nfseDocuments.id, document!.id)))[0]).toMatchObject({ status: 'AUTHORIZED' });
+  });
+
+  it('D: só nfse_edit não emite nota normal (403 nfse_issue)', async () => {
+    const services = fiscalServices(db, world, accepts);
+    await as(['sales.nfse_edit']);
+    const preview = await services.previews.create(world.company, world.owner, sale.id, crypto.randomUUID(), {});
+    expect(preview.substitution).toBeFalsy();
+    await expect(services.issuance.emit(world.company, member, sale.id, preview.id, crypto.randomUUID())).rejects.toMatchObject({ response: { code: 'PERMISSION_DENIED', permission: 'sales.nfse_issue' } });
   });
 });

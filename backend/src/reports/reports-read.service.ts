@@ -4,6 +4,8 @@ import { sql, type SQL } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 import { CrmPolicyService, type CrmAccess } from '../crm/crm-policy.service.js';
 import type { CrmContext } from '../crm/crm.schemas.js';
+import { requirePermission, type Actor } from '../permissions/actor.js';
+import { REPORT_OPTION_PERMISSION, requireReportExport, requireReportView } from './report-access.js';
 import { reportCursorSchema, type CatalogReport, type ReportInput, type ReportType } from './reports.schemas.js';
 
 export type ReportRow = Record<string, unknown> & { id: string; _sort: string };
@@ -17,6 +19,8 @@ const textMatch = (input: ReportInput, columns: SQL[]) => input.search
 @Injectable()
 export class ReportsReadService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(CrmPolicyService) private readonly policy: CrmPolicyService) {}
+
+  private crm(actor: Actor): CrmContext { return { companyId: actor.companyId, userId: actor.userId }; }
 
   private period(column: SQL, input: ReportInput, a: CrmAccess, calendarDate = false) {
     if (!input.from || !input.to) return sql`TRUE`;
@@ -44,7 +48,7 @@ export class ReportsReadService {
   }
 
   private crmTerms(input: ReportInput, a: CrmAccess, entryService = false) {
-    const terms: SQL[] = [sql`o.company_id = ${a.companyId}::uuid`, a.manager ? sql`TRUE` : sql`o.assigned_user_id = ${a.userId}::uuid`];
+    const terms: SQL[] = [sql`o.company_id = ${a.companyId}::uuid`];
     if (input.assignedUserId) terms.push(sql`o.assigned_user_id = ${input.assignedUserId}::uuid`);
     if (input.serviceId) terms.push(sql`${entryService ? sql`e.primary_service_id` : sql`o.primary_service_id`} = ${input.serviceId}::uuid`);
     if (input.captureKind) terms.push(sql`e.capture_kind = ${input.captureKind}`);
@@ -133,7 +137,7 @@ export class ReportsReadService {
         summary: sql`SELECT count(*)::int AS entries, count(DISTINCT "contactId")::int AS "uniqueLeads" FROM report_rows` };
     }
     if (type === 'meetings') {
-      const terms = [sql`m.company_id=${a.companyId}::uuid`, a.manager ? sql`TRUE` : sql`m.assigned_user_id=${a.userId}::uuid`, this.period(sql`m.starts_at`,input,a), textMatch(input,[sql`m.title`,sql`c.name`])];
+      const terms = [sql`m.company_id=${a.companyId}::uuid`, this.period(sql`m.starts_at`,input,a), textMatch(input,[sql`m.title`,sql`c.name`])];
       if (input.assignedUserId) terms.push(sql`m.assigned_user_id=${input.assignedUserId}::uuid`);
       if (input.status !== 'ALL') terms.push(sql`m.status=${input.status}`);
       return { rows: sql`SELECT m.id, m.starts_at AS "_order", ${iso(sql`m.starts_at`)} AS "_sort", ${iso(sql`m.starts_at`)} AS "startsAt", ${iso(sql`m.ends_at`)} AS "endsAt",
@@ -168,7 +172,9 @@ export class ReportsReadService {
     };
   }
 
-  async read(ctx: CrmContext, type: ReportType, input: ReportInput) {
+  async read(actor: Actor, type: ReportType, input: ReportInput, entry: string) {
+    requireReportView(actor, type, entry);
+    const ctx = this.crm(actor);
     this.validate(type,input);
     return this.database.db.transaction(async (tx) => {
       const a = await this.policy.access(ctx,tx), d = this.definition(type,input,a);
@@ -187,13 +193,15 @@ export class ReportsReadService {
       const page=rows.slice(0,limit), last=page.at(-1);
       return { summary, items:page.map(({ _sort: _internal, _order: _date, ...row })=>row),
         nextCursor: rows.length>limit && last ? Buffer.from(JSON.stringify({ sort:last._sort,id:last.id,hash })).toString('base64url') : null,
-        filters, generatedAt:new Date().toISOString(), timezone:a.timezone, visibility:a.manager ? 'COMPANY' : ['lead-entries','meetings','loss-rate','disqualification-rate'].includes(type) ? 'ASSIGNED' : 'COMPANY' };
+        filters, generatedAt:new Date().toISOString(), timezone:a.timezone, visibility:'COMPANY' as const };
     },{ isolationLevel:'repeatable read' });
   }
 
   private pdfTarget(d: Definition) { return d.target ? sql`"decisionStatus"=${d.target}` : sql`TRUE`; }
 
-  async readAll(ctx: CrmContext, type: ReportType, input: ReportInput, maxRows: number) {
+  async readAll(actor: Actor, type: ReportType, input: ReportInput, maxRows: number, entry: string) {
+    requireReportExport(actor, type, entry);
+    const ctx = this.crm(actor);
     this.validate(type, input);
     return this.database.db.transaction(async (tx) => {
       const a = await this.policy.access(ctx, tx), d = this.definition(type, input, a);
@@ -210,7 +218,9 @@ export class ReportsReadService {
     }, { isolationLevel: 'repeatable read' });
   }
 
-  async countPdfRows(ctx: CrmContext, type: ReportType, input: ReportInput): Promise<number> {
+  async countPdfRows(actor: Actor, type: ReportType, input: ReportInput, entry: string): Promise<number> {
+    requireReportExport(actor, type, entry);
+    const ctx = this.crm(actor);
     this.validate(type, input);
     return this.database.db.transaction(async (tx) => {
       const a = await this.policy.access(ctx, tx), d = this.definition(type, input, a);
@@ -219,7 +229,9 @@ export class ReportsReadService {
     }, { isolationLevel: 'repeatable read' });
   }
 
-  async exportRows(ctx: CrmContext, type: CatalogReport, input: ReportInput, maxRows: number, onRows: (rows: ReportRow[])=>Promise<void>) {
+  async exportRows(actor: Actor, type: CatalogReport, input: ReportInput, maxRows: number, onRows: (rows: ReportRow[])=>Promise<void>, entry: string) {
+    requireReportExport(actor, type, entry);
+    const ctx = this.crm(actor);
     this.validate(type,input);
     await this.database.db.transaction(async(tx)=>{
       const a=await this.policy.access(ctx,tx), d=this.definition(type,input,a);
@@ -237,12 +249,14 @@ export class ReportsReadService {
     },{ isolationLevel:'repeatable read' });
   }
 
-  async options(ctx: CrmContext, input: { field:'customerId'|'serviceId'|'assignedUserId'; search:string; limit:number }) {
+  async options(actor: Actor, input: { field:'customerId'|'serviceId'|'assignedUserId'; search:string; limit:number }, entry: string) {
+    requirePermission(actor, REPORT_OPTION_PERMISSION[input.field], entry);
+    const ctx = this.crm(actor);
     const a=await this.policy.access(ctx);
     const query=input.field==='customerId' ? sql`SELECT id,name FROM customers WHERE company_id=${a.companyId}::uuid AND position(lower(${input.search}) in lower(name))>0 ORDER BY name,id LIMIT ${input.limit}`
       : input.field==='serviceId' ? sql`SELECT id,name FROM services WHERE company_id=${a.companyId}::uuid AND position(lower(${input.search}) in lower(name))>0 ORDER BY name,id LIMIT ${input.limit}`
       : sql`SELECT u.id,u.name FROM company_users cu JOIN users u ON u.id=cu.user_id WHERE cu.company_id=${a.companyId}::uuid
-          AND ${a.manager ? sql`TRUE` : sql`u.id=${a.userId}::uuid`} AND position(lower(${input.search}) in lower(u.name))>0 ORDER BY u.name,u.id LIMIT ${input.limit}`;
+          AND position(lower(${input.search}) in lower(u.name))>0 ORDER BY u.name,u.id LIMIT ${input.limit}`;
     return {items:await this.database.db.execute(query)};
   }
 }

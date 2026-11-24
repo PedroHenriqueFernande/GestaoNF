@@ -1,15 +1,16 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import { crmContacts, crmLeadEntries, crmOpportunities, crmActivities, customers } from '@gestaonf/database/schema';
-import { and, asc, count, desc, eq, exists, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, exists, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DatabaseService } from '../database/database.module.js';
 import { CrmPolicyService } from './crm-policy.service.js';
 import { CrmHistoryService } from './crm-history.service.js';
 import { changedFields, commandHash, expectVersion, lockKeys, phoneKey, terminal, validateDocument } from './crm-normalization.js';
-import { contactFilters, negotiationFilters, needsNegotiation, entryJoin, publicEntry } from './crm-query.js';
+import { contactFilters, negotiationFilters, needsNegotiation, entryJoin, inCompanies, publicEntry } from './crm-query.js';
 import { candidatesSchema, captureOptionsSchema, customerLinkSchema, keySchema, noteSchema, updateLeadSchema, type CrmContext, type ListInput, type PageInput } from './crm.schemas.js';
 import { escapeLike } from './crm-normalization.js';
 import { parseInput } from '../common/validate.js';
+import { requirePermission } from '../permissions/actor.js';
 
 @Injectable()
 export class LeadsService {
@@ -17,8 +18,22 @@ export class LeadsService {
     @Inject(CrmPolicyService) private readonly policy: CrmPolicyService,
     @Inject(CrmHistoryService) private readonly history: CrmHistoryService) {}
   async list(ctx: CrmContext, input: ListInput) {
-    const db = this.database.db, a = await this.policy.access(ctx);
-    const filter = and(this.policy.contactScope(a), ...contactFilters(a, input), ...(needsNegotiation(input) ? [exists(db.select({ id: crmOpportunities.id }).from(crmOpportunities).innerJoin(crmLeadEntries, entryJoin).where(and(this.policy.opportunityScope(a), eq(crmOpportunities.contactId, crmContacts.id), ...negotiationFilters(a, input))))] : []));
+    const a = await this.policy.access(ctx);
+    return this.page(this.listConditions([a.companyId], input), input);
+  }
+  overview(companyIds: readonly string[], input: ListInput) {
+    return this.page(this.listConditions(companyIds, input), input);
+  }
+  listConditions(companyIds: readonly string[], input: ListInput) {
+    const filters = [inCompanies(crmContacts.companyId, companyIds), ...contactFilters(input)];
+    if (needsNegotiation(input)) {
+      filters.push(exists(this.database.db.select({ id: crmOpportunities.id }).from(crmOpportunities).innerJoin(crmLeadEntries, entryJoin)
+        .where(and(eq(crmOpportunities.companyId, crmContacts.companyId), eq(crmOpportunities.contactId, crmContacts.id), ...negotiationFilters(input)))));
+    }
+    return and(...filters);
+  }
+  private async page(filter: SQL | undefined, input: ListInput) {
+    const db = this.database.db;
     const [items, [total]] = await Promise.all([
       db.select().from(crmContacts).where(filter).orderBy(desc(crmContacts.createdAt), desc(crmContacts.id)).limit(input.limit).offset(input.offset),
       db.select({ value: count() }).from(crmContacts).where(filter),
@@ -32,7 +47,7 @@ export class LeadsService {
         .where(and(this.policy.opportunityScope(a), eq(crmOpportunities.contactId, id), isNull(crmOpportunities.archivedAt))),
       db.select().from(crmLeadEntries).where(and(this.policy.entryScope(a), eq(crmLeadEntries.contactId, id))).orderBy(asc(crmLeadEntries.receivedAt), asc(crmLeadEntries.id)).limit(1),
     ]);
-    return { ...contact, summary, firstVisibleEntry: firstEntry ? publicEntry(firstEntry) : null, visibility: a.manager ? 'COMPANY' : 'ASSIGNED' };
+    return { ...contact, summary, firstVisibleEntry: firstEntry ? publicEntry(firstEntry) : null, visibility: 'COMPANY' as const };
   }
   async entries(ctx: CrmContext, id: string, input: PageInput) {
     const db = this.database.db, a = await this.policy.access(ctx);
@@ -47,9 +62,9 @@ export class LeadsService {
   async update(ctx: CrmContext, id: string, input: z.output<typeof updateLeadSchema>) {
     return this.database.db.transaction(async (tx) => {
       const a = await this.policy.access(ctx, tx), old = await this.policy.contact(a, id, tx, true);
-      this.policy.editContact(a, old); this.policy.activeContact(old); expectVersion(old.version, input.expectedVersion);
+      this.policy.activeContact(old); expectVersion(old.version, input.expectedVersion);
       const { expectedVersion: _version, ...patch } = input;
-      if (patch.assignedUserId !== undefined) await this.policy.assignee(a, patch.assignedUserId, tx, true);
+      if (patch.assignedUserId !== undefined) await this.policy.assignee(a, patch.assignedUserId, tx, old);
       validateDocument({ taxId: patch.taxId === undefined ? old.taxId : patch.taxId, taxIdKind: patch.taxIdKind === undefined ? old.taxIdKind : patch.taxIdKind });
       const changes = changedFields(old, patch);
       if (!Object.keys(changes).length) return old;
@@ -61,7 +76,7 @@ export class LeadsService {
   async linkCustomer(ctx: CrmContext, id: string, input: z.output<typeof customerLinkSchema>) {
     return this.database.db.transaction(async (tx) => {
       const a = await this.policy.access(ctx, tx), old = await this.policy.contact(a, id, tx, true);
-      this.policy.editContact(a, old); this.policy.activeContact(old); expectVersion(old.version, input.expectedVersion);
+      this.policy.activeContact(old); expectVersion(old.version, input.expectedVersion);
       if (input.customerId) {
         const [customer] = await tx.select({ id: customers.id }).from(customers).where(and(eq(customers.companyId, ctx.companyId), eq(customers.id, input.customerId), eq(customers.status, 'ACTIVE'))).for('share').limit(1);
         if (!customer) throw new BadRequestException('Cliente inválido ou inativo');
@@ -74,7 +89,8 @@ export class LeadsService {
   }
   async archive(ctx: CrmContext, id: string, expectedVersion: number, restore = false) {
     return this.database.db.transaction(async (tx) => {
-      const a = await this.policy.access(ctx, tx); this.policy.requireManager(a);
+      const a = await this.policy.access(ctx, tx);
+      requirePermission(a.actor, 'crm.archive', restore ? 'POST /crm/leads/:id/restore' : 'POST /crm/leads/:id/archive');
       const old = await this.policy.contact(a, id, tx, true); expectVersion(old.version, expectedVersion);
       if (restore ? !old.archivedAt : !!old.archivedAt) return old;
       const now = new Date();

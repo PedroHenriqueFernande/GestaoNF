@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { scopeQueryFields } from '../auth/company-scope.guard.js';
 import { createCustomerSchema } from '../customers/customers.schemas.js';
 import { dateSchema, idSchema, pageFields } from './crm.schemas.js';
 
@@ -26,12 +27,19 @@ export const declineProposalSchema = proposalCommandSchema.extend({ reason: text
 export const duplicateProposalSchema = proposalCommandSchema.extend({ validUntil: dateSchema.nullable().optional() });
 export const proposalPrefillSchema = z.strictObject({ opportunityId: idSchema.optional(), customerId: idSchema.optional(), contactId: idSchema.optional() })
   .refine(v => [v.opportunityId, v.customerId, v.contactId].filter(Boolean).length === 1, 'Informe negociação, lead ou cliente');
-export const proposalListSchema = z.strictObject({
+const proposalListFields = {
   ...pageFields, search: z.string().trim().min(1).max(200).optional(), contactId: idSchema.optional(), customerId: idSchema.optional(),
   opportunityId: idSchema.optional(), assignedUserId: idSchema.optional(), serviceId: idSchema.optional(),
   status: z.enum(['ALL', 'DRAFT', 'SENT', 'ACCEPTED', 'DECLINED', 'EXPIRED', 'CONVERTED']).default('ALL'),
   from: dateSchema.optional(), to: dateSchema.optional(), validFrom: dateSchema.optional(), validTo: dateSchema.optional(),
-}).refine(v => (!v.from || !v.to || v.from <= v.to) && (!v.validFrom || !v.validTo || v.validFrom <= v.validTo), 'Período invertido');
+};
+type ProposalPeriods = { from?: string; to?: string; validFrom?: string; validTo?: string };
+const orderedPeriods = (v: ProposalPeriods) => (!v.from || !v.to || v.from <= v.to) && (!v.validFrom || !v.validTo || v.validFrom <= v.validTo);
+export const proposalListSchema = z.strictObject(proposalListFields).refine(orderedPeriods, 'Período invertido');
+const { contactId: _contact, customerId: _customer, opportunityId: _opportunity, serviceId: _service, ...proposalOverviewFields } = proposalListFields;
+export const proposalListOverviewSchema = z.strictObject({ ...scopeQueryFields, ...proposalOverviewFields })
+  .refine(orderedPeriods, 'Período invertido')
+  .transform(({ companies: _companies, companyIds: _companyIds, ...filters }) => filters);
 export const proposalSettingsSchema = z.strictObject({
   expectedVersion: z.number().int().positive(), winOpportunityOnProposalConversion: z.boolean().optional(), proposalSentStageId: idSchema.nullable().optional(),
 }).refine(v => Object.keys(v).some(k => k !== 'expectedVersion'), 'Informe ao menos um campo');

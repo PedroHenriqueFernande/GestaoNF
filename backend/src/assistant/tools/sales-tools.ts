@@ -3,10 +3,9 @@ import { NotFoundException } from '@nestjs/common';
 import { sales } from '@gestaonf/database/schema';
 import { and, count, eq, gte, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import type { SalesService } from '../../sales/sales.service.js';
+import { presentSale, type SalesService } from '../../sales/sales.service.js';
 import type { Db } from '../db-types.js';
 import { money } from '../nero-format.js';
-import { rules } from '../nero-policy.js';
 import { compact, compactList, label, optionalSearch, orderCodeFrom, parseToolArgs, PERIOD_VALUES, periodProperties, resolvePeriod } from './read-support.js';
 import type { ReadTool } from './types.js';
 
@@ -20,7 +19,7 @@ const listSchema = z.object({
 
 export function createSalesListTool(db: Db, salesService: SalesService): ReadTool {
   return {
-    kind: 'READ', name: 'consultar_vendas', allowed: rules.anyMember,
+    kind: 'READ', name: 'consultar_vendas', permission: 'sales.access',
     description: 'Consulta vendas da empresa atual: o bloco "confirmadas" traz sempre a quantidade e o total das vendas CONFIRMADAS do período (independente da situação pedida), e "encontrados" traz a quantidade da situação pedida, com os pedidos mais recentes. Rascunhos podem não ter data de venda: para listá-los use SEM_PERIODO, salvo se o usuário der datas. "busca" filtra por cliente, número do pedido ou ordem de serviço. Use escopo MINHAS quando o usuário falar das vendas que ele mesmo lançou.',
     parameters: {
       type: 'object',
@@ -70,14 +69,14 @@ export function createSaleDetailTool(db: Db, salesService: SalesService): ReadTo
     numero_pedido: z.preprocess((value) => (typeof value === 'string' ? (orderCodeFrom(value) ?? value) : value), z.string().regex(/^\d{5}$/, 'deve ter 5 dígitos')),
   }).strict();
   return {
-    kind: 'READ', name: 'consultar_venda', allowed: rules.anyMember,
+    kind: 'READ', name: 'consultar_venda', permission: 'sales.access',
     description: 'Mostra um pedido pelo número de 5 dígitos (aceita "#12345" ou "pedido 12345"): cliente, itens, parcelas, o que já foi recebido e o que falta.',
     parameters: { type: 'object', properties: { numero_pedido: { type: 'string', description: 'Número do pedido com 5 dígitos.' } }, required: ['numero_pedido'], additionalProperties: false },
     async run(ctx, raw) {
       const args = parseToolArgs(schema, raw);
       const [match] = await db.select({ id: sales.id }).from(sales).where(and(eq(sales.companyId, ctx.companyId), eq(sales.orderCode, args.numero_pedido))).limit(1);
       if (!match) throw new NotFoundException('Pedido não encontrado');
-      const sale = await salesService.get(ctx.companyId, match.id);
+      const sale = presentSale(ctx.actor, await salesService.get(ctx.companyId, match.id));
       const output = compact({
         pedido: sale.orderCode, situacao: label(sale.status), cliente: sale.customerNameSnapshot, data: sale.soldOn, os: sale.workOrderNumber, total: sale.totalAmount,
         quantidadeItens: sale.items.length, quantidadeParcelas: sale.installments.length,

@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ban, Download, LoaderCircle, RefreshCw, Replace, Undo2 } from 'lucide-react';
 import { api } from '../../api/client';
+import type { NfsePermissions } from './NfseSaleActions';
 import type { NfseCancelInput, NfseDocument, NfseSaleState, NfseSubstitutionInput } from '../../api/nfse.types';
 
 const CANCEL_REASONS: Array<[NfseCancelInput['reasonCode'], string]> = [['1', 'Erro na emissão'], ['2', 'Serviço não prestado'], ['9', 'Outros']];
@@ -17,8 +18,8 @@ export const documentStatusName = (document: NfseDocument) => document.status ==
 
 type Panel = 'cancel' | 'substitute' | null;
 
-export function NfseDocumentActions({ companyId, saleId, document, state, canManage, onXml, onError }: {
-  companyId: string; saleId: string; document: NfseDocument; state: NfseSaleState | undefined; canManage: boolean;
+export function NfseDocumentActions({ companyId, saleId, document, state, nfse, onXml, onError }: {
+  companyId: string; saleId: string; document: NfseDocument; state: NfseSaleState | undefined; nfse: NfsePermissions;
   onXml: (id: string, number: string) => void; onError: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
@@ -56,12 +57,12 @@ export function NfseDocumentActions({ companyId, saleId, document, state, canMan
     {document.substitution && <p className="nfse-document__note">Substituição aberta: corrija a venda e use “Emitir substituta”.</p>}
     <div className="nfse-document__actions">
       <button className="button button--secondary" type="button" onClick={() => onXml(document.id, document.number)}><Download size={14} /> Baixar XML autorizado</button>
-      {canManage && document.status === 'AUTHORIZED' && !cancelling && <>
-        {active?.canCancel && <button className="button button--secondary" type="button" disabled={busy} onClick={() => { setPanel(panel === 'cancel' ? null : 'cancel'); setText(''); }}><Ban size={14} /> Cancelar NFS-e</button>}
-        {active?.canSubstitute && <button className="button button--secondary" type="button" disabled={busy} onClick={() => { setPanel(panel === 'substitute' ? null : 'substitute'); setText(''); }}><Replace size={14} /> Substituir NFS-e</button>}
-        {document.substitution && <button className="button button--secondary" type="button" disabled={busy} onClick={() => discard.mutate()}>{discard.isPending ? <LoaderCircle size={14} className="is-spinning" /> : <Undo2 size={14} />} Desistir da substituição</button>}
+      {document.status === 'AUTHORIZED' && !cancelling && <>
+        {nfse.cancel && active?.canCancel && <button className="button button--secondary" type="button" disabled={busy} onClick={() => { setPanel(panel === 'cancel' ? null : 'cancel'); setText(''); }}><Ban size={14} /> Cancelar NFS-e</button>}
+        {nfse.correct && active?.canSubstitute && <button className="button button--secondary" type="button" disabled={busy} onClick={() => { setPanel(panel === 'substitute' ? null : 'substitute'); setText(''); }}><Replace size={14} /> Substituir NFS-e</button>}
+        {nfse.correct && document.substitution && <button className="button button--secondary" type="button" disabled={busy} onClick={() => discard.mutate()}>{discard.isPending ? <LoaderCircle size={14} className="is-spinning" /> : <Undo2 size={14} />} Desistir da substituição</button>}
       </>}
-      {canManage && cancelling && document.cancellation?.status === 'UNKNOWN' && <button className="button button--secondary" type="button" disabled={busy} onClick={() => reconcile.mutate(document.cancellation!.id)}><RefreshCw size={14} /> Consultar resultado do cancelamento</button>}
+      {nfse.cancel && cancelling && document.cancellation?.status === 'UNKNOWN' && <button className="button button--secondary" type="button" disabled={busy} onClick={() => reconcile.mutate(document.cancellation!.id)}><RefreshCw size={14} /> Consultar resultado do cancelamento</button>}
     </div>
     {panel && <form className="nfse-action-form" onSubmit={submit}>
       {panel === 'cancel' ? <>

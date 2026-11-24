@@ -15,6 +15,7 @@ const nullableString = { type: ['string', 'null'] };
 
 export function customerDraftTool(actions: SupportActionsService, database: DatabaseService): ToolSpec<z.output<typeof argsSchema>> {
   return {
+    permission: 'customers.create',
     definition: {
       type: 'function', name: 'preparar_cadastro_cliente', strict: true,
       description: 'Prepara o cadastro de um cliente para o usuário conferir e confirmar. Não grava nada. Obrigatórios: kind (PF ou PJ) e name. Use null para campos não informados.',

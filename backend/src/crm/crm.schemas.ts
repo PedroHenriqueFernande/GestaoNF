@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { scopeQueryFields } from '../auth/company-scope.guard.js';
 
 const text = (max: number) => z.string().max(max).transform((v) => v.trim() || null).nullable();
 const email = z.string().trim().toLowerCase().pipe(z.email().max(254)).nullable();
@@ -53,7 +54,7 @@ export const candidatesSchema = z.strictObject({ email: email.optional(), phone:
   .refine((v) => !!(v.email || v.phone || v.taxId), 'Informe e-mail, telefone ou documento');
 export const pageFields = { limit: z.coerce.number().int().min(1).max(100).default(20), offset: z.coerce.number().int().min(0).default(0) };
 export const pageSchema = z.strictObject(pageFields);
-export const listSchema = z.strictObject({
+const listFields = {
   ...pageFields, search: z.string().trim().min(1).max(200).optional(),
   includeArchived: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   contactId: idSchema.optional(), assignedUserId: idSchema.optional(), pipelineId: idSchema.optional(), stageId: idSchema.optional(),
@@ -64,7 +65,13 @@ export const listSchema = z.strictObject({
   utmCampaign: z.string().trim().min(1).max(200).optional(), utmContent: z.string().trim().min(1).max(200).optional(), utmTerm: z.string().trim().min(1).max(200).optional(),
   missingField: z.enum(['sourceLabel', 'utmSource', 'utmMedium', 'utmCampaign', 'utmContent', 'utmTerm', 'sourceFormReference']).optional(),
   from: dateSchema.optional(), to: dateSchema.optional(), periodBy: z.enum(['ENTRY_RECEIVED', 'CONTACT_CREATED']).default('ENTRY_RECEIVED'),
-}).refine((v) => !v.from || !v.to || v.from <= v.to, 'Período invertido');
+};
+const orderedPeriod = (v: { from?: string; to?: string }) => !v.from || !v.to || v.from <= v.to;
+export const listSchema = z.strictObject(listFields).refine(orderedPeriod, 'Período invertido');
+const { contactId: _contact, pipelineId: _pipeline, stageId: _stage, primaryServiceId: _service, ...overviewListFields } = listFields;
+export const listOverviewSchema = z.strictObject({ ...scopeQueryFields, ...overviewListFields })
+  .refine(orderedPeriod, 'Período invertido')
+  .transform(({ companies: _companies, companyIds: _companyIds, ...filters }) => filters);
 export const captureOptionsSchema = z.strictObject({
   ...pageFields, field: z.enum(['sourceLabel', 'utmSource', 'utmMedium', 'utmCampaign', 'utmContent', 'utmTerm']).default('utmCampaign'),
   search: z.string().trim().min(1).max(200).optional(),

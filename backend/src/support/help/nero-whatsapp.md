@@ -20,7 +20,8 @@ Você encontra a tela no menu da esquerda, no bloco **Nero** ("Seu secretário n
 Para remover, clique em **Desconectar nesta empresa**. Isso remove o vínculo somente desta empresa e preserva os das outras.
 
 ## Problemas comuns
-- "WhatsApp ainda não configurado": a conexão com o WhatsApp não foi ativada no servidor. Fale com o administrador do sistema.
+- "WhatsApp ainda não configurado": a conexão com o WhatsApp não foi ativada no servidor. Fale com o suporte do GestãoNF.
+- O Nero não aparece no menu: seu usuário não tem a permissão **Usar o Nero (WhatsApp)** nesta empresa. Fale com o responsável pela conta.
 - "Este QR Code expirou ou foi cancelado.": clique em **Gerar outro QR Code**.
 - O botão **Confirmar este número** está desativado: a mensagem do WhatsApp ainda não chegou. Aguarde alguns instantes depois de enviá-la.
 - "Não foi possível verificar o vínculo": clique em **Tentar novamente**.

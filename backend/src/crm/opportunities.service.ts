@@ -1,12 +1,12 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { crmContacts, crmLeadEntries, crmOpportunities, crmPipelines, crmPipelineStages } from '@gestaonf/database/schema';
-import { and, asc, count, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DatabaseService } from '../database/database.module.js';
 import { CrmPolicyService, type CrmAccess } from './crm-policy.service.js';
 import { CrmHistoryService } from './crm-history.service.js';
 import { changedFields, expectVersion, terminal, type CrmTx } from './crm-normalization.js';
-import { contactFilters, negotiationFilters, contactJoin, entryJoin, publicEntry } from './crm-query.js';
+import { contactFilters, negotiationFilters, contactJoin, entryJoin, inCompanies, publicEntry } from './crm-query.js';
 import { stageSchema, statusSchema, updateOpportunitySchema, type CrmContext, type ListInput } from './crm.schemas.js';
 
 @Injectable()
@@ -15,8 +15,17 @@ export class OpportunitiesService {
     @Inject(CrmPolicyService) private readonly policy: CrmPolicyService,
     @Inject(CrmHistoryService) private readonly history: CrmHistoryService) {}
   async list(ctx: CrmContext, input: ListInput) {
-    const a = await this.policy.access(ctx), db = this.database.db;
-    const filter = and(this.policy.opportunityScope(a), ...contactFilters(a, input), ...negotiationFilters(a, input));
+    const a = await this.policy.access(ctx);
+    return this.page(this.listConditions([a.companyId], input), input);
+  }
+  overview(companyIds: readonly string[], input: ListInput) {
+    return this.page(this.listConditions(companyIds, input), input);
+  }
+  listConditions(companyIds: readonly string[], input: ListInput) {
+    return and(inCompanies(crmOpportunities.companyId, companyIds), ...contactFilters(input), ...negotiationFilters(input));
+  }
+  private async page(filter: SQL | undefined, input: ListInput) {
+    const db = this.database.db;
     const [rows, [summary]] = await Promise.all([
       db.select({ opportunity: crmOpportunities, lead: { id: crmContacts.id, name: crmContacts.name, organizationName: crmContacts.organizationName }, entry: crmLeadEntries }).from(crmOpportunities).innerJoin(crmContacts, contactJoin).innerJoin(crmLeadEntries, entryJoin)
         .where(filter).orderBy(desc(crmOpportunities.createdAt), desc(crmOpportunities.id)).limit(input.limit).offset(input.offset),
@@ -48,7 +57,7 @@ export class OpportunitiesService {
   update(ctx: CrmContext, id: string, input: z.output<typeof updateOpportunitySchema>) {
     return this.mutate(ctx, id, input.expectedVersion, async (tx, a) => {
       const { expectedVersion: _version, ...patch } = input;
-      if (patch.assignedUserId !== undefined) await this.policy.assignee(a, patch.assignedUserId, tx, true);
+      if (patch.assignedUserId !== undefined) await this.policy.assignee(a, patch.assignedUserId, tx, await this.policy.opportunity(a, id, tx));
       await this.policy.service(a, patch.primaryServiceId, tx);
       return { patch, kind: patch.assignedUserId !== undefined ? 'ASSIGNED' : 'CONTACT_UPDATED' };
     });

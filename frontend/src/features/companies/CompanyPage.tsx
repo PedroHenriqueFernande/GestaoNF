@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Building2, ChevronRight, FileCheck2, MapPin, Plus, Save, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
+import { PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions';
 import { api, type Company, type CompanyInput, type CompanyProfile, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { CountryOptions } from '../../components/CountryOptions';
 import { CompanyLogo } from '../../components/CompanyLogo';
+import { companyRoleOf } from '../../utils/format';
+import { usePermissions } from '../permissions/usePermissions';
 import { CompanyLogoField, type LogoSelection } from './CompanyLogoField';
 
 type FormState = Record<keyof CompanyInput, string>;
@@ -68,6 +71,7 @@ export function CompanyPage({ user }: { user: User }) {
   }, [toast]);
 
   const editingId = modal?.mode === 'edit' ? modal.companyId : '';
+  const access = usePermissions(editingId);
   const company = useQuery({ queryKey: ['company', editingId], queryFn: () => api.company(editingId), enabled: !!editingId });
   const certificate = useQuery({ queryKey: ['fiscal-certificate', editingId], queryFn: () => api.fiscalCertificate(editingId), enabled: !!editingId });
   useEffect(() => { if (company.data && editingId) setForm(toForm(company.data)); }, [company.data, editingId]);
@@ -96,12 +100,10 @@ export function CompanyPage({ user }: { user: User }) {
     mutationFn: ({ input, target }: { input: CompanyInput; target: Exclude<Modal, null> }) => target.mode === 'create' ? api.createCompany(input) : api.updateCompany(target.companyId, input),
     onSuccess: async (result, { target }) => {
       queryClient.setQueryData(['company', result.id], result);
-      queryClient.setQueryData<Company[]>(['companies'], (previous) => {
-        const summary = { id: result.id, name: result.name, role: result.role, accountId: result.accountId, logoId: result.logoId };
-        return previous?.some((item) => item.id === result.id)
-          ? previous.map((item) => item.id === result.id ? summary : item)
-          : [...(previous ?? []), summary];
-      });
+      if (target.mode === 'edit') {
+        queryClient.setQueryData<Company[]>(['companies'], (previous) => previous?.map((item) =>
+          item.id === result.id ? { ...item, name: result.name, logoId: result.logoId } : item));
+      }
       await queryClient.invalidateQueries({ queryKey: ['companies'] });
       if (target.mode === 'create') setCompanyId(result.id);
       if (target.mode === 'create' && logoSelection) {
@@ -139,7 +141,10 @@ export function CompanyPage({ user }: { user: User }) {
     onSuccess: () => { sessionStorage.removeItem('gestaonf.companyId'); queryClient.clear(); window.location.assign('/Clientes'); },
   });
 
-  const editable = modal?.mode === 'create' || company.data?.role === 'OWNER' || company.data?.role === 'ADMIN';
+  const editable = modal?.mode === 'create' || access.can('company.edit');
+  const canCertificate = modal?.mode === 'edit' && access.can('company.certificate');
+  /** Criar empresa usa a conta do próprio usuário: só no onboarding ou para quem é titular de alguma conta. */
+  const canCreate = companies.isSuccess && (companies.data.length === 0 || companies.data.some((item) => item.accountOwner));
   const set = (key: FormKey, value: string) => { setForm((current) => ({ ...current, [key]: value })); save.reset(); };
   const field = (key: FormKey, label: string, options: { placeholder?: string; required?: boolean; type?: string; hint?: string } = {}) =>
     <label className="field" key={key}><span>{label}{options.required && <b> *</b>}</span>
@@ -168,7 +173,7 @@ export function CompanyPage({ user }: { user: User }) {
       <section className="client-panel company-list-panel" aria-labelledby="company-panel-title">
         <div className="client-panel__title"><h1 id="company-panel-title">Empresas</h1></div>
         <div className="client-panel__rule" />
-        <div className="client-panel__actions company-list-panel__toolbar"><span>Cadastros vinculados ao seu usuário</span><button type="button" className="client-new-button" onClick={(event) => newCompany(event.currentTarget)}><Plus size={16} /> Novo</button></div>
+        <div className="client-panel__actions company-list-panel__toolbar"><span>Cadastros vinculados ao seu usuário</span>{canCreate && <button type="button" className="client-new-button" onClick={(event) => newCompany(event.currentTarget)}><Plus size={16} /> Novo</button>}</div>
         <div className="client-results company-list" aria-live="polite">
           <div className="client-results__heading"><h2>Empresas cadastradas</h2><span>{companies.data?.length ?? 0} {(companies.data?.length ?? 0) === 1 ? 'empresa' : 'empresas'}</span></div>
           {companies.isPending && <div className="table-loading" aria-label="Carregando empresas"><div /><div /><div /></div>}
@@ -178,7 +183,7 @@ export function CompanyPage({ user }: { user: User }) {
             <div className="company-list__head"><span>EMPRESA</span><span>SEU ACESSO</span><span>AÇÃO</span></div>
             {companies.data.map((item) => <button key={item.id} type="button" className={`company-list__item${item.id === companyId ? ' is-current' : ''}`} onClick={(event) => openCompany(item.id, event.currentTarget)} aria-label={`Abrir cadastro de ${item.name}`}>
               <span className="company-list__identity-row"><CompanyLogo company={item} className="company-list__logo" /><span className="company-list__identity"><strong>{item.name}</strong><small>{item.id === companyId ? 'Empresa selecionada' : 'Clique para abrir o cadastro'}</small></span></span>
-              <span className="company-list__role">{item.role === 'OWNER' ? 'Proprietário' : item.role === 'ADMIN' ? 'Administrador' : item.role === 'MANAGER' ? 'Gerente' : 'Colaborador'}</span>
+              <span className="company-list__role">{companyRoleOf(item)}</span>
               <span className="company-list__action">Abrir cadastro <ChevronRight size={16} /></span>
             </button>)}
           </>}
@@ -196,7 +201,7 @@ export function CompanyPage({ user }: { user: User }) {
         <div className="company-form__intro">{modal.mode === 'create'
             ? <CompanyLogoField mode="create" pending={logoSelection} onPendingChange={setLogoSelection} />
             : <CompanyLogoField key={editingId} mode="edit" company={companies.data?.find((item) => item.id === editingId)} editable={editable} initialSelection={autoLogo} />}<div><strong>{modal.mode === 'create' ? 'Cadastrar empresa' : company.data?.name}</strong><span>{modal.mode === 'create' ? 'A empresa será vinculada ao seu usuário como proprietário.' : `ID da empresa: ${editingId}`}</span></div><span className="company-form__status">{modal.mode === 'create' ? 'NOVA' : 'ATIVA'}</span></div>
-        {!editable && <div className="company-form__readonly">Você tem acesso de consulta. Apenas proprietário ou administrador pode alterar estes dados.</div>}
+        {!editable && <div className="company-form__readonly">{PERMISSION_DENIED_MESSAGE}</div>}
         <section className="company-form__section"><div className="company-form__section-title"><UserRound size={19} /><div><h2>Identificação</h2><p>Identidade e contato da empresa</p></div></div>
           <div className="company-form__grid company-form__grid--two">
             {field('name', 'Nome de exibição', { required: true, placeholder: 'Como a empresa aparecerá no sistema' })}
@@ -240,7 +245,7 @@ export function CompanyPage({ user }: { user: User }) {
               <span>Válido até: {new Intl.DateTimeFormat('pt-BR').format(new Date(certificate.data.notAfter))}</span>
               <small>A conexão com o ambiente nacional será conferida na etapa de emissão.</small>
             </div> : certificate.isSuccess && <p className="company-certificate__empty">Nenhum certificado cadastrado para esta empresa.</p>}
-            {editable && <>
+            {canCertificate && <>
               <div className="company-form__grid company-form__grid--two">
                 <label className="field"><span>Arquivo A1 (.pfx ou .p12)</span><input key={certificate.data?.id ?? 'empty'} type="file" accept=".pfx,.p12" onChange={(event) => { setCertificateFile(event.target.files?.[0] ?? null); uploadCertificate.reset(); }} disabled={uploadCertificate.isPending || disableCertificate.isPending} /></label>
                 <label className="field"><span>Senha do certificado</span><input type="password" autoComplete="off" value={certificatePassword} onChange={(event) => { setCertificatePassword(event.target.value); uploadCertificate.reset(); }} disabled={uploadCertificate.isPending || disableCertificate.isPending} /></label>

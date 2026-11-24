@@ -4,6 +4,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { assistantActions, companies, companyUsers, neroConversations, users, whatsappConnections, whatsappConsentEvents, whatsappLinkChallenges, whatsappLinkCompanies, whatsappLinks, whatsappOutboundMessages, whatsappRequests, whatsappSessions } from '@gestaonf/database/schema';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
+import { can } from '../permissions/actor.js';
+import { resolveMemberships } from '../permissions/permission-resolver.js';
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 export type LinkChallengeInput = { mode?: 'NEW_NUMBER' | 'EXISTING_NUMBER'; linkId?: string };
@@ -36,7 +38,8 @@ export class WhatsAppLinkService {
     return connection?.status === 'ACTIVE' ? connection : null;
   }
 
-  async eligibleCompanies(linkId: string, userId: string) {
+  /** Empresas vinculadas a este número com vínculo e acesso ativos, antes da permissão do Nero. */
+  private linkedCompanies(linkId: string, userId: string) {
     return this.database.db.select({ companyLinkId: whatsappLinkCompanies.id, companyId: companies.id, name: companies.name })
       .from(whatsappLinkCompanies).innerJoin(whatsappLinks, eq(whatsappLinks.id, whatsappLinkCompanies.linkId))
       .innerJoin(companies, eq(companies.id, whatsappLinkCompanies.companyId))
@@ -44,6 +47,20 @@ export class WhatsAppLinkService {
       .innerJoin(users, eq(users.id, companyUsers.userId))
       .where(and(eq(whatsappLinkCompanies.linkId, linkId), eq(whatsappLinkCompanies.userId, userId), eq(whatsappLinkCompanies.status, 'ACTIVE'), eq(whatsappLinks.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE')))
       .orderBy(asc(companies.name), asc(companies.id));
+  }
+
+  /** Único ponto de elegibilidade do Nero: vínculo ativo e `nero.use` na empresa (Spec 9). */
+  async eligibleCompanies(linkId: string, userId: string) {
+    const linked = await this.linkedCompanies(linkId, userId);
+    if (!linked.length) return linked;
+    const allowed = new Set((await resolveMemberships(this.database.db, userId, linked.map((item) => item.companyId)))
+      .filter((membership) => can(membership.actor, 'nero.use')).map((membership) => membership.actor.companyId));
+    return linked.filter((item) => allowed.has(item.companyId));
+  }
+
+  /** Distingue "sem empresa vinculada" de "sem permissão do Nero" na resposta. */
+  async hasLinkedCompanies(linkId: string, userId: string) {
+    return (await this.linkedCompanies(linkId, userId)).length > 0;
   }
 
   async status(userId: string, companyId: string) {

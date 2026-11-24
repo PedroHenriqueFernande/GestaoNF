@@ -4,11 +4,23 @@ import { and, count, eq, ilike, or, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
+import { requirePermission, type Actor } from '../permissions/actor.js';
 import { createServiceSchema, listServicesSchema, updateServiceSchema } from './services.schemas.js';
 
 type CreateService = z.output<typeof createServiceSchema>;
 type UpdateService = z.output<typeof updateServiceSchema>;
 type ListServices = z.output<typeof listServicesSchema>;
+
+const samePrice = (next: string | null, current: string | null) =>
+  next === null || current === null ? next === current : Number(next) === Number(current);
+
+/** Preço, situação e demais dados do serviço têm permissões próprias. */
+function requireServiceChange(actor: Actor, before: { status: string; suggestedUnitPrice: string | null }, input: UpdateService, entry: string) {
+  const { status, suggestedUnitPrice, ...fields } = input;
+  if (status !== undefined && status !== before.status) requirePermission(actor, 'services.deactivate', entry);
+  if (suggestedUnitPrice !== undefined && !samePrice(suggestedUnitPrice, before.suggestedUnitPrice)) requirePermission(actor, 'services.edit_price', entry);
+  if (Object.keys(fields).length > 0) requirePermission(actor, 'services.edit', entry);
+}
 
 @Injectable()
 export class ServicesService {
@@ -74,9 +86,11 @@ export class ServicesService {
   }
 
   /** Altera dentro da transação recebida; devolve a linha antes e depois. Código interno repetido vira ConflictException. */
-  async updateInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, id: string, input: UpdateService) {
+  async updateInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], actor: Actor, id: string, input: UpdateService, entry: string) {
+    const companyId = actor.companyId;
     const [existing] = await db.select().from(services).where(and(eq(services.companyId, companyId), eq(services.id, id))).for('update');
     if (!existing) throw new NotFoundException('Serviço não encontrado');
+    requireServiceChange(actor, existing, input, entry);
     try {
       const [service] = await db.update(services).set({ ...input, updatedAt: new Date() })
         .where(and(eq(services.companyId, companyId), eq(services.id, id))).returning();
@@ -87,8 +101,8 @@ export class ServicesService {
     }
   }
 
-  async update(companyId: string, id: string, input: UpdateService) {
-    return (await this.database.db.transaction((tx) => this.updateInTx(tx, companyId, id, input))).after;
+  async update(actor: Actor, id: string, input: UpdateService, entry: string) {
+    return (await this.database.db.transaction((tx) => this.updateInTx(tx, actor, id, input, entry))).after;
   }
 
   async remove(companyId: string, id: string) {

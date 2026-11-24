@@ -1,16 +1,17 @@
 import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { AnyMember, RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { SupportHelpCatalog } from './help-catalog.js';
 import { SupportActionsService } from './support-actions.service.js';
-import { destinations } from './support-blocks.js';
+import { canOpenDestination, destinationPath } from './support-blocks.js';
 import { SupportChatService } from './support-chat.service.js';
 import { SUPPORT_CONFIG, type SupportConfig } from './support-config.js';
 import { SupportConversationsService } from './support-conversations.service.js';
 import { actionIdSchema, helpIdSchema, sendMessageSchema } from './support.schemas.js';
 
-const ctx = (request: RequestContext) => ({ companyId: request.companyId!, userId: request.userId! });
+const ctx = (request: RequestContext) => ({ companyId: request.companyId!, userId: request.userId!, actor: request.actor! });
 
 @ApiTags('Assistente de suporte')
 @ApiBearerAuth()
@@ -27,6 +28,7 @@ export class SupportController {
   ) {}
 
   @Get('conversation')
+  @RequirePermission('support.assistant')
   @ApiOperation({ summary: 'Conversa ativa do usuário nesta empresa' })
   async conversation(@Req() request: RequestContext) {
     const current = await this.conversations.active(ctx(request));
@@ -34,6 +36,7 @@ export class SupportController {
   }
 
   @Post('conversation/messages')
+  @RequirePermission('support.assistant')
   @HttpCode(200)
   @ApiOperation({ summary: 'Envia uma mensagem ao assistente' })
   send(@Req() request: RequestContext, @Body() body: unknown) {
@@ -41,28 +44,34 @@ export class SupportController {
   }
 
   @Post('conversation/reset')
+  @RequirePermission('support.assistant')
   @HttpCode(204)
   async reset(@Req() request: RequestContext) { await this.conversations.reset(ctx(request)); }
 
   @Post('actions/:id/confirm')
+  @RequirePermission('support.assistant')
   @HttpCode(200)
   async confirm(@Req() request: RequestContext, @Param('id') id: string) {
     return { block: await this.actions.confirm(ctx(request), parseInput(actionIdSchema, id)) };
   }
 
   @Post('actions/:id/cancel')
+  @RequirePermission('support.assistant')
   @HttpCode(200)
   async cancel(@Req() request: RequestContext, @Param('id') id: string) {
     return { block: await this.actions.cancel(ctx(request), parseInput(actionIdSchema, id)) };
   }
 
   @Get('help')
+  @AnyMember()
   help() { return this.catalog.list(); }
 
   @Get('help/:id')
-  article(@Param('id') id: string) {
+  @AnyMember()
+  article(@Req() request: RequestContext, @Param('id') id: string) {
     const article = this.catalog.get(parseInput(helpIdSchema, id));
     if (!article) throw new NotFoundException('Artigo de ajuda não encontrado');
-    return { id: article.id, titulo: article.titulo, to: article.rota ? destinations[article.rota] : null, conteudo: article.conteudo };
+    const to = article.rota && canOpenDestination(request.actor!, article.rota) ? destinationPath(article.rota) : null;
+    return { id: article.id, titulo: article.titulo, to, conteudo: article.conteudo };
   }
 }

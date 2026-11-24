@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiProduces, ApiQuery,
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { idSchema, keySchema, pageSchema } from './crm.schemas.js';
 import { createProposalSchema, updateProposalSchema, proposalCommandSchema, declineProposalSchema, duplicateProposalSchema, proposalListSchema, proposalPrefillSchema, proposalSettingsSchema } from './proposal.schemas.js';
@@ -18,42 +19,45 @@ const ctx = (r: RequestContext) => ({ companyId: r.companyId!, userId: r.userId!
 export class ProposalsController {
   constructor(@Inject(ProposalsService) private readonly proposals: ProposalsService, @Inject(ProposalReadService) private readonly read: ProposalReadService,
     @Inject(ProposalDocumentService) private readonly documents: ProposalDocumentService) {}
-  @Get('proposals/prefill') @query(proposalPrefillSchema)
+  @Get('proposals/prefill') @RequirePermission('proposals.access') @query(proposalPrefillSchema)
   prefill(@Req() r: RequestContext, @Query() q: unknown) { return this.read.prefill(ctx(r), parseInput(proposalPrefillSchema, q)); }
-  @Post('proposals') @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(createProposalSchema))
+  @Post('proposals') @RequirePermission('proposals.manage') @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(createProposalSchema))
   @ApiOperation({ summary: 'Cria proposta e cadastro de cliente necessário na mesma transação' })
   create(@Req() r: RequestContext, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.create(ctx(r), parseInput(createProposalSchema, b), parseInput(keySchema, k)); }
-  @Get('proposals') @query(proposalListSchema)
+  @Get('proposals') @RequirePermission('proposals.access') @query(proposalListSchema)
   list(@Req() r: RequestContext, @Query() q: unknown) { return this.read.list(ctx(r), parseInput(proposalListSchema, q)); }
-  @Get('opportunities/:id/proposals') @query(proposalListSchema)
+  @Get('opportunities/:id/proposals') @RequirePermission('proposals.access') @query(proposalListSchema)
   async forOpportunity(@Req() r: RequestContext, @Param('id') id: unknown, @Query() q: unknown) {
     const opportunityId = parseInput(idSchema, id); await this.read.prefill(ctx(r), { opportunityId });
     return this.read.list(ctx(r), { ...parseInput(proposalListSchema, q), opportunityId });
   }
   @Get('proposal-settings')
+  @RequirePermission('proposals.access')
   settings(@Req() r: RequestContext) { return this.proposals.settings(ctx(r)); }
-  @Patch('proposal-settings') @ApiBody(body(proposalSettingsSchema))
+  @Patch('proposal-settings') @RequirePermission('proposals.settings') @ApiBody(body(proposalSettingsSchema))
   updateSettings(@Req() r: RequestContext, @Body() b: unknown) { return this.proposals.updateSettings(ctx(r), b); }
   @Get('proposals/:id')
+  @RequirePermission('proposals.access')
   get(@Req() r: RequestContext, @Param('id') id: unknown) { return this.proposals.get(ctx(r), parseInput(idSchema, id)); }
-  @Patch('proposals/:id') @ApiBody(body(updateProposalSchema))
+  @Patch('proposals/:id') @RequirePermission('proposals.manage') @ApiBody(body(updateProposalSchema))
   update(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown) { return this.proposals.update(ctx(r), parseInput(idSchema, id), parseInput(updateProposalSchema, b)); }
-  @Post('proposals/:id/send') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
+  @Post('proposals/:id/send') @RequirePermission('proposals.manage') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
   @ApiOperation({ summary: 'Congela documento e registra envio realizado pelo usuário' })
   send(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.transition(ctx(r), parseInput(idSchema, id), 'send', parseInput(proposalCommandSchema, b), parseInput(keySchema, k)); }
-  @Post('proposals/:id/accept') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
+  @Post('proposals/:id/accept') @RequirePermission('proposals.manage') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
   accept(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.transition(ctx(r), parseInput(idSchema, id), 'accept', parseInput(proposalCommandSchema, b), parseInput(keySchema, k)); }
-  @Post('proposals/:id/decline') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(declineProposalSchema))
+  @Post('proposals/:id/decline') @RequirePermission('proposals.manage') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(declineProposalSchema))
   decline(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.transition(ctx(r), parseInput(idSchema, id), 'decline', parseInput(declineProposalSchema, b), parseInput(keySchema, k)); }
-  @Post('proposals/:id/duplicate') @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(duplicateProposalSchema))
+  @Post('proposals/:id/duplicate') @RequirePermission('proposals.manage') @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(duplicateProposalSchema))
   duplicate(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.duplicate(ctx(r), parseInput(idSchema, id), parseInput(duplicateProposalSchema, b), parseInput(keySchema, k)); }
-  @Post('proposals/:id/convert') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
-  convert(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.convert(ctx(r), parseInput(idSchema, id), parseInput(proposalCommandSchema, b), parseInput(keySchema, k)); }
-  @Get('proposals/:id/history') @query(pageSchema)
+  @Post('proposals/:id/convert') @RequirePermission('proposals.convert') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
+  convert(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.convert(ctx(r), parseInput(idSchema, id), parseInput(proposalCommandSchema, b), parseInput(keySchema, k), r.actor!); }
+  @Get('proposals/:id/history') @RequirePermission('proposals.access') @query(pageSchema)
   history(@Req() r: RequestContext, @Param('id') id: unknown, @Query() q: unknown) { const page = parseInput(pageSchema, q); return this.proposals.events(ctx(r), parseInput(idSchema, id), page.limit, page.offset); }
   @Get('proposals/:id/preview')
+  @RequirePermission('proposals.access')
   preview(@Req() r: RequestContext, @Param('id') id: unknown) { return this.proposals.preview(ctx(r), parseInput(idSchema, id)); }
-  @Get('proposals/:id/pdf') @ApiProduces('application/pdf')
+  @Get('proposals/:id/pdf') @RequirePermission('proposals.access') @ApiProduces('application/pdf')
   async pdf(@Req() r: RequestContext, @Param('id') id: unknown, @Res() reply: FastifyReply) {
     const pdf = await this.documents.pdf(ctx(r), parseInput(idSchema, id));
     return reply.header('Content-Type', 'application/pdf').header('Content-Disposition', `attachment; filename="${pdf.filename}"`).header('Cache-Control', 'private, no-store').send(pdf.bytes);

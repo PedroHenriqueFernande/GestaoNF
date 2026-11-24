@@ -1,0 +1,74 @@
+.permissions-dialog {
+  width: min(760px, calc(100vw - 20px));
+  max-height: calc(100dvh - 20px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 18px 50px #0c233a3c;
+}
+
+.permissions-dialog[open] { display: flex; flex-direction: column; }
+.permissions-dialog::backdrop { background: #0c233a59; }
+
+.permissions-dialog__header,
+.permissions-dialog > .permissions-dialog__footer {
+  flex: none;
+  padding: 16px clamp(12px, 4vw, 24px);
+}
+.permissions-dialog__header { border-bottom: 1px solid var(--border); }
+.permissions-dialog__header p { overflow-wrap: anywhere; }
+.permissions-dialog > .permissions-dialog__footer {
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.permissions-dialog__body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px clamp(12px, 4vw, 24px);
+}
+.permissions-dialog__topics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+  gap: 14px;
+  margin-top: 10px;
+}
+.permissions-topic {
+  min-width: 0;
+  margin: 0;
+  padding: 8px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.permissions-topic legend { padding: 0 4px; }
+.permissions-key, .permissions-all, .permissions-topic__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.permissions-all, .permissions-topic__toggle { font-weight: 700; }
+.permissions-dialog input[type='checkbox'] { flex: none; margin: 2px 0 0; accent-color: var(--primary); }
+.permissions-dialog input[type='checkbox']:focus-visible { outline: 2px solid var(--primary-dark); outline-offset: 2px; }
+.permissions-key small { display: block; color: var(--muted); font-size: 11px; }
+.permissions-area h3 { margin: 10px 0 4px; color: var(--muted); font-size: 11px; }
+.permissions-dialog__count, .permissions-dialog__hint { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.permissions-dialog__hint { min-height: 1.5em; }
+.permissions-dialog__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

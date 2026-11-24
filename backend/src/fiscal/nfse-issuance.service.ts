@@ -1,6 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { companies, companyUsers, integrationOutbox, nfseDocumentEvents, nfseDocuments, nfseDps, nfseEmissionRequests, nfseEvents, nfsePreviews, nfseSeries, saleItems, sales } from '@gestaonf/database/schema';
+import { companies, integrationOutbox, nfseDocumentEvents, nfseDocuments, nfseDps, nfseEmissionRequests, nfseEvents, nfsePreviews, nfseSeries, saleItems, sales } from '@gestaonf/database/schema';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { saleFiscalState, type SaleFiscalState } from './sale-fiscal-state.js';
 import { DatabaseService } from '../database/database.module.js';
@@ -8,6 +8,7 @@ import { NfsePreviewService, snapshotHash } from './nfse-preview.service.js';
 import { dpsIdentifier, hash } from './nfse-contract.js';
 import type { NfseSnapshot } from './nfse.types.js';
 import { NationalNfseClient } from './nfse-national.client.js';
+import { requireMembershipPermission, requireMembershipPolicy } from '../permissions/permission-resolver.js';
 
 type Db = DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
 
@@ -22,7 +23,7 @@ export class NfseIssuanceService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(NfsePreviewService) private readonly previews: NfsePreviewService, @Inject(NationalNfseClient) private readonly national: NationalNfseClient) {}
 
   async emit(companyId: string, userId: string, saleId: string, previewId: string, key: string) {
-    await this.previews.manager(companyId, userId);
+    await requireMembershipPolicy(this.database.db, userId, companyId, { kind: 'any', keys: ['sales.nfse_issue', 'sales.nfse_edit'] }, 'POST /sales/:saleId/nfse/emissions');
     const requestHash = hash(JSON.stringify({ saleId, previewId }));
     const [previous] = await this.database.db.select().from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.requestKey, key))).limit(1);
     if (previous) {
@@ -31,6 +32,8 @@ export class NfseIssuanceService {
     }
     const preview = await this.previews.get(companyId, previewId);
     if (preview.saleId !== saleId) throw new NotFoundException('Prévia não encontrada para esta venda.');
+    // Emissão que substitui exige "Corrigir NFS-e"; a normal, "Emitir NFS-e" (D7).
+    await requireMembershipPermission(this.database.db, userId, companyId, preview.substitution ? 'sales.nfse_edit' : 'sales.nfse_issue', 'POST /sales/:saleId/nfse/emissions');
     assertCanEmit(await saleFiscalState(this.database.db, companyId, saleId), preview.groups);
     if (preview.environment !== 'HOMOLOGATION') throw new UnprocessableEntityException('A série precisa estar em homologação. Emissão em produção ainda não está disponível.');
     if (Date.now() - Date.parse(preview.generatedAt) > 5 * 60000) throw new ConflictException('A prévia expirou. Atualize os dados antes de emitir.');
@@ -115,9 +118,12 @@ export class NfseIssuanceService {
   }
 
   async resume(companyId: string, userId: string, id: string) {
-    await this.previews.manager(companyId, userId);
+    await requireMembershipPolicy(this.database.db, userId, companyId, { kind: 'any', keys: ['sales.nfse_issue', 'sales.nfse_edit'] }, 'POST /fiscal/nfse/dps/:id/reconcile');
     const [dps] = await this.database.db.select().from(nfseDps).where(and(eq(nfseDps.companyId, companyId), eq(nfseDps.id, id))).limit(1);
     if (!dps?.emissionId) throw new NotFoundException('DPS não encontrada.');
+    const [emission] = await this.database.db.select({ kind: nfseEmissionRequests.kind }).from(nfseEmissionRequests)
+      .where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.id, dps.emissionId))).limit(1);
+    await requireMembershipPermission(this.database.db, userId, companyId, emission?.kind === 'SUBSTITUTION' ? 'sales.nfse_edit' : 'sales.nfse_issue', 'POST /fiscal/nfse/dps/:id/reconcile');
     if (['AUTHORIZED', 'REJECTED'].includes(dps.status)) throw new ConflictException('Esta DPS já tem resultado definitivo.');
     await this.database.db.insert(integrationOutbox).values({ topic: 'nfse.process', aggregateId: id, payload: { companyId, dpsId: id } });
     return this.get(companyId, dps.emissionId);

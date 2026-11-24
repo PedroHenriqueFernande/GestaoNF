@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Patch, Post, Req, UseGuards } from '@nes
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { AnyMember, RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { CompaniesService } from './companies.service.js';
 import { createCompanySchema, updateCompanySchema } from './companies.schemas.js';
@@ -23,11 +24,13 @@ export class CompaniesController {
   }
 
   @Get('current')
+  @AnyMember()
   @UseGuards(CompanyGuard)
   @ApiHeader({ name: 'X-Company-Id', required: true })
   get(@Req() request: RequestContext) { return this.companies.get(request.companyId!, request.userId!); }
 
   @Patch('current')
+  @RequirePermission('company.edit')
   @UseGuards(CompanyGuard)
   @ApiHeader({ name: 'X-Company-Id', required: true })
   @ApiBody({ schema: z.toJSONSchema(updateCompanySchema, { io: 'input' }) as Record<string, unknown> })

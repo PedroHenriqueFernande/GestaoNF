@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Post, 
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { RequireAnyPermission, RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { NfsePreviewService } from './nfse-preview.service.js';
 import { NfseIssuanceService } from './nfse-issuance.service.js';
@@ -21,68 +22,84 @@ export class NfseController {
     @Inject(NfseReadinessService) private readonly readiness: NfseReadinessService) {}
 
   @Get('fiscal/nfse/readiness')
+  @RequireAnyPermission(['sales.nfse_issue', 'sales.nfse_edit', 'fiscal.series'])
   checkReadiness(@Req() req: RequestContext) { return this.readiness.check(req.companyId!, req.userId!); }
 
   @Post('fiscal/nfse/readiness/connection')
+  @RequirePermission('fiscal.series')
   @HttpCode(200)
   testConnection(@Req() req: RequestContext) { return this.readiness.connection(req.companyId!, req.userId!); }
 
   @Post('sales/:saleId/nfse/preview')
+  @RequireAnyPermission(['sales.nfse_issue', 'sales.nfse_edit'])
   preview(@Req() req: RequestContext, @Param('saleId') saleId: string, @Headers('idempotency-key') key: string, @Body() body: unknown) {
     return this.previews.create(req.companyId!, req.userId!, parseInput(nfseIdSchema, saleId), parseInput(nfseIdSchema, key), parseInput(nfsePreviewSchema, body));
   }
 
   @Get('fiscal/nfse/previews/:id')
+  @RequireAnyPermission(['sales.nfse_issue', 'sales.nfse_edit'])
   getPreview(@Req() req: RequestContext, @Param('id') id: string) { return this.previews.get(req.companyId!, parseInput(nfseIdSchema, id)); }
 
   @Get('fiscal/nfse/previews/:id/pdf')
+  @RequireAnyPermission(['sales.nfse_issue', 'sales.nfse_edit'])
   async pdf(@Req() req: RequestContext, @Param('id') id: string, @Res() reply: FastifyReply) {
     const preview = await this.previews.get(req.companyId!, parseInput(nfseIdSchema, id));
     return reply.header('Content-Type', 'application/pdf').header('Content-Disposition', `attachment; filename="previa-nfse-${preview.orderCode}.pdf"`).header('Cache-Control', 'private, no-store').send(await nfsePreviewPdf(preview));
   }
 
   @Post('sales/:saleId/nfse/emissions')
+  @RequireAnyPermission(['sales.nfse_issue', 'sales.nfse_edit'])
   @HttpCode(202)
   emit(@Req() req: RequestContext, @Param('saleId') saleId: string, @Headers('idempotency-key') key: string, @Body() body: unknown) {
     return this.issuance.emit(req.companyId!, req.userId!, parseInput(nfseIdSchema, saleId), parseInput(nfseEmitSchema, body).previewId, parseInput(nfseIdSchema, key));
   }
 
   @Get('sales/:saleId/nfse/emissions')
+  @RequirePermission('sales.access')
   forSale(@Req() req: RequestContext, @Param('saleId') saleId: string) { return this.issuance.forSale(req.companyId!, parseInput(nfseIdSchema, saleId)); }
 
   @Get('sales/:saleId/nfse/state')
+  @RequirePermission('sales.access')
   state(@Req() req: RequestContext, @Param('saleId') saleId: string) { return this.issuance.state(req.companyId!, parseInput(nfseIdSchema, saleId)); }
 
   @Get('fiscal/nfse/emissions/:id')
+  @RequirePermission('sales.access')
   emission(@Req() req: RequestContext, @Param('id') id: string) { return this.issuance.get(req.companyId!, parseInput(nfseIdSchema, id)); }
 
   @Post('fiscal/nfse/dps/:id/reconcile')
+  @RequireAnyPermission(['sales.nfse_issue', 'sales.nfse_edit'])
   @HttpCode(202)
   reconcile(@Req() req: RequestContext, @Param('id') id: string) { return this.issuance.resume(req.companyId!, req.userId!, parseInput(nfseIdSchema, id)); }
 
   @Post('fiscal/nfse/documents/:id/cancel')
+  @RequirePermission('sales.nfse_cancel')
   @HttpCode(202)
   cancel(@Req() req: RequestContext, @Param('id') id: string, @Headers('idempotency-key') key: string, @Body() body: unknown) {
     return this.actions.requestCancellation(req.companyId!, req.userId!, parseInput(nfseIdSchema, id), parseInput(nfseIdSchema, key), parseInput(nfseCancelSchema, body));
   }
 
   @Post('fiscal/nfse/documents/:id/substitution')
+  @RequirePermission('sales.nfse_edit')
   openSubstitution(@Req() req: RequestContext, @Param('id') id: string, @Body() body: unknown) {
     return this.actions.openSubstitution(req.companyId!, req.userId!, parseInput(nfseIdSchema, id), parseInput(nfseSubstitutionSchema, body));
   }
 
   @Delete('fiscal/nfse/documents/:id/substitution')
+  @RequirePermission('sales.nfse_edit')
   @HttpCode(204)
   async discardSubstitution(@Req() req: RequestContext, @Param('id') id: string) { await this.actions.discardSubstitution(req.companyId!, req.userId!, parseInput(nfseIdSchema, id)); }
 
   @Get('fiscal/nfse/document-events/:id')
+  @RequirePermission('sales.access')
   documentEvent(@Req() req: RequestContext, @Param('id') id: string) { return this.actions.getEvent(req.companyId!, parseInput(nfseIdSchema, id)); }
 
   @Post('fiscal/nfse/document-events/:id/reconcile')
+  @RequireAnyPermission(['sales.nfse_cancel', 'sales.nfse_edit'])
   @HttpCode(202)
   reconcileEvent(@Req() req: RequestContext, @Param('id') id: string) { return this.actions.reconcileEvent(req.companyId!, req.userId!, parseInput(nfseIdSchema, id)); }
 
   @Get('fiscal/nfse/documents/:id/xml')
+  @RequirePermission('sales.access')
   async xml(@Req() req: RequestContext, @Param('id') id: string, @Res() reply: FastifyReply) {
     const document = await this.issuance.document(req.companyId!, parseInput(nfseIdSchema, id));
     return reply.header('Content-Type', 'application/xml; charset=utf-8').header('Content-Disposition', `attachment; filename="nfse-${document.number.replace(/[^0-9A-Za-z-]/g, '')}.xml"`).header('Cache-Control', 'private, no-store').send(document.officialXml);

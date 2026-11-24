@@ -1,12 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { companies, companyUsers, nfseDocumentEvents, nfseDocuments, nfseDps, nfseEvents, nfseTransmissionAttempts } from '@gestaonf/database/schema';
+import { nfseDocumentEvents, nfseDocuments, nfseDps, nfseEvents, nfseTransmissionAttempts } from '@gestaonf/database/schema';
 import { DatabaseService } from '../database/database.module.js';
 import { CertificateService } from './certificate.service.js';
 import { EMISSION_SKEW_MS, hash } from './nfse-contract.js';
 import { CANCELLATION_EVENT, buildCancellationRequest, readRegisteredEvent, signEvent, validateEventXml, type CancellationReason } from './nfse-event-contract.js';
 import { EVENT_REQUEST_FIELD, NationalNfseClient, classifyResponse, eventLookupPath, eventsPath, extractEventXml, nationalErrors, rawBodySummary, transportRefusal } from './nfse-national.client.js';
+import { assertRequesterAllowed } from './nfse-requester.js';
 
 type Event = typeof nfseDocumentEvents.$inferSelect;
 type Document = typeof nfseDocuments.$inferSelect;
@@ -105,9 +106,8 @@ export class NfseEventProcessorService {
   }
 
   private async assertRequesterStillAllowed(companyId: string, userId: string) {
-    const [member] = await this.database.db.select().from(companyUsers).where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE')));
-    const [company] = await this.database.db.select({ status: companies.status }).from(companies).where(eq(companies.id, companyId)).limit(1);
-    if (!member || !['OWNER', 'ADMIN'].includes(member.role) || company?.status !== 'ACTIVE') throw new Error('O solicitante não possui mais permissão fiscal na empresa ativa.');
+    // Evento de documento hoje é só cancelamento (nfse_document_events_type_chk).
+    await assertRequesterAllowed(this.database.db, companyId, userId, 'sales.nfse_cancel');
   }
 
   private async attempt(event: Event, operation: 'SEND_EVENT' | 'LOOKUP_EVENT', call: () => Promise<{ status: number; body: Record<string, unknown> }>) {

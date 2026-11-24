@@ -1,6 +1,6 @@
 # Usuários e convites — backend implementado
 
-Cinco usuários adicionais por empresa, titular excluído da cota. Convites reservam vagas por 24 horas; aceite converte reservas em acesso e não limita a duração do vínculo aceito. Permissões detalhadas ficam para a próxima fase; convidados recebem COLLABORATOR no modelo existente.
+Cinco usuários adicionais por empresa, com o titular fora da cota. Convites reservam vagas por 24 horas. O aceite converte reservas em vínculos. O acesso do membro usa o mesmo rótulo e conjunto de permissões em todas as empresas da contratação às quais ele está vinculado.
 
 ## O que funciona
 
@@ -61,8 +61,8 @@ Todas as rotas administrativas exigem login e titular da contratação indicada.
 | POST | `/accounts/:accountId/user-invitations` |
 | POST | `/accounts/:accountId/user-invitations/:id/resend` |
 | POST | `/accounts/:accountId/user-invitations/:id/revoke` |
-| PATCH | `/accounts/:accountId/user-invitations/:id/companies` |
-| PATCH | `/accounts/:accountId/users/:userId/companies` |
+| PATCH | `/accounts/:accountId/user-invitations/:id/access` |
+| PUT | `/accounts/:accountId/users/:userId/access` |
 | POST | `/accounts/:accountId/users/:userId/deactivate` |
 | POST | `/user-invitations/preview` |
 | POST | `/user-invitations/accept-new` |
@@ -79,6 +79,8 @@ Exemplo de convite:
 ```
 
 Resposta 202 representa convite/e-mail gravados, não entrega. Payload: id, status, empresas, expiração, versão e estado de envio. O token não é devolvido ao titular; está no link enviado ao destinatário.
+
+Um vínculo ativo na mesma contratação impede a criação de outro convite para esse e-mail. A API retorna HTTP 409 com `code: USER_ALREADY_LINKED`, `userId` e `message` orientando o titular a editar o membro na lista. Para o e-mail do próprio titular, a API retorna HTTP 409 com `code: OWNER_PROTECTED` e informa que ele já tem acesso a todas as empresas.
 
 Reenvio/cancelamento usam `{ "version": 1 }`. Edição de destinos usa versão e companyIds. Edição de acesso de usuário usa a versão SHA-256 dos vínculos presente na listagem; versão antiga retorna 409. Remover todos os vínculos não exclui identidade nem afeta outras contratações.
 
@@ -102,6 +104,8 @@ Nova conta:
 ```
 
 O backend devolve cookies de autenticação para web; `client=mobile` usa o contrato atual de tokens. Conta existente deve fazer login e chamar accept-existing com o token. Token já consumido não gera uma nova sessão pública.
+
+No aceite de um convite pendente para um membro ativo na contratação, o servidor acrescenta os vínculos escolhidos e preserva o rótulo e as permissões vigentes. No primeiro vínculo ou na reativação de um membro com todos os vínculos inativos, aplica o rótulo e as permissões do convite.
 
 Rate limit no PostgreSQL: até 100 previews e 20 tentativas de aceite por IP em 15 minutos, compartilhado entre instâncias. Usa o IP observado pelo Fastify, sem confiar livremente em X-Forwarded-For. Configurar proxies confiáveis será necessário ao mudar a topologia de produção. Tokens inválidos não bloqueiam a conta do destinatário.
 

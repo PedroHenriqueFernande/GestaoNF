@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LifeBuoy, MessageCircleQuestion, RotateCcw, Send, X } from 'lucide-react';
 import { api, type SupportMessage } from '../../api/client';
+import { exportableReports } from '../reports/report-definitions';
+import { usePermissions } from '../permissions/usePermissions';
 import { QuickActions } from './QuickActions';
 import { ReportPdfForm } from './ReportPdfForm';
 import { SupportBlocks } from './SupportBlocks';
@@ -13,8 +15,15 @@ type View = 'chat' | 'report' | 'topics' | { article: string };
 export function SupportPanel({ companyId, userId, closing, onClose }: { companyId: string; userId: string; closing: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const key = ['support-conversation', userId, companyId];
-  const conversation = useQuery({ queryKey: key, queryFn: () => api.supportConversation(companyId) });
+  const access = usePermissions(companyId);
+  const assistant = access.can('support.assistant');
+  const canReport = exportableReports(access.can).length > 0;
+  // Sem a chave, a conversa não é pedida (o servidor negaria) e o painel mostra só tópicos e artigos.
+  const conversation = useQuery({ queryKey: key, queryFn: () => api.supportConversation(companyId), enabled: assistant });
   const [view, setView] = useState<View>('chat');
+  const shown: View = !assistant && (view === 'chat' || view === 'report') ? 'topics' : view;
+  /** Uma query desabilitada fica `isPending` para sempre: só há carregamento quando ela está ativa. */
+  const loading = assistant && conversation.isPending;
   const [text, setText] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -34,17 +43,17 @@ export function SupportPanel({ companyId, userId, closing, onClose }: { companyI
   const reset = useMutation({ mutationFn: () => api.supportReset(companyId), onSuccess: () => { send.reset(); setText(''); setView('chat'); setAnnouncement(''); return refresh(); } });
   const messages = conversation.data?.conversation?.messages ?? [];
   const aiEnabled = conversation.data?.aiEnabled ?? false;
-  const empty = !conversation.isPending && !messages.length && !send.isPending;
+  const empty = !loading && !messages.length && !send.isPending;
 
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight }); }, [messages.length, send.isPending, view]);
   // Foco: o painel recebe o foco ao abrir; quando a conversa carrega, vai para o campo de mensagem (ou para o título, sem IA).
   useEffect(() => { panelRef.current?.focus(); }, []);
   useEffect(() => {
-    if (conversation.isPending || focused.current) return;
+    if (loading || focused.current) return;
     focused.current = true;
     if (aiEnabled && inputRef.current) inputRef.current.focus();
     else titleRef.current?.focus();
-  }, [conversation.isPending, aiEnabled]);
+  }, [loading, aiEnabled]);
   useEffect(() => { if (focused.current) restoreFocus(true); }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const input = inputRef.current;
@@ -64,24 +73,24 @@ export function SupportPanel({ companyId, userId, closing, onClose }: { companyI
     if (value && aiEnabled && !send.isPending && !reset.isPending) send.mutate(value);
   }
   const prompt = (value: string) => { setView('chat'); if (aiEnabled && !send.isPending && !reset.isPending) send.mutate(value); };
-  const shortcuts = (layout: 'list' | 'chips') => <QuickActions aiEnabled={aiEnabled} layout={layout} onReport={() => setView('report')} onTopics={() => setView('topics')} onPrompt={prompt} />;
+  const shortcuts = (layout: 'list' | 'chips') => <QuickActions aiEnabled={aiEnabled} canReport={canReport} layout={layout} onReport={() => setView('report')} onTopics={() => setView('topics')} onPrompt={prompt} />;
 
   return <aside id="support-panel" ref={panelRef} tabIndex={-1} onKeyDown={onKeyDown} className="support-panel" data-state={closing ? 'closed' : 'open'} role="dialog" aria-label="Ajuda do GestãoNF">
     <header className="support-panel__header">
       <span className="support-panel__mark" aria-hidden="true"><LifeBuoy size={20} /></span>
-      <div className="support-panel__title"><strong ref={titleRef} tabIndex={-1}>Ajuda do GestãoNF</strong><span>{aiEnabled ? 'Assistente de suporte' : 'Atalhos de ajuda'}</span></div>
+      <div className="support-panel__title"><strong ref={titleRef} tabIndex={-1}>Ajuda do GestãoNF</strong><span>{!assistant ? 'Tópicos de ajuda' : aiEnabled ? 'Assistente de suporte' : 'Atalhos de ajuda'}</span></div>
       <div className="support-panel__tools">
-        <button type="button" className="support-tool" aria-label="Nova conversa" title="Nova conversa" disabled={reset.isPending || send.isPending || !messages.length} onClick={() => reset.mutate()}><RotateCcw size={16} /></button>
+        {assistant && <button type="button" className="support-tool" aria-label="Nova conversa" title="Nova conversa" disabled={reset.isPending || send.isPending || !messages.length} onClick={() => reset.mutate()}><RotateCcw size={16} /></button>}
         <button type="button" className="support-tool" aria-label="Fechar ajuda" title="Fechar" onClick={onClose}><X size={18} /></button>
       </div>
     </header>
     <div className="support-sr" role="status" aria-live="polite">{announcement}</div>
-    {view === 'report' ? <div className="support-body"><ReportPdfForm companyId={companyId} onBack={() => setView('chat')} /></div>
-      : view === 'topics' ? <div className="support-body"><HelpTopics companyId={companyId} onBack={() => setView('chat')} onOpen={(id) => setView({ article: id })} /></div>
-      : typeof view === 'object' ? <div className="support-body"><HelpArticleView companyId={companyId} id={view.article} onBack={() => setView('topics')} /></div>
+    {shown === 'report' ? <div className="support-body"><ReportPdfForm companyId={companyId} onBack={() => setView('chat')} /></div>
+      : shown === 'topics' ? <div className="support-body"><HelpTopics companyId={companyId} onBack={assistant ? () => setView('chat') : undefined} onOpen={(id) => setView({ article: id })} /></div>
+      : typeof shown === 'object' ? <div className="support-body"><HelpArticleView companyId={companyId} id={shown.article} onBack={() => setView('topics')} /></div>
       : <>
         <div className="support-messages support-body" ref={listRef}>
-          {conversation.isPending && <p className="support-muted">Carregando...</p>}
+          {loading && <p className="support-muted">Carregando...</p>}
           {conversation.isError && <div className="support-notice support-notice--error" role="alert">Não foi possível carregar a conversa. <button type="button" className="support-link" onClick={() => conversation.refetch()}>Tentar novamente</button></div>}
           {empty && <div className="support-empty">
             <span className="support-empty__icon" aria-hidden="true"><MessageCircleQuestion size={26} /></span>
@@ -99,7 +108,7 @@ export function SupportPanel({ companyId, userId, closing, onClose }: { companyI
           {send.isError && <p className="support-notice support-notice--error" role="alert">{send.error.message}</p>}
           {reset.isError && <p className="support-notice support-notice--error" role="alert">{reset.error.message}</p>}
         </div>
-        {!empty && !conversation.isPending && shortcuts('chips')}
+        {!empty && !loading && shortcuts('chips')}
         <form className="support-input" onSubmit={submit}>
           <textarea ref={inputRef} aria-label="Mensagem para o assistente" placeholder={aiEnabled ? 'Escreva sua dúvida...' : 'Chat com IA desativado'} disabled={!aiEnabled || send.isPending || reset.isPending}
             maxLength={1000} rows={1} value={text} onChange={(event) => setText(event.target.value)}

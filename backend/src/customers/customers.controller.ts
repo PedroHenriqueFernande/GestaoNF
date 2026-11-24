@@ -1,7 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { AccessGuard, CompanyGuard, routeEntry, type RequestContext } from '../auth/access.guard.js';
+import { RequireAnyPermission, RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { CustomersService } from './customers.service.js';
 import { createCustomerSchema, customerIdSchema, listCustomersSchema, updateCustomerSchema } from './customers.schemas.js';
@@ -15,6 +16,7 @@ export class CustomersController {
   constructor(@Inject(CustomersService) private readonly customers: CustomersService) {}
 
   @Post()
+  @RequirePermission('customers.create')
   @ApiOperation({ summary: 'Cadastra cliente; CPF/CNPJ é opcional' })
   @ApiBody({ schema: z.toJSONSchema(createCustomerSchema, { io: 'input' }) as Record<string, unknown> })
   create(@Req() request: RequestContext, @Body() body: unknown) {
@@ -22,23 +24,27 @@ export class CustomersController {
   }
 
   @Get()
+  @RequirePermission('customers.access')
   @ApiOperation({ summary: 'Lista clientes da empresa com paginação' })
   list(@Req() request: RequestContext, @Query() query: unknown) {
     return this.customers.list(request.companyId!, parseInput(listCustomersSchema, query));
   }
 
   @Get(':id')
+  @RequirePermission('customers.access')
   get(@Req() request: RequestContext, @Param('id') id: string) {
     return this.customers.get(request.companyId!, parseInput(customerIdSchema, id));
   }
 
   @Patch(':id')
+  @RequireAnyPermission(['customers.edit', 'customers.deactivate'])
   @ApiBody({ schema: z.toJSONSchema(updateCustomerSchema, { io: 'input' }) as Record<string, unknown> })
   update(@Req() request: RequestContext, @Param('id') id: string, @Body() body: unknown) {
-    return this.customers.update(request.companyId!, parseInput(customerIdSchema, id), parseInput(updateCustomerSchema, body));
+    return this.customers.update(request.actor!, parseInput(customerIdSchema, id), parseInput(updateCustomerSchema, body), routeEntry(request));
   }
 
   @Delete(':id')
+  @RequirePermission('customers.deactivate')
   @HttpCode(204)
   remove(@Req() request: RequestContext, @Param('id') id: string) {
     return this.customers.remove(request.companyId!, parseInput(customerIdSchema, id));

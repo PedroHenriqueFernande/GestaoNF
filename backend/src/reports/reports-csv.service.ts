@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { PassThrough } from 'node:stream';
-import type { CrmContext } from '../crm/crm.schemas.js';
+import type { Actor } from '../permissions/actor.js';
+import { requireReportExport } from './report-access.js';
 import { ReportsReadService } from './reports-read.service.js';
 import type { CatalogReport, ReportInput } from './reports.schemas.js';
 
@@ -17,9 +18,11 @@ const columns:Record<CatalogReport,Array<[string,string,boolean?]>>={
 @Injectable()
 export class ReportsCsvService {
   constructor(@Inject(ReportsReadService) private readonly reader:ReportsReadService) {}
-  async create(ctx:CrmContext,type:CatalogReport,input:ReportInput) {
+  async create(actor:Actor,type:CatalogReport,input:ReportInput,entry:string) {
+    // A negação precisa ocorrer antes de entregar o stream ao chamador.
+    requireReportExport(actor,type,entry);
     const maxRows=50_000;
-    const preflight=await this.reader.read(ctx,type,{...input,limit:1,cursor:undefined});
+    const preflight=await this.reader.read(actor,type,{...input,limit:1,cursor:undefined},entry);
     if(Number(preflight.summary.total)>maxRows) throw new BadRequestException(`A exportação aceita até ${maxRows} registros. Refine os filtros.`);
     const stream=new PassThrough();
     const write=async(text:string)=>{
@@ -33,12 +36,12 @@ export class ReportsCsvService {
       });
     };
     queueMicrotask(()=>{
-      void this.reader.exportRows(ctx,type,input,maxRows,async(rows)=>{
+      void this.reader.exportRows(actor,type,input,maxRows,async(rows)=>{
         for(const row of rows) await write(columns[type].map(([field,,identifier])=>{
           const value=field==='status' ? row[field]==='ACTIVE' ? 'Ativo' : 'Inativo' : field==='suggestedUnitPrice' && row[field] ? String(row[field]).replace('.',',') : row[field];
           return csvCell(value,identifier);
         }).join(';')+'\r\n');
-      }).then(()=>stream.end()).catch((error:unknown)=>stream.destroy(error instanceof Error ? error : new Error('Falha na exportação')));
+      },entry).then(()=>stream.end()).catch((error:unknown)=>stream.destroy(error instanceof Error ? error : new Error('Falha na exportação')));
       stream.write('\uFEFF'+columns[type].map(([,label])=>csvCell(label)).join(';')+'\r\n');
     });
     return stream;

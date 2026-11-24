@@ -4,12 +4,13 @@ import { ChevronDown } from 'lucide-react';
 
 export type SaleDropdownOption<Value extends string> = { value: Value; label: string };
 
-export function SaleDropdown<Value extends string>({ label, value, options, onChange, disabled = false }: {
+export function SaleDropdown<Value extends string>({ label, value, options, onChange, disabled = false, describedBy }: {
   label: string;
   value: Value;
   options: readonly SaleDropdownOption<Value>[];
   onChange: (value: Value) => void;
   disabled?: boolean;
+  describedBy?: string;
 }) {
   const listId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -53,7 +54,7 @@ export function SaleDropdown<Value extends string>({ label, value, options, onCh
   }
 
   return <div className={`sale-select${open ? ' is-open' : ''}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button ref={trigger} type="button" className="sale-select__trigger" role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} aria-activedescendant={open && options[currentIndex] ? `${listId}-${currentIndex}` : undefined} disabled={disabled} onClick={() => { if (open) setOpen(false); else openAtSelection(); }} onKeyDown={handleKeyDown}>
+    <button ref={trigger} type="button" className="sale-select__trigger" role="combobox" aria-label={label} aria-describedby={describedBy} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} aria-activedescendant={open && options[currentIndex] ? `${listId}-${currentIndex}` : undefined} disabled={disabled} onClick={() => { if (open) setOpen(false); else openAtSelection(); }} onKeyDown={handleKeyDown}>
       <span>{options[selectedIndex]?.label ?? 'Selecione'}</span><ChevronDown size={15} />
     </button>
     {open && <div id={listId} className="sale-lookup-options sale-select__options" role="listbox" aria-label={label}>

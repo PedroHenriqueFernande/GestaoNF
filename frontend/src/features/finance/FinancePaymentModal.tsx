@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, CalendarDays, Check, ChevronDown, RotateCcw, Save, X } from 'lucide-react';
 import { api, type FinancePayment, type PaymentMethod } from '../../api/client';
+import { usePermissions } from '../permissions/usePermissions';
 import { currency, methodName, methodOptions, moneyCents, normalizeMoney, shortDate, today } from './finance-utils';
 
 function paymentLabel(payment: FinancePayment): string {
@@ -14,6 +15,7 @@ export function FinancePaymentModal({ companyId, saleId, installmentId, onClose,
   companyId: string; saleId: string; installmentId: string; onClose: () => void; onChanged: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const access = usePermissions(companyId);
   const modalRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -146,16 +148,16 @@ export function FinancePaymentModal({ companyId, saleId, installmentId, onClose,
 
         <section className="finance-detail__dates" aria-labelledby="finance-dates-title">
           <div className="finance-detail__section-heading"><h3 id="finance-dates-title"><CalendarDays size={17} /> Datas</h3></div>
-          <form onSubmit={submitDates}>
+          {access.can('finance.edit_dates') ? <form onSubmit={submitDates}>
             <div className="finance-detail__date-fields">
               <label>Data de lançamento<input type="date" value={soldOn} onChange={(event) => { setSoldOn(event.target.value); setError(''); }} required /><small>Data da venda, compartilhada por todos os recebimentos do pedido.</small></label>
               <label>Data de vencimento<input type="date" value={dueOn} onChange={(event) => { setDueOn(event.target.value); setError(''); }} disabled={!!payment.initialReceivedOn} required={!payment.initialReceivedOn} /><small>{payment.initialReceivedOn ? `Recebido na venda em ${shortDate(payment.initialReceivedOn)}; sem vencimento.` : 'Vencimento deste recebimento.'}</small></label>
             </div>
             <div className="finance-detail__date-actions">{dateChanged && <button type="button" className="button button--secondary" disabled={datesMutation.isPending} onClick={() => { setSoldOn(sale.soldOn); setDueOn(payment.dueOn ?? ''); setError(''); }}>Desfazer</button>}<button type="submit" className="button button--primary" disabled={!dateChanged || datesMutation.isPending}><Save size={14} /> {datesMutation.isPending ? 'Salvando...' : 'Salvar datas'}</button></div>
-          </form>
+          </form> : <dl className="finance-detail__date-fields"><div><dt>Data de lançamento</dt><dd>{shortDate(sale.soldOn)}</dd></div><div><dt>Data de vencimento</dt><dd>{payment.dueOn ? shortDate(payment.dueOn) : '—'}</dd></div></dl>}
         </section>
 
-        {moneyCents(payment.remainingAmount) > 0n && <section className="finance-detail__section" aria-labelledby="finance-receipt-title">
+        {access.can('finance.receive') && moneyCents(payment.remainingAmount) > 0n && <section className="finance-detail__section" aria-labelledby="finance-receipt-title">
           <div className="finance-detail__section-heading"><h3 id="finance-receipt-title">Registrar baixa</h3><span>{currency(payment.remainingAmount)} em aberto</span></div>
           <button type="button" className="finance-detail__receive-trigger" onClick={() => showReceipt ? setShowReceipt(false) : openReceipt()}><ArrowDownToLine size={15} /> {showReceipt ? 'Fechar formulário' : 'Registrar recebimento'}</button>
           {showReceipt && <form className="finance-detail__receive-form" onSubmit={submitReceipt}>
@@ -169,7 +171,7 @@ export function FinancePaymentModal({ companyId, saleId, installmentId, onClose,
 
         {received.length > 0 && <section className="finance-detail__history" aria-label="Histórico de baixas"><h5>Histórico de baixas</h5>{payment.movements.map((movement) => {
           const reversed = movement.kind === 'RECEIPT' && payment.movements.some((entry) => entry.reversesMovementId === movement.id);
-          return <div key={movement.id} className={`finance-detail__movement${movement.kind === 'REVERSAL' ? ' is-reversal' : ''}`}><span className="finance-detail__movement-icon">{movement.kind === 'RECEIPT' ? <Check size={13} /> : <RotateCcw size={13} />}</span><div><strong>{movement.kind === 'RECEIPT' ? 'Baixa' : 'Estorno'} de {currency(movement.amount)}</strong><span>{shortDate(movement.effectiveOn)}{movement.kind === 'RECEIPT' && movement.paymentMethod ? ` · ${methodName(movement.paymentMethod)}` : ''}{movement.reference ? ` · ${movement.reference}` : ''}</span></div>{reversed ? <span className="finance-detail__reversed">Estornado</span> : movement.kind === 'RECEIPT' ? <button type="button" aria-label={`Estornar baixa de ${currency(movement.amount)}`} title="Estornar baixa" onClick={() => { setReverseId(movement.id); setReverseReason(''); setReverseKey(crypto.randomUUID()); setShowReceipt(false); setError(''); }}><RotateCcw size={15} /></button> : null}</div>;
+          return <div key={movement.id} className={`finance-detail__movement${movement.kind === 'REVERSAL' ? ' is-reversal' : ''}`}><span className="finance-detail__movement-icon">{movement.kind === 'RECEIPT' ? <Check size={13} /> : <RotateCcw size={13} />}</span><div><strong>{movement.kind === 'RECEIPT' ? 'Baixa' : 'Estorno'} de {currency(movement.amount)}</strong><span>{shortDate(movement.effectiveOn)}{movement.kind === 'RECEIPT' && movement.paymentMethod ? ` · ${methodName(movement.paymentMethod)}` : ''}{movement.reference ? ` · ${movement.reference}` : ''}</span></div>{reversed ? <span className="finance-detail__reversed">Estornado</span> : movement.kind === 'RECEIPT' && access.can('finance.reverse') ? <button type="button" aria-label={`Estornar baixa de ${currency(movement.amount)}`} title="Estornar baixa" onClick={() => { setReverseId(movement.id); setReverseReason(''); setReverseKey(crypto.randomUUID()); setShowReceipt(false); setError(''); }}><RotateCcw size={15} /></button> : null}</div>;
         })}</section>}
         {reverseId && payment.movements.some((movement) => movement.id === reverseId) && <form className="finance-detail__reverse-form" onSubmit={(event) => { event.preventDefault(); if (reverseReason.trim().length >= 3) reverseMutation.mutate(); }}><label>Motivo do estorno<input value={reverseReason} onChange={(event) => { setReverseReason(event.target.value); setReverseKey(crypto.randomUUID()); }} minLength={3} maxLength={100} required placeholder="Descreva a correção" /></label><div><button type="button" className="button button--secondary" onClick={() => setReverseId(null)}>Cancelar</button><button type="submit" className="button button--danger" disabled={reverseMutation.isPending}>{reverseMutation.isPending ? 'Estornando...' : 'Confirmar estorno'}</button></div></form>}
       </div>}

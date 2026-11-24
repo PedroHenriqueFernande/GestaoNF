@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, companyUsers, nfseSeries, nfseSeriesAdjustments, nfseTaxProfiles, nfseTaxProfileRevisions, services, users } from '@gestaonf/database/schema';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { companies, nfseSeries, nfseSeriesAdjustments, nfseTaxProfiles, nfseTaxProfileRevisions, services, users } from '@gestaonf/database/schema';
 import { and, desc, eq, lte, or, sql } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
 import type { AddTaxRevisionInput, AdvanceSeriesInput, CreateSeriesInput, CreateTaxProfileInput, UpdateSeriesInput, UpdateTaxProfileInput } from './fiscal.schemas.js';
+import { requireMembershipPermission } from '../permissions/permission-resolver.js';
 
 type Db = DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
 type TaxSnapshot = NonNullable<typeof import('@gestaonf/database/schema').saleItems.$inferInsert.taxSnapshot>;
@@ -26,12 +27,6 @@ function rateValues(input: Pick<AddTaxRevisionInput, 'issRatePercent' | 'pisRate
 export class FiscalService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  private async requireManager(companyId: string, userId: string, db: Db = this.database.db) {
-    const [row] = await db.select({ role: companyUsers.role }).from(companyUsers)
-      .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'))).limit(1);
-    if (!row || !['OWNER', 'ADMIN'].includes(row.role)) throw new ForbiddenException('Somente proprietários e administradores podem configurar o Fiscal');
-  }
-
   async listSeries(companyId: string, environment?: 'HOMOLOGATION' | 'PRODUCTION') {
     const rows = await this.database.db.select().from(nfseSeries)
       .where(and(eq(nfseSeries.companyId, companyId), environment ? eq(nfseSeries.environment, environment) : undefined))
@@ -52,7 +47,7 @@ export class FiscalService {
   }
 
   async createSeries(companyId: string, userId: string, input: CreateSeriesInput) {
-    await this.requireManager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'POST /fiscal/series');
     const [company] = await this.database.db.select({ taxId: companies.taxId, city: companies.cityIbgeCode, country: companies.countryCode })
       .from(companies).where(eq(companies.id, companyId)).limit(1);
     if (!company || company.country !== 'BR' || !company.taxId || !company.city) {
@@ -77,7 +72,7 @@ export class FiscalService {
   }
 
   async updateSeries(companyId: string, userId: string, id: string, input: UpdateSeriesInput) {
-    await this.requireManager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'PATCH /fiscal/series/:id');
     try {
       const row = await this.database.db.transaction(async tx => {
         await tx.execute(sql`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`);
@@ -101,7 +96,7 @@ export class FiscalService {
   }
 
   async advanceSeries(companyId: string, userId: string, id: string, input: AdvanceSeriesInput) {
-    await this.requireManager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'POST /fiscal/series/:id/advance');
     const row = await this.database.db.transaction(async tx => {
       const [current] = await tx.select().from(nfseSeries).where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id))).for('update').limit(1);
       if (!current) throw new NotFoundException('Série não encontrada');
@@ -141,7 +136,7 @@ export class FiscalService {
   }
 
   async createTaxProfile(companyId: string, userId: string, input: CreateTaxProfileInput) {
-    await this.requireManager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.tax', 'POST /fiscal/tax-profiles');
     await this.validateService(companyId, input.serviceId);
     try {
       const id = await this.database.db.transaction(async tx => {
@@ -161,7 +156,7 @@ export class FiscalService {
   }
 
   async updateTaxProfile(companyId: string, userId: string, id: string, input: UpdateTaxProfileInput) {
-    await this.requireManager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.tax', 'PATCH /fiscal/tax-profiles/:id');
     try {
       await this.database.db.transaction(async tx => {
         const [current] = await tx.select().from(nfseTaxProfiles).where(and(eq(nfseTaxProfiles.companyId, companyId), eq(nfseTaxProfiles.id, id))).for('update').limit(1);
@@ -181,7 +176,7 @@ export class FiscalService {
   }
 
   async addTaxRevision(companyId: string, userId: string, id: string, input: AddTaxRevisionInput) {
-    await this.requireManager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.tax', 'POST /fiscal/tax-profiles/:id/revisions');
     try {
       await this.database.db.transaction(async tx => {
         const [profile] = await tx.select().from(nfseTaxProfiles).where(and(eq(nfseTaxProfiles.companyId, companyId), eq(nfseTaxProfiles.id, id))).for('update').limit(1);

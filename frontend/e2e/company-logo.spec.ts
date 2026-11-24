@@ -1,15 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 import { localWebOrigin } from './origin';
+import { memberCompany, ownerCompany, type MockCompany } from './companies';
 
 const companyA = '11111111-1111-4111-8111-111111111111', companyB = '22222222-2222-4222-8222-222222222222';
 const logoA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', fileNew = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const pngBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64');
 type Role = 'OWNER' | 'COLLABORATOR';
-type MockCompany = { id: string; name: string; role: Role; accountId: string; logoId: string | null };
 type State = { companies: MockCompany[]; logoStatus: number; begins: number; puts: { logoId: string | null }[]; uploads: number; failApply: boolean; accessCalls: number; keys: string[]; failBegin: number; expireBegin: number; accessStatus: number };
 
 const initialState = (logoId: string | null = logoA, role: Role = 'OWNER'): State => ({
-  companies: [{ id: companyA, name: 'Alfa Serviços', role, accountId: 'acc', logoId }], logoStatus: 200, begins: 0, puts: [], uploads: 0, failApply: false, accessCalls: 0, keys: [], failBegin: 0, expireBegin: 0, accessStatus: 200,
+  companies: [{ ...(role === 'OWNER' ? ownerCompany(companyA, 'Alfa Serviços', 'acc') : memberCompany(companyA, 'Alfa Serviços', 'acc', ['company.access'])), logoId }], logoStatus: 200, begins: 0, puts: [], uploads: 0, failApply: false, accessCalls: 0, keys: [], failBegin: 0, expireBegin: 0, accessStatus: 200,
 });
 const profile = (company: MockCompany) => ({ ...company, kind: 'PJ', legalName: null, tradeName: null, taxId: null, email: null, phone: null, street: null, number: null,
   complement: null, district: null, postalCode: null, cityName: null, cityIbgeCode: null, stateCode: null, countryCode: 'BR', municipalRegistration: null,
@@ -34,7 +34,7 @@ async function mockApi(page: Page, state: State) {
     if (url.pathname === '/auth/me') return reply({ id: 'user', name: 'Pedro', email: 'pedro@example.test', avatarId: null, profileVersion: 1 });
     if (url.pathname === '/companies' && method === 'GET') return reply(state.companies);
     if (url.pathname === '/companies' && method === 'POST') {
-      const created: MockCompany = { id: companyB, name: (request.postDataJSON() as { name: string }).name, role: 'OWNER', accountId: 'acc', logoId: null };
+      const created: MockCompany = ownerCompany(companyB, (request.postDataJSON() as { name: string }).name, 'acc');
       state.companies.push(created); return reply(profile(created), 201);
     }
     if (url.pathname === '/companies/logos/access') {
@@ -65,7 +65,7 @@ async function mockApi(page: Page, state: State) {
 
 test('header: miniatura no gatilho e no dropdown, iniciais sem foto, uma única consulta em lote', async ({ page }) => {
   const state = initialState();
-  state.companies.push({ id: companyB, name: 'Beta Consultoria', role: 'OWNER', accountId: 'acc', logoId: null });
+  state.companies.push(ownerCompany(companyB, 'Beta Consultoria', 'acc'));
   await mockApi(page, state);
   await page.goto('/empresa');
   const trigger = page.getByRole('button', { name: /Empresa ativa: Alfa Serviços/ });
@@ -235,6 +235,39 @@ test('empresa com foto: salvar o formulário mantém a imagem no header, sem pas
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Empresa ativa: Alfa Serviços Renomeada/ }).locator('.header-company__badge img')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __logoLost: boolean }).__logoLost)).toBe(false);
+});
+
+test('salvar a empresa mantém as permissões da lista enquanto recarrega os dados', async ({ page }) => {
+  const state = initialState(null);
+  const current = memberCompany(companyA, 'Alfa Serviços', 'acc', ['company.edit'], 'OWNER');
+  const stale = memberCompany(companyA, 'Alfa Renomeada', 'acc', ['company.edit', 'sales.access'], 'OWNER');
+  state.companies = [current];
+  let patched = false, releaseRefresh!: () => void;
+  const refresh = new Promise<void>(resolve => { releaseRefresh = resolve; });
+  await mockApi(page, state);
+  await page.route('**:4030/companies/current', route => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    current.name = stale.name;
+    patched = true;
+    return route.fulfill({ json: profile(stale), headers: { 'access-control-allow-origin': localWebOrigin, 'access-control-allow-credentials': 'true' } });
+  });
+  await page.route('**:4030/companies', async route => {
+    if (patched && route.request().method() === 'GET') await refresh;
+    await route.fallback();
+  });
+
+  try {
+    await page.goto('/empresa');
+    await page.getByRole('button', { name: 'Abrir cadastro de Alfa Serviços' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel(/Nome de exibição/).fill(stale.name);
+    await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
+    await expect(page.getByRole('button', { name: /Empresa ativa: Alfa Renomeada/ })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Módulos' }).getByRole('link', { name: 'Portal de Serviços' })).toHaveCount(0);
+  } finally {
+    releaseRefresh();
+  }
+  await expect(page.getByText('Dados da empresa atualizados com sucesso.')).toBeVisible();
 });
 
 test('header: relógio do navegador adiantado não renova os links em laço', async ({ page }) => {

@@ -7,8 +7,10 @@ import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { and, eq, lt } from 'drizzle-orm';
 import * as s from '@gestaonf/database/schema';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers } from './permission-fixtures.js';
 import { SalesService } from '../src/sales/sales.service.js';
 import type { DatabaseService } from '../src/database/database.module.js';
+import { resolveActor } from '../src/permissions/permission-resolver.js';
 import type { NfseSnapshot } from '../src/fiscal/nfse.types.js';
 import { NfsePreviewService } from '../src/fiscal/nfse-preview.service.js';
 import { NfseIssuanceService } from '../src/fiscal/nfse-issuance.service.js';
@@ -61,12 +63,15 @@ export async function createWorld(db: TestDb) {
     { accountId, name: 'Empresa B', kind: 'PJ' },
   ]).returning()).map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: otherCompany, userId: other, role: 'OWNER' }]);
+  await grantLegacyMembers(db);
+  const actor = await resolveActor(db, owner, company);
+  if (!actor) throw new Error('Vínculo do titular inválido na fixture fiscal');
   const [customer] = await db.insert(s.customers).values({ companyId: company, kind: 'PF', name: 'Cliente Teste', taxId: CUSTOMER_TAX_ID, countryCode: 'BR' }).returning();
   const [service] = await db.insert(s.services).values({ companyId: company, name: 'Consultoria', nationalTaxCode: NATIONAL_TAX_CODE }).returning();
   const [series] = await db.insert(s.nfseSeries).values({ companyId: company, environment: 'HOMOLOGATION', issuerTaxIdSnapshot: issuerTaxId, municipalityIbgeCode: CITY, seriesNumber: 1, initialNumber: 1n, nextNumber: 1n, isDefault: true, createdByUserId: owner }).returning();
   const [secondService] = await db.insert(s.services).values({ companyId: company, name: 'Treinamento', nationalTaxCode: '100102' }).returning();
   const [certificate] = await db.insert(s.companyFiscalCertificates).values({ companyId: company, subjectTaxId: issuerTaxId, fingerprintSha256: 'a'.repeat(64), serialNumber: '01', subjectSummary: 'CN=Teste', issuerSummary: 'CN=Teste', notBefore: new Date(Date.now() - 86400000), notAfter: new Date(Date.now() + 365 * 86400000), encryptedPayload: 'x', encryptionKeyId: 'v1', createdByUserId: owner }).returning();
-  return { owner, other, company, otherCompany, customer, service, secondService, series, issuerTaxId, certificateId: certificate.id };
+  return { owner, actor, other, company, otherCompany, customer, service, secondService, series, issuerTaxId, certificateId: certificate.id };
 }
 
 /** Confirmed sale built through the real SalesService, so snapshots and totals are authentic. */
@@ -74,12 +79,12 @@ export const yesterday = () => new Date(Date.now() - 86400000).toISOString().sli
 export async function createConfirmedSale(db: TestDb, world: Awaited<ReturnType<typeof createWorld>>, lines: Array<{ serviceId: string; amount: string }> = [{ serviceId: world.service.id, amount: '100.00' }]) {
   const sales = salesService(db);
   const total = lines.reduce((sum, line) => sum + Math.round(Number(line.amount) * 100), 0);
-  const draft = await sales.create(world.company, world.owner, randomUUID(), {
+  const draft = await sales.create(world.actor, randomUUID(), {
     customerId: world.customer.id, soldOn: yesterday(),
     items: lines.map(line => ({ serviceId: line.serviceId, quantity: '1.0000', unitPrice: line.amount, discountAmount: '0.00' })),
     installments: [{ paymentMethod: 'PIX', amount: (total / 100).toFixed(2), dueOn: '2027-12-05' }],
-  } as never);
-  await sales.confirm(world.company, draft.id, world.owner, { expectedVersion: draft.version, initialReceipts: [] });
+  }, 'test:nfse-create');
+  await sales.confirm(world.actor, draft.id, { expectedVersion: draft.version, initialReceipts: [] }, 'test:nfse-confirm');
   return sales.get(world.company, draft.id);
 }
 

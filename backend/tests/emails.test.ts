@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers } from './permission-fixtures.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -66,6 +67,7 @@ beforeEach(async () => {
   const accountId = await testAccount(db, owner);
   [company, otherCompany] = (await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning()).map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: otherCompany, userId: owner, role: 'OWNER' }, { companyId: company, userId: collaborator, role: 'COLLABORATOR' }]);
+  await grantLegacyMembers(db);
   // All tests replace the actual provider transport, preventing any outbound email.
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ id: randomUUID() }), { status: 200 })));
 });
@@ -88,6 +90,11 @@ describe('Resend: base transacional de e-mails', () => {
     expect((await http('GET', '/emails/capabilities', undefined, collaborator, otherCompany)).statusCode).toBe(403);
     expect((await http('POST', '/emails', input)).statusCode).toBe(400);
     expect((await http('POST', '/emails', { ...input, from: 'spoof@example.test' }, owner, company, randomUUID())).statusCode).toBe(400);
+  });
+  it('capacidades e histórico pertencem ao titular (Spec 4.11)', async () => {
+    const caps = await http('GET', '/emails/capabilities');
+    expect(caps.json()).toMatchObject({ canSend: true });
+    expect((await http('GET', '/emails/capabilities', undefined, collaborator)).json()).toMatchObject({ statusCode: 403, code: 'ACCOUNT_OWNER_REQUIRED' });
   });
   it('retorna 202, não envia na requisição e escapa HTML em template com texto', async () => {
     const response = await http('POST', '/emails', input, owner, company, randomUUID());
@@ -170,7 +177,7 @@ describe('Resend: base transacional de e-mails', () => {
   it('isola histórico por empresa, protege conteúdo e respeita revogação antes do worker', async () => {
     const queued = await emails.send(ctx(), input, randomUUID());
     expect((await http('GET', `/emails/${queued.id}`, undefined, owner, otherCompany)).statusCode).toBe(404);
-    expect((await http('GET', `/emails/${queued.id}`, undefined, collaborator)).statusCode).toBe(404);
+    expect((await http('GET', `/emails/${queued.id}`, undefined, collaborator)).json()).toMatchObject({ statusCode: 403, code: 'ACCOUNT_OWNER_REQUIRED' });
     await db.update(s.companyUsers).set({ status: 'INACTIVE' }).where(eq(s.companyUsers.userId, owner));
     await dispatcher.dispatchOne(); expect((await row(queued.id)).lastErrorCode).toBe('company_access_revoked'); expect(fetch).not.toHaveBeenCalled();
   });
@@ -186,7 +193,8 @@ describe('Resend: base transacional de e-mails', () => {
     await dispatcher.dispatchOne(); expect((await row(queued.id)).lastErrorCode).toBe('configuration_changed');
     provider.config.from = 'GestãoNF <onboarding@resend.dev>'; provider.config.testMode = true;
     const another = await emails.send(ctx(), input, randomUUID());
-    await db.update(s.companyUsers).set({ role: 'COLLABORATOR' }).where(eq(s.companyUsers.userId, owner));
+    // Spec 4.11: MESSAGE/TEST só saem se quem criou ainda for o titular. O papel legado não decide mais.
+    await db.update(s.accounts).set({ ownerUserId: collaborator }).where(eq(s.accounts.ownerUserId, owner));
     await dispatcher.dispatchOne(); expect((await row(another.id)).lastErrorCode).toBe('send_permission_revoked'); expect(fetch).not.toHaveBeenCalled();
   });
   it('rejeição em produção bloqueia próximos envios e mensagens já enfileiradas', async () => {

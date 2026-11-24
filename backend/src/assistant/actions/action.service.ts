@@ -12,6 +12,7 @@ import type { OperationResult } from '../tools/types.js';
 import { VERSION_CONFLICT_MESSAGE } from '../tools/write-support.js';
 import { buildSummary } from './action-summary.js';
 import { translateError, type FailureCause } from './error-translator.js';
+import { assertPolicy, toolPolicy } from '../../permissions/actor.js';
 
 export type ProposedOperation = NeroProposedOperation;
 export type ProposeResult = { ok: true; actionId: string; summary: string } | { ok: false; cause: FailureCause };
@@ -66,7 +67,8 @@ export class ActionService {
     for (const [index, operation] of operations.entries()) {
       const handler = this.registry.write(operation.tool);
       try {
-        if (!handler || !handler.allowed(ctx)) throw new ForbiddenException('Operação não permitida para o seu usuário');
+        if (!handler) throw new ForbiddenException('Operação não permitida para o seu usuário');
+        assertPolicy(ctx.actor, toolPolicy(handler.permission), `tool:${handler.name}`);
         const args = handler.schema.parse(resolveRefs(operation.args, results));
         let expectedVersion: string | undefined;
         // A chave é calculada uma única vez, dos argumentos, e é a mesma gravada na proposta e conferida na confirmação.

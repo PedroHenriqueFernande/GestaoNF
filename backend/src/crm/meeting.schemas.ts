@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { scopeQueryFields } from '../auth/company-scope.guard.js';
 import { idSchema, pageFields } from './crm.schemas.js';
 
 const nullableText = (max: number) => z.string().max(max).transform((value) => value.trim() || null).nullable();
@@ -57,12 +58,20 @@ export const meetingStatusSchema = z.strictObject({
 }).refine((value) => value.status === 'CANCELED' || !value.cancellationReason, 'Motivo permitido somente no cancelamento')
   .refine((value) => value.status === 'COMPLETED' || (!value.outcomeNotes && !value.nextSteps), 'Resultado e próximos passos são permitidos somente ao concluir');
 
-export const meetingListSchema = z.strictObject({
+const meetingListFields = {
   ...pageFields, from: instant, to: instant, assignedUserId: idSchema.optional(), contactId: idSchema.optional(),
   opportunityId: idSchema.optional(), status: z.enum(statuses).optional(), modality: z.enum(['IN_PERSON', 'ONLINE']).optional(),
   search: z.string().trim().min(1).max(200).optional(),
-}).refine((value) => value.to > value.from, { message: 'Período invertido', path: ['to'] })
-  .refine((value) => value.to.getTime() - value.from.getTime() <= 366 * 24 * 60 * 60 * 1000, { message: 'O período máximo é de 366 dias', path: ['to'] });
+};
+const orderedPeriod = (value: { from: Date; to: Date }) => value.to > value.from;
+const maximumPeriod = (value: { from: Date; to: Date }) => value.to.getTime() - value.from.getTime() <= 366 * 24 * 60 * 60 * 1000;
+const invalidPeriod = { message: 'Período invertido', path: ['to'] };
+const periodTooLong = { message: 'O período máximo é de 366 dias', path: ['to'] };
+export const meetingListSchema = z.strictObject(meetingListFields).refine(orderedPeriod, invalidPeriod).refine(maximumPeriod, periodTooLong);
+const { contactId: _contact, opportunityId: _opportunity, ...meetingOverviewFields } = meetingListFields;
+export const meetingListOverviewSchema = z.strictObject({ ...scopeQueryFields, ...meetingOverviewFields })
+  .refine(orderedPeriod, invalidPeriod).refine(maximumPeriod, periodTooLong)
+  .transform(({ companies: _companies, companyIds: _companyIds, ...filters }) => filters);
 
 export const conflictSchema = z.strictObject({
   assignedUserId: idSchema, ...period, excludeMeetingId: idSchema.optional(),

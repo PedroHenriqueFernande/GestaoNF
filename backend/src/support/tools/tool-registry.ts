@@ -1,9 +1,11 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.module.js';
+import { NOT_ALLOWED_GUIDANCE, toolAllowed } from '../../permissions/actor.js';
 import { ReportsReadService } from '../../reports/reports-read.service.js';
 import { SalesService } from '../../sales/sales.service.js';
 import { SupportHelpCatalog } from '../help-catalog.js';
 import { SupportActionsService } from '../support-actions.service.js';
+import type { SupportContext } from '../support-conversations.service.js';
 import { isSafeBlock } from '../support-blocks.js';
 import { httpMessage } from '../support-errors.js';
 import { customerDraftTool } from './customer-draft.tool.js';
@@ -29,11 +31,16 @@ export class SupportToolRegistry {
     this.tools = new Map(all.map((tool) => [tool.definition.name, tool]));
   }
 
-  definitions() { return [...this.tools.values()].map((tool) => tool.definition); }
+  definitions(ctx: SupportContext) {
+    return [...this.tools.values()].filter((tool) => toolAllowed(ctx.actor, tool.permission)).map((tool) => tool.forContext?.(ctx) ?? tool.definition);
+  }
+  /** Todas as ferramentas registradas, sem filtro (fitness 3). */
+  all() { return [...this.tools.values()]; }
 
   async run(ctx: ToolContext, name: string, rawArguments: string): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) return { output: { ok: false, erro: 'Ferramenta inexistente.' }, blocks: [] };
+    if (!toolAllowed(ctx.actor, tool.permission)) return { output: { ok: false, erro: NOT_ALLOWED_GUIDANCE }, blocks: [] };
     let parsed: unknown;
     try { parsed = JSON.parse(rawArguments); } catch { return { output: { ok: false, erro: 'Argumentos em JSON inválido.' }, blocks: [] }; }
     const args = tool.schema.safeParse(parsed);

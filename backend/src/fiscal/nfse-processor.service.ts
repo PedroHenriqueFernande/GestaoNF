@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import { companies, companyUsers, integrationOutbox, nfseDocuments, nfseDps, nfseEmissionRequests, nfseEvents, nfseSeries, nfseTransmissionAttempts } from '@gestaonf/database/schema';
+import { integrationOutbox, nfseDocuments, nfseDps, nfseEmissionRequests, nfseEvents, nfseSeries, nfseTransmissionAttempts } from '@gestaonf/database/schema';
 import { DatabaseService } from '../database/database.module.js';
 import { R2StorageService } from '../files/r2-storage.service.js';
 import { CertificateService } from './certificate.service.js';
 import { buildDps, emissionTimestamp, hash, parseFiscalXml, signDps, validateFiscalXml } from './nfse-contract.js';
 import { NationalNfseClient, classifyResponse, extractOfficialXml, nationalErrors, rawBodySummary, transportRefusal } from './nfse-national.client.js';
 import type { NfseSnapshot } from './nfse.types.js';
+import { assertRequesterAllowed } from './nfse-requester.js';
 
 const NS = 'http://www.sped.fazenda.gov.br/nfse';
 type Dps = typeof nfseDps.$inferSelect;
@@ -49,9 +50,8 @@ export class NfseProcessorService {
           return 'UNKNOWN';
         }
         const [request] = await this.database.db.select().from(nfseEmissionRequests).where(and(eq(nfseEmissionRequests.companyId, companyId), eq(nfseEmissionRequests.id, dps.emissionId!))).limit(1);
-        const [member] = request ? await this.database.db.select().from(companyUsers).where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, request.createdByUserId), eq(companyUsers.status, 'ACTIVE'))) : [];
-        const [company] = await this.database.db.select({ status: companies.status }).from(companies).where(eq(companies.id, companyId)).limit(1);
-        if (!member || !['OWNER', 'ADMIN'].includes(member.role) || company?.status !== 'ACTIVE') throw new Error('O solicitante não possui mais permissão fiscal na empresa ativa.');
+        if (!request) throw new Error('O solicitante não possui mais permissão fiscal na empresa ativa.');
+        await assertRequesterAllowed(this.database.db, companyId, request.createdByUserId, request.kind === 'SUBSTITUTION' ? 'sales.nfse_edit' : 'sales.nfse_issue');
         const snapshot = dps.snapshot as unknown as NfseSnapshot;
         const group = snapshot.groups.find(g => g.key === dps.groupKey);
         if (!group) throw new Error('Grupo fiscal não encontrado no snapshot.');

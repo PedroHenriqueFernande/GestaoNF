@@ -6,6 +6,7 @@ import type { ToolSpec } from './tool-types.js';
 
 export function findSaleTool(sales: SalesService): ToolSpec<{ busca: string }> {
   return {
+    permission: 'sales.access',
     definition: {
       type: 'function', name: 'localizar_venda_para_emissao', strict: true,
       description: 'Procura pedidos confirmados pelo código do pedido ou nome do cliente e mostra botões para abrir o pedido, onde fica a emissão da NFS-e. Não emite a nota.',

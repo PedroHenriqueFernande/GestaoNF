@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers } from './permission-fixtures.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -92,6 +93,7 @@ beforeEach(async () => {
     { companyId: companyA, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' },
     { companyId: companyA, userId: collaborator, role: 'COLLABORATOR' }, { companyId: companyA, userId: otherCollaborator, role: 'COLLABORATOR' },
   ]);
+  await grantLegacyMembers(db);
 });
 
 describe('núcleo CRM em PostgreSQL e HTTP', () => {
@@ -160,16 +162,16 @@ describe('núcleo CRM em PostgreSQL e HTTP', () => {
     await expect(cards.stage(context(), a.opportunityId, { expectedVersion: 1, stageId: stage.id })).rejects.toMatchObject({ status: 400 });
     await expect(db.update(s.crmOpportunities).set({ stageId: stage.id }).where(eq(s.crmOpportunities.id, a.opportunityId))).rejects.toThrow();
   });
-  it('colaborador vê perfil compartilhado, mas somente suas negociações, origens e históricos', async () => {
+  it('colaborador vê as negociações, origens e históricos de toda a empresa (Spec 10), mas só atribui com crm.assign', async () => {
     const a = await capture.create(context(), createLeadSchema.parse({ lead: { name: 'Compartilhado', assignedUserId: collaborator }, capture: { utmCampaign: 'Minha campanha' } }), randomUUID());
     const b = await capture.addEntry(context(), a.leadId, createEntrySchema.parse({ assignedUserId: otherCollaborator, capture: { utmCampaign: 'Campanha privada' } }), randomUUID());
     await leads.addNote(context(), a.leadId, { opportunityId: b.opportunityId, note: 'Nota privada' }, randomUUID());
-    expect((await cards.list(context(collaborator), listInput())).items.map((c) => c.id)).toEqual([a.opportunityId]);
-    expect((await leads.entries(context(collaborator), a.leadId, page)).items.map((e) => e.id)).toEqual([a.entryId]);
-    expect((await history.list(context(collaborator), a.leadId, page)).items.some((h) => h.note === 'Nota privada')).toBe(false);
-    expect((await leads.list(context(collaborator), listInput({ utmCampaign: 'Campanha privada' }))).total).toBe(0);
-    await expect(cards.get(context(collaborator), b.opportunityId)).rejects.toMatchObject({ status: 404 });
-    await expect(leads.update(context(otherCollaborator), a.leadId, { expectedVersion: 1, name: 'Indevido' })).rejects.toMatchObject({ status: 403 });
+    expect(new Set((await cards.list(context(collaborator), listInput())).items.map((c) => c.id))).toEqual(new Set([a.opportunityId, b.opportunityId])); // Spec 10: visibilidade da empresa inteira
+    expect(new Set((await leads.entries(context(collaborator), a.leadId, page)).items.map((e) => e.id))).toEqual(new Set([a.entryId, b.entryId])); // Spec 10
+    expect((await history.list(context(collaborator), a.leadId, page)).items.some((h) => h.note === 'Nota privada')).toBe(true); // Spec 10
+    expect((await leads.list(context(collaborator), listInput({ utmCampaign: 'Campanha privada' }))).total).toBe(1); // Spec 10
+    await expect(cards.get(context(collaborator), b.opportunityId)).resolves.toMatchObject({ id: b.opportunityId }); // Spec 10
+    await expect(leads.update(context(otherCollaborator), a.leadId, { expectedVersion: 1, name: 'Editado por outro' })).resolves.toMatchObject({ assignedUserId: collaborator }); // Spec 10: crm.edit basta; o responsável não muda
     await expect(cards.update(context(collaborator), a.opportunityId, { expectedVersion: 1, assignedUserId: otherCollaborator })).rejects.toMatchObject({ status: 403 });
   });
   it('bloqueia reenvio após desativação de acesso e atribuição a usuário inativo', async () => {
@@ -240,7 +242,7 @@ describe('núcleo CRM em PostgreSQL e HTTP', () => {
     await capture.create(context(), input, randomUUID()); await capture.create(context(), input, randomUUID());
     expect((await counts()).contacts).toBe(2);
     expect((await leads.candidates(context(), { email: 'test@example.test' })).items).toHaveLength(2);
-    expect((await leads.candidates(context(collaborator), { email: 'test@example.test' })).items).toHaveLength(0);
+    expect((await leads.candidates(context(collaborator), { email: 'test@example.test' })).items).toHaveLength(2); // Spec 10
   });
   it('períodos respeitam fuso da empresa e filtros ignoram curingas fornecidos', async () => {
     const a = await capture.create(context(), leadInput('Lead 100%_real'), randomUUID());

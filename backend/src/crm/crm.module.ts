@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { CrmController } from './crm.controller.js';
+import { CrmOverviewController } from './crm-overview.controller.js';
 import { CrmPolicyService } from './crm-policy.service.js';
 import { CrmHistoryService } from './crm-history.service.js';
 import { LeadCaptureService } from './lead-capture.service.js';
@@ -17,7 +18,7 @@ import { ProposalReadService } from './proposal-read.service.js';
 import { ProposalDocumentService } from './proposal-document.service.js';
 
 @Module({
-  imports: [AuthModule, SalesModule, CustomersModule], controllers: [CrmController, MeetingsController, ProposalsController],
+  imports: [AuthModule, SalesModule, CustomersModule], controllers: [CrmController, CrmOverviewController, MeetingsController, ProposalsController],
   providers: [CrmPolicyService, CrmHistoryService, LeadCaptureService, LeadsService, OpportunitiesService, MeetingsService, MeetingReminderService, ProposalsService, ProposalReadService, ProposalDocumentService],
   exports: [CrmPolicyService, LeadCaptureService, LeadsService, OpportunitiesService, MeetingsService, MeetingReminderService, ProposalsService],
 })

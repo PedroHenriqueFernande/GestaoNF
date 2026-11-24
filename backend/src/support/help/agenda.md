@@ -24,4 +24,4 @@ Em **Preferências** você define a **Antecedência padrão** dos lembretes, o *
 - "O término deve ser posterior ao início.": corrija os horários. Eles seguem o fuso da empresa.
 - "O link precisa começar com https:// ou http://.": cole o endereço completo da reunião online.
 - Não acho a reunião: a agenda mostra uma semana por vez. Navegue pelas setas e confira os filtros.
-- Alterar **Preferências** pode exigir um papel com mais permissão na empresa (proprietário, administrador ou gerente).
+- Alterar **Preferências** está disponível para quem tem a permissão **Configurar Agenda**; sem ela, as preferências aparecem só para consulta. Agendar, remarcar e concluir reuniões exigem **Gerenciar reuniões**, e trocar o responsável exige **Alterar responsável**.

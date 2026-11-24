@@ -25,4 +25,4 @@ As situações comerciais são: **Novo lead**, **Em contato**, **Qualificado**, 
 - "Informe um valor estimado válido.": use só números, por exemplo 1500,00.
 - Quando uma reunião é agendada para uma negociação, ela pode passar automaticamente para **Qualificado**, conforme as **Preferências** da Agenda.
 - Não acho um lead: confira se a busca não está filtrada por uma etapa ou período. Clique em **Limpar filtros** ou em **Limpar**.
-- Quem não é proprietário ou administrador pode ver apenas os registros atribuídos a si.
+- Quem tem a permissão **Acessar Leads e oportunidades** vê todos os registros da empresa. Cadastrar, alterar e trocar o responsável dependem de **Cadastrar leads**, **Alterar leads e negociações** e **Alterar responsável**.

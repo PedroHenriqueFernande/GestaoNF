@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { companies } from '@gestaonf/database/schema';
 import { eq } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
-import type { CrmContext } from '../crm/crm.schemas.js';
+import type { Actor } from '../permissions/actor.js';
 import { ReportsReadService } from './reports-read.service.js';
 import { reportFilename, reportPdfDefinitions, type PdfSummaryItem } from './report-pdf-definitions.js';
 import { formatCell, renderReportPdf } from './reports-pdf.js';
@@ -26,10 +26,10 @@ const brDate = (value: string) => value.split('-').reverse().join('/');
 export class ReportsPdfService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(ReportsReadService) private readonly reader: ReportsReadService) {}
 
-  async create(ctx: CrmContext, type: ReportType, input: ReportInput) {
+  async create(actor: Actor, type: ReportType, input: ReportInput, entry: string) {
     const maxRows = reportsPdfMaxRows();
-    const data = await this.reader.readAll(ctx, type, input, maxRows);
-    const [company] = await this.database.db.select({ name: companies.name }).from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
+    const data = await this.reader.readAll(actor, type, input, maxRows, entry);
+    const [company] = await this.database.db.select({ name: companies.name }).from(companies).where(eq(companies.id, actor.companyId)).limit(1);
     const definition = reportPdfDefinitions[type];
     const buffer = await renderReportPdf({
       title: definition.title,

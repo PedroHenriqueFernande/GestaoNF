@@ -8,6 +8,7 @@ import { CertificateService } from './certificate.service.js';
 import { dpsIdentifier } from './nfse-contract.js';
 import { NationalNfseClient, nationalErrors } from './nfse-national.client.js';
 import { NfsePreviewService } from './nfse-preview.service.js';
+import { requireMembershipPermission, requireMembershipPolicy } from '../permissions/permission-resolver.js';
 
 export type ReadinessCheck = { code: string; label: string; status: 'OK' | 'WARNING' | 'ERROR'; message: string };
 export type ConnectionResult = { ok: boolean; outcome: 'ACCEPTED' | 'REFUSED' | 'UNEXPECTED' | 'UNREACHABLE'; httpStatus: number | null; probe: string; message: string };
@@ -22,7 +23,7 @@ export class NfseReadinessService {
     @Inject(CertificateService) private readonly certificates: CertificateService, @Inject(NationalNfseClient) private readonly client: NationalNfseClient) {}
 
   async check(companyId: string, userId: string) {
-    await this.previews.manager(companyId, userId);
+    await requireMembershipPolicy(this.database.db, userId, companyId, { kind: 'any', keys: ['sales.nfse_issue', 'sales.nfse_edit', 'fiscal.series'] }, 'GET /fiscal/nfse/readiness');
     const checks: ReadinessCheck[] = [];
     const add = (code: string, label: string, status: ReadinessCheck['status'], message: string) => checks.push({ code, label, status, message });
 
@@ -81,7 +82,7 @@ export class NfseReadinessService {
 
   /** Read-only probe: asks for a DPS number that was never used. It proves URL, TLS, certificate and permission without consuming a number. */
   async connection(companyId: string, userId: string): Promise<ConnectionResult> {
-    await this.previews.manager(companyId, userId);
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'POST /fiscal/nfse/readiness/connection');
     const [company] = await this.database.db.select({ taxId: companies.taxId, city: companies.cityIbgeCode }).from(companies).where(eq(companies.id, companyId)).limit(1);
     const series = this.selectSeries(await this.compatibleSeries(companyId, company.taxId, company.city));
     if (!series) throw new UnprocessableEntityException({ code: 'SERIES_REQUIRED', message: 'Configure uma série padrão de homologação para fazer o teste de conexão.' });

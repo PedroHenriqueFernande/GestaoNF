@@ -10,6 +10,7 @@ const date = z.string().regex(/^(19|20)\d{2}-\d{2}-\d{2}$/);
 
 export function reportPdfTool(reports: ReportsReadService): ToolSpec<Args> {
   return {
+    permission: ['reports.export', 'customers.export'],
     definition: {
       type: 'function', name: 'gerar_relatorio_pdf', strict: true,
       description: `Gera o link de download do PDF de um relatório. Tipos: ${reportTypes.map((type) => `${type} (${reportTitles[type]})`).join(', ')}. ` +
@@ -28,10 +29,9 @@ export function reportPdfTool(reports: ReportsReadService): ToolSpec<Args> {
     async run(ctx, { tipo, de, ate }) {
       const filters = reportFiltersSchema.safeParse({ ...(de && ate ? { from: de, to: ate } : {}), limit: 1 });
       if (!filters.success) return { output: { ok: false, erro: issues(filters.error).join('; ') }, blocks: [] };
-      const crm = { companyId: ctx.companyId, userId: ctx.userId };
-      const result = await reports.read(crm, tipo, filters.data);
+      const result = await reports.read(ctx.actor, tipo, filters.data, 'support:report-pdf');
       const maxRows = reportsPdfMaxRows();
-      if (await reports.countPdfRows(crm, tipo, filters.data) > maxRows) {
+      if (await reports.countPdfRows(ctx.actor, tipo, filters.data, 'support:report-pdf') > maxRows) {
         return { output: { ok: false, erro: `O PDF aceita até ${maxRows} linhas. Reduza o período ou refine os filtros.` }, blocks: [] };
       }
       return {

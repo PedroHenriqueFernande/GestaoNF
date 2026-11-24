@@ -3,9 +3,11 @@ import type { FormEvent, ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { AlertCircle, ArrowLeft, ArrowRight, BarChart3, ChevronLeft, ChevronRight, Download, FileDown, Filter, RefreshCw } from 'lucide-react';
+import { REPORT_OPTION_PERMISSION, reportExportPermission } from '@gestaonf/permissions';
+import { usePermissions } from '../permissions/usePermissions';
 import { api, type ReportFilters, type ReportResult, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
-import { money, monthPeriod, reportDate, reports, statusLabels, type ReportDefinition } from './report-definitions';
+import { money, monthPeriod, reportDate, statusLabels, visibleReports, type ReportDefinition } from './report-definitions';
 import { saveBlob, reportPdfFilename } from '../support/download';
 import './reports.css';
 
@@ -17,13 +19,17 @@ export function ReportsPage({ user }: { user: User }) {
   useEffect(()=>{if(companies.data && !companies.data.some(c=>c.id===companyId)) setCompanyId(companies.data[0]?.id??'');},[companies.data,companyId]);
   useEffect(()=>{if(companyId) sessionStorage.setItem('gestaonf.companyId',companyId);},[companyId]);
   const logout=useMutation({mutationFn:api.logout,onSuccess:()=>{sessionStorage.removeItem('gestaonf.companyId');client.clear();window.location.assign('/relatorios');}});
-  const definition=reports.find(r=>r.slug===slug);
+  const access=usePermissions(companyId);
+  const visible=visibleReports(access.can);
+  const definition=visible.find(r=>r.slug===slug);
+  /** A decisão sobre o relatório só vale com as permissões da empresa carregadas. */
+  const resolving=!companies.data || !companies.data.some(c=>c.id===companyId);
   return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onCompanyChange={setCompanyId} onLogout={()=>logout.mutate()} loggingOut={logout.isPending}>
     <main id="workspace-main" className="reports-main" tabIndex={-1}>
       {!slug ? <>
         <header className="reports-header"><div><span className="eyebrow">GESTÃO / RELATÓRIOS</span><h1>Relatórios</h1><p>Consulte os resultados da sua empresa e exporte seus cadastros.</p></div><span className="reports-header__icon"><BarChart3 size={28}/></span></header>
-        <section className="reports-grid" aria-label="Relatórios disponíveis">{reports.map(({slug,title,description,icon:Icon,catalog})=><Link className="report-card" key={slug} to={`/relatorios/${slug}`}><span className="report-card__icon"><Icon size={23}/></span><div><h2>{title}</h2><p>{description}</p></div><span className="report-card__footer">{catalog ? 'Consultar e exportar CSV' : 'Ver relatório'}<ArrowRight size={16}/></span></Link>)}</section>
-      </> : !definition ? <div className="reports-state"><AlertCircle size={25}/><h1>Relatório não encontrado</h1><Link to="/relatorios">Voltar aos relatórios</Link></div>
+        <section className="reports-grid" aria-label="Relatórios disponíveis">{!visible.length ? <p className="reports-state">Nenhum relatório disponível para o seu usuário.</p> : visible.map(({slug,title,description,icon:Icon,catalog})=><Link className="report-card" key={slug} to={`/relatorios/${slug}`}><span className="report-card__icon"><Icon size={23}/></span><div><h2>{title}</h2><p>{description}</p></div><span className="report-card__footer">{catalog ? 'Consultar e exportar CSV' : 'Ver relatório'}<ArrowRight size={16}/></span></Link>)}</section>
+      </> : resolving ? <div className="reports-state" role="status"><RefreshCw className="is-spinning" size={22}/>Carregando relatório...</div> : !definition ? <div className="reports-state"><AlertCircle size={25}/><h1>Relatório não encontrado</h1><Link to="/relatorios">Voltar aos relatórios</Link></div>
         : profile.isError ? <div className="reports-state" role="alert"><p>Não foi possível carregar a empresa.</p><button className="button button--secondary" onClick={()=>profile.refetch()}>Tentar novamente</button></div>
         : profile.data ? <ReportDetail key={`${companyId}-${definition.type}`} definition={definition} companyId={companyId} timezone={profile.data.timezone}/>
         : <div className="reports-state" role="status"><RefreshCw className="is-spinning" size={22}/>Carregando relatório...</div>}
@@ -32,6 +38,8 @@ export function ReportsPage({ user }: { user: User }) {
 }
 
 function ReportDetail({definition:d,companyId,timezone}:{definition:ReportDefinition;companyId:string;timezone:string}) {
+  const access=usePermissions(companyId);
+  const canExport=access.can(reportExportPermission(d.type));
   const initial:ReportFilters={status:'ALL',...(d.catalog ? {} : monthPeriod(timezone))};
   const [draft,setDraft]=useState<ReportFilters>(initial),[applied,setApplied]=useState<ReportFilters>(initial);
   const [cursors,setCursors]=useState<Array<string|undefined>>([undefined]);
@@ -56,13 +64,13 @@ function ReportDetail({definition:d,companyId,timezone}:{definition:ReportDefini
   const total=Number(summary?.[d.rate ? d.type==='loss-rate' ? 'lost' : 'disqualified' : d.type==='lead-entries' ? 'entries' : d.type==='closed-services' ? 'saleCount' : d.type==='service-receipts' ? 'movementCount' : 'total']??0);
   return <>
     <Link className="reports-back" to="/relatorios"><ArrowLeft size={15}/>Todos os relatórios</Link>
-    <header className="reports-header"><div><span className="eyebrow">{d.catalog ? 'CADASTROS' : d.crm || d.type==='meetings' ? 'RELACIONAMENTO' : 'VENDAS E RECEBIMENTOS'}</span><h1>{d.title}</h1><p>{d.description}</p></div><div className="reports-actions"><button className="button button--secondary" aria-label="Atualizar relatório" disabled={result.isFetching} onClick={()=>result.refetch()}><RefreshCw size={16} className={result.isFetching ? 'is-spinning' : ''}/></button>{pdf.isError && <span role="alert" className="reports-pdf-error">{pdf.error.message}</span>}<button className="button button--secondary" disabled={pdf.isPending || result.isPending || result.isError} onClick={()=>pdf.mutate()}><FileDown size={16}/>{pdf.isPending ? 'Gerando PDF...' : 'Exportar PDF'}</button>{d.catalog && <button className="button button--primary" disabled={csv.isPending || result.isPending || result.isError} onClick={()=>csv.mutate()}><Download size={16}/>{csv.isPending ? 'Exportando...' : 'Exportar CSV'}</button>}</div></header>
+    <header className="reports-header"><div><span className="eyebrow">{d.catalog ? 'CADASTROS' : d.crm || d.type==='meetings' ? 'RELACIONAMENTO' : 'VENDAS E RECEBIMENTOS'}</span><h1>{d.title}</h1><p>{d.description}</p></div><div className="reports-actions"><button className="button button--secondary" aria-label="Atualizar relatório" disabled={result.isFetching} onClick={()=>result.refetch()}><RefreshCw size={16} className={result.isFetching ? 'is-spinning' : ''}/></button>{pdf.isError && <span role="alert" className="reports-pdf-error">{pdf.error.message}</span>}{canExport && <button className="button button--secondary" disabled={pdf.isPending || result.isPending || result.isError} onClick={()=>pdf.mutate()}><FileDown size={16}/>{pdf.isPending ? 'Gerando PDF...' : 'Exportar PDF'}</button>}{canExport && d.catalog && <button className="button button--primary" disabled={csv.isPending || result.isPending || result.isError} onClick={()=>csv.mutate()}><Download size={16}/>{csv.isPending ? 'Exportando...' : 'Exportar CSV'}</button>}</div></header>
     <section className="reports-filters" aria-label="Filtros do relatório"><div className="reports-filters__title"><Filter size={16}/><h2>Filtrar relatório</h2>{d.catalog && <span>Período de cadastro opcional</span>}</div><form onSubmit={apply}>
       <label>De<input type="date" value={draft.from??''} onChange={e=>update('from',e.target.value)} required={!d.catalog}/></label><label>Até<input type="date" value={draft.to??''} onChange={e=>update('to',e.target.value)} required={!d.catalog}/></label>
       <label className="reports-search">Buscar<input type="search" maxLength={200} placeholder={d.catalog ? 'Nome, código ou contato' : 'Cliente, lead, pedido ou negociação'} value={draft.search??''} onChange={e=>update('search',e.target.value)}/></label>
-      {(d.type==='closed-services' || d.type==='service-receipts') && <OptionFilter companyId={companyId} field="customerId" label="Cliente" value={draft.customerId} onChange={v=>update('customerId',v)}/>}
-      {(d.type==='closed-services' || d.crm) && <OptionFilter companyId={companyId} field="serviceId" label="Serviço" value={draft.serviceId} onChange={v=>update('serviceId',v)}/>}
-      {!d.catalog && <OptionFilter companyId={companyId} field="assignedUserId" label={d.type==='closed-services'||d.type==='service-receipts' ? 'Lançado por' : 'Responsável'} value={draft.assignedUserId} onChange={v=>update('assignedUserId',v)}/>}
+      {(d.type==='closed-services' || d.type==='service-receipts') && access.can(REPORT_OPTION_PERMISSION.customerId) && <OptionFilter companyId={companyId} field="customerId" label="Cliente" value={draft.customerId} onChange={v=>update('customerId',v)}/>}
+      {(d.type==='closed-services' || d.crm) && access.can(REPORT_OPTION_PERMISSION.serviceId) && <OptionFilter companyId={companyId} field="serviceId" label="Serviço" value={draft.serviceId} onChange={v=>update('serviceId',v)}/>}
+      {!d.catalog && access.can(REPORT_OPTION_PERMISSION.assignedUserId) && <OptionFilter companyId={companyId} field="assignedUserId" label={d.type==='closed-services'||d.type==='service-receipts' ? 'Lançado por' : 'Responsável'} value={draft.assignedUserId} onChange={v=>update('assignedUserId',v)}/>}
       {(d.catalog || d.type==='meetings') && <label>Situação<select value={draft.status??'ALL'} onChange={e=>update('status',e.target.value)}><option value="ALL">Todas</option>{(d.catalog ? ['ACTIVE','INACTIVE'] : ['SCHEDULED','COMPLETED','CANCELED','NO_SHOW']).map(s=><option key={s} value={s}>{statusLabels[s]}</option>)}</select></label>}
       {d.type==='service-receipts' && <label>Forma de recebimento<select value={draft.paymentMethod??''} onChange={e=>update('paymentMethod',e.target.value)}><option value="">Todas</option>{['PIX','CASH','CREDIT_CARD','DEBIT_CARD','BOLETO','TRANSFER','OTHER'].map(s=><option key={s} value={s}>{statusLabels[s]}</option>)}</select></label>}
       {d.crm && <><label>Canal<select value={draft.captureKind??''} onChange={e=>update('captureKind',e.target.value)}><option value="">Todos</option>{['MANUAL','FORM','META_ADS','GOOGLE_ADS','IMPORT','NERO','API'].map(s=><option key={s} value={s}>{statusLabels[s]}</option>)}</select></label><label>Origem (UTM)<input value={draft.utmSource??''} onChange={e=>update('utmSource',e.target.value)} maxLength={200} placeholder="Ex.: instagram"/></label><label>Campanha (UTM)<input value={draft.utmCampaign??''} onChange={e=>update('utmCampaign',e.target.value)} maxLength={200}/></label><label>Referência do formulário<input value={draft.sourceFormReference??''} onChange={e=>update('sourceFormReference',e.target.value)} maxLength={200}/></label></>}

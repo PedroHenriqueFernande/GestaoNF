@@ -1,17 +1,21 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import type { PermissionKey } from '@gestaonf/permissions';
+import { ApiError } from '../api/client';
 import type { Company, CompanyScopeParam, User } from '../api/client';
+import { permissionView } from '../features/permissions/usePermissions';
 
-/** Visão múltipla do Portal de Serviços, por aba. A empresa ativa (gestaonf.companyId) continua com cada página. */
-const VIEW_KEY = 'gestaonf.companyView';
+/** Portal e CRM têm visões próprias por aba. Agenda e Propostas compartilham a visão do CRM. */
+const VIEW_KEYS = { sales: 'gestaonf.companyView', crm: 'gestaonf.companyView.crm' } as const;
+type ScopeArea = keyof typeof VIEW_KEYS;
 type StoredView = { userId: string; mode: 'all' } | { userId: string; mode: 'selected'; ids: string[] };
 export type MultipleView = { mode: 'all' | 'selected'; ids: string[]; param: CompanyScopeParam; scopeKey: string };
-export type CompanyScope = { multiple: MultipleView | null; selectAll: () => void; selectMany: (ids: string[]) => void; clear: () => void };
+export type CompanyScope = { multiple: MultipleView | null; eligibleIds: string[]; selectAll: () => void; selectMany: (ids: string[]) => void; clear: () => void };
 
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-const readRaw = () => sessionStorage.getItem(VIEW_KEY);
-function write(view: StoredView | null) {
-  if (view) sessionStorage.setItem(VIEW_KEY, JSON.stringify(view)); else sessionStorage.removeItem(VIEW_KEY);
+function write(key: string, view: StoredView | null) {
+  if (view) sessionStorage.setItem(key, JSON.stringify(view)); else sessionStorage.removeItem(key);
   listeners.forEach(listener => listener());
 }
 function parse(raw: string | null): StoredView | null {
@@ -25,21 +29,42 @@ function parse(raw: string | null): StoredView | null {
   return null;
 }
 
-export function useCompanyScope(user: User, companies: Company[] | undefined): CompanyScope {
-  const raw = useSyncExternalStore(subscribe, readRaw, () => null);
+export function useCompanyScope(user: User, companies: Company[] | undefined, area: ScopeArea, permission: PermissionKey): CompanyScope {
+  const key = VIEW_KEYS[area];
+  const raw = useSyncExternalStore(subscribe, () => sessionStorage.getItem(key), () => null);
+  const eligibleIds = useMemo(() => (companies ?? []).filter(company => permissionView(companies, company.id).can(permission)).map(company => company.id).sort(), [companies, permission]);
   const multiple = useMemo<MultipleView | null>(() => {
     const stored = parse(raw);
     // Visão de outro usuário na mesma aba (logout/login) é ignorada.
-    if (!stored || stored.userId !== user.id || !companies) return null;
-    const available = new Set(companies.map(c => c.id));
-    const ids = (stored.mode === 'all' ? [...available] : stored.ids.filter(id => available.has(id))).sort();
+    if (!stored || stored.userId !== user.id) return null;
+    const ids = stored.mode === 'all' ? eligibleIds : eligibleIds.filter(id => stored.ids.includes(id));
     if (ids.length < 2) return null;
     return stored.mode === 'all'
-      ? { mode: 'all', ids, param: { companies: 'all' }, scopeKey: 'all' }
+      ? { mode: 'all', ids, param: { companies: 'all' }, scopeKey: `all:${ids.join(',')}` }
       : { mode: 'selected', ids, param: { companyIds: ids.join(',') }, scopeKey: ids.join(',') };
-  }, [raw, user.id, companies]);
-  const selectAll = useCallback(() => write({ userId: user.id, mode: 'all' }), [user.id]);
-  const selectMany = useCallback((ids: string[]) => { if (ids.length >= 2) write({ userId: user.id, mode: 'selected', ids: [...new Set(ids)].sort() }); }, [user.id]);
-  const clear = useCallback(() => write(null), []);
-  return { multiple, selectAll, selectMany, clear };
+  }, [raw, user.id, eligibleIds]);
+  const selectAll = useCallback(() => { if (eligibleIds.length >= 2) write(key, { userId: user.id, mode: 'all' }); }, [key, user.id, eligibleIds]);
+  const selectMany = useCallback((ids: string[]) => {
+    const eligible = eligibleIds.filter(id => ids.includes(id));
+    if (eligible.length >= 2) write(key, { userId: user.id, mode: 'selected', ids: eligible });
+  }, [key, user.id, eligibleIds]);
+  const clear = useCallback(() => write(key, null), [key]);
+  return { multiple, eligibleIds, selectAll, selectMany, clear };
+}
+
+export function isOverviewForbidden(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 403;
+}
+
+export function useOverviewFallback(multiple: MultipleView | null, clear: () => void, error: unknown, notify: (message: string) => void) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!multiple || !isOverviewForbidden(error)) return;
+    clear();
+    // O QueryClient já recarrega os dois erros de permissão padronizados.
+    if (error.code !== 'PERMISSION_DENIED' && error.code !== 'ACCOUNT_OWNER_REQUIRED') {
+      void queryClient.invalidateQueries({ queryKey: ['companies'] });
+    }
+    notify('Algumas empresas não estão mais disponíveis. Mostrando uma empresa.');
+  }, [multiple, clear, error, notify, queryClient]);
 }

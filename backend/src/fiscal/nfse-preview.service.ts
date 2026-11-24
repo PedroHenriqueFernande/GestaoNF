@@ -1,5 +1,5 @@
-import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, customers, companyFiscalCertificates, companyUsers, nfseDocuments, nfseDps, nfsePreviews, nfseSeries, saleItems, sales, services, serviceMunicipalTaxCodes } from '@gestaonf/database/schema';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { companies, customers, companyFiscalCertificates, nfseDocuments, nfseDps, nfsePreviews, nfseSeries, saleItems, sales, services, serviceMunicipalTaxCodes } from '@gestaonf/database/schema';
 import { and, eq } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 import { isValidCnpj, isValidCpf } from '../customers/tax-id.js';
@@ -19,11 +19,6 @@ export function snapshotHash(snapshot: NfseSnapshot) {
 @Injectable()
 export class NfsePreviewService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(CertificateService) private readonly certificates: CertificateService) {}
-
-  async manager(companyId: string, userId: string, db: Db = this.database.db) {
-    const [member] = await db.select().from(companyUsers).where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'))).limit(1);
-    if (!member || !['OWNER', 'ADMIN'].includes(member.role)) throw new ForbiddenException('Apenas proprietários e administradores podem emitir NFS-e.');
-  }
 
   async build(companyId: string, saleId: string, input: NfsePreviewInput, db: Db = this.database.db): Promise<NfseSnapshot> {
     const [sale] = await db.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, saleId))).limit(1);

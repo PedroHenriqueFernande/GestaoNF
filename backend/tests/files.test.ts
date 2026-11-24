@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers, LEGACY_COLLABORATOR } from './permission-fixtures.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -80,6 +81,7 @@ beforeEach(async () => {
   const accountId = await testAccount(db, owner);
   const insertedCompanies = await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning(); [company, companyB] = insertedCompanies.map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' }, { companyId: company, userId: seller, role: 'COLLABORATOR' }, { companyId: company, userId: other, role: 'COLLABORATOR' }]);
+  await grantLegacyMembers(db);
   [serviceId] = (await db.insert(s.services).values({ companyId: company, name: 'CRM' }).returning()).map(s => s.id);
   [customerId] = (await db.insert(s.customers).values({ companyId: company, kind: 'PF', name: 'Cliente' }).returning()).map(s => s.id);
 });
@@ -151,7 +153,7 @@ describe('arquivos: HTTP, PostgreSQL e armazenamento simulado', () => {
     expect((await http('GET', `/files/${file.id}/access`, undefined, owner, companyB)).statusCode).toBe(404);
     expect((await http('GET', `/files/${file.id}/access`, undefined, other)).statusCode).toBe(404);
     expect((await http('GET', '/files', undefined, other)).json().items).toHaveLength(0);
-    expect((await http('GET', `/files/${file.id}/access`, undefined, owner)).statusCode).toBe(200);
+    expect((await http('GET', `/files/${file.id}/access`, undefined, owner)).statusCode).toBe(404); // P6: upload não anexado só para quem enviou
     await db.update(s.users).set({ status: 'INACTIVE' }).where(eq(s.users.id, seller));
     expect((await http('GET', `/files/${file.id}/access`, undefined, seller)).statusCode).toBe(401);
   });
@@ -173,6 +175,19 @@ describe('arquivos: HTTP, PostgreSQL e armazenamento simulado', () => {
     const available = await ready();
     const [otherCustomer] = await db.insert(s.customers).values({ companyId: companyB, kind: 'PF', name: 'Outro' }).returning();
     expect((await http('POST', '/sales', { customerId: otherCustomer.id, attachmentIds: [available.id] }, owner, companyB, randomUUID())).statusCode).toBe(400);
+  });
+  it('sem sales.attachments_view: detalhe sem anexos, salvar sem attachmentIds preserva, enviar attachmentIds devolve 403 (critério 34)', async () => {
+    const file = await ready();
+    const created = (await http('POST', '/sales', saleInput([file.id]), owner, company, randomUUID())).json();
+    await db.update(s.accountMembers).set({ permissions: LEGACY_COLLABORATOR.filter(key => key !== 'sales.attachments_view') }).where(eq(s.accountMembers.userId, seller));
+    expect((await http('GET', `/sales/${created.id}`, undefined, seller)).json().attachments).toBeNull();
+    expect((await http('GET', '/files', undefined, seller)).json()).toMatchObject({ statusCode: 403, permission: 'sales.attachments_view' });
+    const saved = await http('PATCH', `/sales/${created.id}`, { ...saleInput(), expectedVersion: 1 }, seller);
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().attachments).toBeNull();
+    expect((await http('GET', `/sales/${created.id}`)).json().attachments).toHaveLength(1);
+    expect((await http('PATCH', `/sales/${created.id}`, { ...saleInput([file.id]), expectedVersion: 2 }, seller)).json()).toMatchObject({ statusCode: 403, permission: 'sales.attachments_view' });
+    expect((await http('GET', `/sales/${created.id}`)).json().attachments).toHaveLength(1);
   });
   it('anexo associado segue acesso da venda mas não pode ser usado por outra venda', async () => {
     const file = await ready(pdf, 'application/pdf', seller);

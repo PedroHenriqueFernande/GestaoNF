@@ -1,4 +1,5 @@
 import { Banknote, CalendarDays, ClipboardList, ReceiptText, TrendingDown, UserMinus, UsersRound, ContactRound } from 'lucide-react';
+import { REPORT_PERMISSIONS, reportExportPermission, type PermissionKey } from '@gestaonf/permissions';
 import type { ReportType } from '../../api/client';
 
 export type ReportDefinition = { type: ReportType; slug: string; title: string; description: string; icon: typeof Banknote; catalog?: boolean; crm?: boolean; rate?: boolean; columns: Array<{ key: string; label: string; format?: 'money' | 'date' | 'instant' | 'status' | 'items' }> };
@@ -12,6 +13,11 @@ export const reports: ReportDefinition[] = [
   { type:'disqualification-rate',slug:'desqualificados',title:'Taxa de desqualificação',description:'Negociações desqualificadas entre as encerradas no período.',icon:UserMinus,crm:true,rate:true,columns:[{key:'decidedAt',label:'Encerramento',format:'instant'},{key:'contactName',label:'Lead'},{key:'title',label:'Negociação'},{key:'reason',label:'Motivo'},{key:'userName',label:'Responsável'},{key:'utmCampaign',label:'Campanha'},{key:'currentStatus',label:'Situação atual',format:'status'}] },
   { type:'loss-rate',slug:'perdidos',title:'Taxa de perda',description:'Negociações perdidas entre as encerradas no período.',icon:TrendingDown,crm:true,rate:true,columns:[{key:'decidedAt',label:'Encerramento',format:'instant'},{key:'contactName',label:'Lead'},{key:'title',label:'Negociação'},{key:'reason',label:'Motivo'},{key:'userName',label:'Responsável'},{key:'utmCampaign',label:'Campanha'},{key:'currentStatus',label:'Situação atual',format:'status'}] },
 ];
+type Can = (key: PermissionKey) => boolean;
+/** Relatórios que o usuário pode ver: módulo de origem (Spec 4.8). */
+export const visibleReports = (can: Can) => reports.filter((report) => can(REPORT_PERMISSIONS[report.type]));
+/** Relatórios que o usuário pode exportar: módulo de origem + exportação do tipo (D18). */
+export const exportableReports = (can: Can) => visibleReports(can).filter((report) => can(reportExportPermission(report.type)));
 export const statusLabels: Record<string,string>={ACTIVE:'Ativo',INACTIVE:'Inativo',SCHEDULED:'Agendada',COMPLETED:'Realizada',CANCELED:'Cancelada',NO_SHOW:'Não compareceu',RECEIPT:'Recebimento',REVERSAL:'Estorno',MANUAL:'Manual',FORM:'Formulário',META_ADS:'Meta Ads',GOOGLE_ADS:'Google Ads',IMPORT:'Importação',NERO:'Nero',API:'Integração',NEW:'Novo',CONTACTING:'Em contato',QUALIFIED:'Qualificado',DISQUALIFIED:'Desqualificado',LOST:'Perdido',WON:'Ganho',PF:'Pessoa física',PJ:'Pessoa jurídica',ONLINE:'Online',IN_PERSON:'Presencial',PIX:'Pix',CASH:'Dinheiro',CREDIT_CARD:'Cartão de crédito',DEBIT_CARD:'Cartão de débito',BOLETO:'Boleto',TRANSFER:'Transferência',OTHER:'Outro'};
 export function money(value:unknown) { return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(value??0)); }
 export function reportDate(value:unknown,timezone:string,instant=false) {

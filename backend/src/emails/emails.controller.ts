@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiTags } from '@nestj
 import { RouteConfig } from '@nestjs/platform-fastify';
 import { z } from 'zod';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { AccountOwnerOnly } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { emailKeySchema, emailListSchema, sendEmailSchema, testEmailSchema } from './emails.schemas.js';
 import { EmailsService } from './emails.service.js';
@@ -12,18 +13,18 @@ import { EmailsService } from './emails.service.js';
 export class EmailsController {
   constructor(@Inject(EmailsService) private readonly emails: EmailsService) {}
   private ctx(r: RequestContext) { return { companyId: r.companyId!, userId: r.userId! }; }
-  @Get('capabilities') @ApiOperation({ summary: 'Disponibilidade e modo de testes do envio de e-mails' })
+  @Get('capabilities') @AccountOwnerOnly() @ApiOperation({ summary: 'Disponibilidade e modo de testes do envio de e-mails' })
   capabilities(@Req() r: RequestContext) { return this.emails.capabilities(this.ctx(r)); }
-  @Post('test') @HttpCode(202) @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @Post('test') @AccountOwnerOnly() @HttpCode(202) @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiBody({ schema: z.toJSONSchema(testEmailSchema, { io: 'input' }) as Record<string, unknown> })
   @ApiOperation({ summary: 'Enfileira teste para a conta Resend ou destinatário de simulação' })
   test(@Req() r: RequestContext, @Body() body: unknown) { return this.emails.test(this.ctx(r), parseInput(testEmailSchema, body).scenario, parseInput(emailKeySchema, r.headers['idempotency-key'])); }
-  @Post() @HttpCode(202) @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @Post() @AccountOwnerOnly() @HttpCode(202) @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiBody({ schema: z.toJSONSchema(sendEmailSchema, { io: 'input' }) as Record<string, unknown> })
   @ApiOperation({ summary: 'Enfileira e-mail de texto com template do GestãoNF; somente gestores' })
   send(@Req() r: RequestContext, @Body() body: unknown) { return this.emails.send(this.ctx(r), parseInput(sendEmailSchema, body), parseInput(emailKeySchema, r.headers['idempotency-key'])); }
-  @Get() list(@Req() r: RequestContext, @Query() q: unknown) { return this.emails.list(this.ctx(r), parseInput(emailListSchema, q)); }
-  @Get(':id') get(@Req() r: RequestContext, @Param('id') id: string) { return this.emails.get(this.ctx(r), parseInput(z.uuid(), id)); }
+  @Get() @AccountOwnerOnly() list(@Req() r: RequestContext, @Query() q: unknown) { return this.emails.list(this.ctx(r), parseInput(emailListSchema, q)); }
+  @Get(':id') @AccountOwnerOnly() get(@Req() r: RequestContext, @Param('id') id: string) { return this.emails.get(this.ctx(r), parseInput(z.uuid(), id)); }
 }
 
 @ApiTags('E-mails') @Controller('integrations/email/resend')

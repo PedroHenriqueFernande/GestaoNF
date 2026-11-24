@@ -2,7 +2,6 @@
 import { z } from 'zod';
 import type { CustomersService } from '../../customers/customers.service.js';
 import type { ServicesService } from '../../services/services.service.js';
-import { rules } from '../nero-policy.js';
 import { compactList, label, optionalSearch, parseToolArgs } from './read-support.js';
 import type { ReadTool } from './types.js';
 
@@ -21,7 +20,7 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 
 export function createCustomerSearchTool(customers: CustomersService): ReadTool {
   return {
-    kind: 'READ', name: 'buscar_clientes', parameters: parametersFor('Parte do nome, nome fantasia, CPF/CNPJ ou telefone; null lista os primeiros.'), allowed: rules.anyMember,
+    kind: 'READ', name: 'buscar_clientes', parameters: parametersFor('Parte do nome, nome fantasia, CPF/CNPJ ou telefone; null lista os primeiros.'), permission: 'customers.access',
     description: 'Busca clientes cadastrados na empresa atual. Use antes de qualquer pedido que dependa de um cliente; se houver mais de um parecido, pergunte qual.',
     async run(ctx, raw) {
       const args = parseToolArgs(argsSchema, raw);
@@ -37,7 +36,7 @@ export function createCustomerSearchTool(customers: CustomersService): ReadTool 
 
 export function createServiceSearchTool(services: ServicesService): ReadTool {
   return {
-    kind: 'READ', name: 'buscar_servicos', parameters: parametersFor('Parte do nome ou do código; null lista os primeiros.'), allowed: rules.anyMember,
+    kind: 'READ', name: 'buscar_servicos', parameters: parametersFor('Parte do nome ou do código; null lista os primeiros.'), permission: 'services.access',
     description: 'Busca serviços do catálogo da empresa atual (nome ou código). Use antes de qualquer pedido que dependa de um serviço.',
     async run(ctx, raw) {
       const args = parseToolArgs(argsSchema, raw);

@@ -5,11 +5,16 @@ import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { createCustomerSchema } from '../customers/customers.schemas.js';
+import type { PermissionKey } from '@gestaonf/permissions';
+import { requirePermission } from '../permissions/actor.js';
 import { ServicesService } from '../services/services.service.js';
 import { createServiceSchema } from '../services/services.schemas.js';
 import type { ActionBlock, ActionKind, ActionStatus, SupportBlock } from './support-blocks.js';
 import { SupportConversationsService, type SupportContext } from './support-conversations.service.js';
 import { httpMessage } from './support-errors.js';
+
+/** Permissão de cada ação confirmável do suporte (Spec 9), revalidada na confirmação. */
+export const ACTION_PERMISSIONS = { CREATE_CUSTOMER: 'customers.create', CREATE_SERVICE: 'services.create' } as const satisfies Record<ActionKind, PermissionKey>;
 
 type ActionRow = typeof supportActions.$inferSelect;
 type SupportTx = Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
@@ -69,7 +74,8 @@ export class SupportActionsService {
   }
 
   async confirm(ctx: SupportContext, id: string): Promise<ActionBlock> {
-    await this.claimable(ctx, id);
+    const pending = await this.claimable(ctx, id);
+    requirePermission(ctx.actor, ACTION_PERMISSIONS[pending.kind as ActionKind], 'POST /support/actions/:id/confirm');
     const row = await this.database.db.transaction(async (tx) => {
       const [claimed] = await tx.update(supportActions).set({ status: 'CONFIRMED', confirmedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(supportActions.id, id), eq(supportActions.status, 'PENDING'), gt(supportActions.expiresAt, new Date()))).returning();

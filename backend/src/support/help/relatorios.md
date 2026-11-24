@@ -24,7 +24,7 @@ Os **Relatórios** reúnem os resultados da sua empresa em oito consultas. Você
 5. Para guardar o resultado, use **Exportar CSV**, disponível em **Clientes** e **Catálogo de serviços**. O botão **Exportar PDF** gera o relatório em PDF com os mesmos filtros.
 6. O botão de atualizar, ao lado, consulta os dados de novo.
 
-Em relatórios de CRM, quem não é proprietário ou administrador vê apenas os registros atribuídos a si.
+Cada relatório aparece para quem tem acesso à área de origem, como Vendas, Financeiro ou CRM. Para exportar o relatório de **Clientes** em PDF ou CSV, você precisa da permissão **Exportar clientes**. Para exportar os demais relatórios, use **Exportar relatórios**. Nos relatórios de CRM, quem tem acesso vê todos os registros da empresa.
 
 ## Problemas comuns
 - "Informe a data inicial e a data final." ou "Escolha um período de até 366 dias, com início anterior ao fim.": preencha **De** e **Até** e use um período de no máximo 366 dias.

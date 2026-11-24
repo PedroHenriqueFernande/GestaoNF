@@ -25,15 +25,15 @@ export class FilesService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(R2StorageService) private readonly storage: R2StorageService) {}
 
   private async access(ctx: FileContext, db: FileDb = this.database.db) {
-    const [member] = await db.select({ role: companyUsers.role }).from(companyUsers)
+    const [member] = await db.select({ userId: companyUsers.userId }).from(companyUsers)
       .innerJoin(companies, eq(companies.id, companyUsers.companyId)).innerJoin(users, eq(users.id, companyUsers.userId))
       .where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(users.status, 'ACTIVE'))).limit(1);
     if (!member) throw new ForbiddenException('Sem acesso ativo à empresa');
-    return { ...ctx, manager: ['OWNER', 'ADMIN', 'MANAGER'].includes(member.role) };
+    return ctx;
   }
-  private scope(a: Awaited<ReturnType<FilesService['access']>>) {
-    // Attached documents follow the existing sale visibility (all active company members).
-    return and(eq(storedFiles.companyId, a.companyId), a.manager ? sql`true` : or(eq(storedFiles.createdByUserId, a.userId), sql`${storedFiles.saleId} IS NOT NULL`))!;
+  private scope(a: FileContext) {
+    // Anexos de venda seguem `sales.attachments_view` (rota); upload ainda não anexado só para quem enviou (P6).
+    return and(eq(storedFiles.companyId, a.companyId), or(eq(storedFiles.createdByUserId, a.userId), sql`${storedFiles.saleId} IS NOT NULL`))!;
   }
   private async file(ctx: FileContext, id: string, db: FileDb = this.database.db, lock = false) {
     const a = await this.access(ctx, db);
@@ -137,11 +137,11 @@ export class FilesService {
   }
   async syncSaleInTx(tx: Tx, ctx: FileContext, saleId: string, attachmentIds: string[] | undefined) {
     if (attachmentIds === undefined) return;
-    const a = await this.access(ctx, tx);
+    await this.access(ctx, tx);
     const rows = await tx.select().from(storedFiles).where(and(eq(storedFiles.companyId, ctx.companyId), or(eq(storedFiles.saleId, saleId), attachmentIds.length ? inArray(storedFiles.id, attachmentIds) : sql`false`))).orderBy(storedFiles.id).for('update');
     for (const id of attachmentIds) {
       const row = rows.find(file => file.id === id);
-      if (!row || row.status !== 'READY' || (row.saleId && row.saleId !== saleId) || (!row.saleId && !a.manager && row.createdByUserId !== ctx.userId) || (row.unattachedExpiresAt && row.unattachedExpiresAt.getTime() <= Date.now())) throw new BadRequestException('Anexo inválido, indisponível ou de outra venda/empresa');
+      if (!row || row.status !== 'READY' || (row.saleId && row.saleId !== saleId) || (!row.saleId && row.createdByUserId !== ctx.userId) || (row.unattachedExpiresAt && row.unattachedExpiresAt.getTime() <= Date.now())) throw new BadRequestException('Anexo inválido, indisponível ou de outra venda/empresa');
     }
     const now = new Date();
     for (const row of rows) {

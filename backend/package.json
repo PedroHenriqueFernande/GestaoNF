@@ -26,6 +26,7 @@
     "@fastify/multipart": "10.1.0",
     "@fastify/static": "10.1.2",
     "@gestaonf/database": "*",
+    "@gestaonf/permissions": "*",
     "@nestjs/common": "12.1.2",
     "@nestjs/core": "12.1.2",
     "@nestjs/platform-fastify": "12.1.2",

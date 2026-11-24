@@ -1,6 +1,7 @@
 // backend/src/assistant/actions/error-translator.ts
 import { HttpException } from '@nestjs/common';
 import { ZodError } from 'zod';
+import { isPermissionDenial, NOT_ALLOWED_GUIDANCE } from '../../permissions/actor.js';
 
 export type FailureKind = 'VALIDATION' | 'CONFLICT' | 'FORBIDDEN' | 'UNEXPECTED';
 export type FailureCause = {
@@ -37,6 +38,8 @@ export function translateError(error: unknown, operationIndex: number | null, op
   if (error instanceof ZodError) {
     return { ...base, kind: 'VALIDATION', message: 'Alguns dados estão inválidos ou faltando', fields: error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) };
   }
+  // D16: o modelo recebe só a orientação, nunca o nome da permissão que falta.
+  if (isPermissionDenial(error)) return { ...base, kind: 'FORBIDDEN', message: NOT_ALLOWED_GUIDANCE, fields: [] };
   if (error instanceof HttpException) {
     const status = error.getStatus();
     const response = error.getResponse();

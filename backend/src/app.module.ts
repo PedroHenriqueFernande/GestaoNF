@@ -27,5 +27,8 @@ class HealthController {
   }
 }
 
-@Module({ imports: [DatabaseModule, AuthModule, CompaniesModule, CustomersModule, ServicesModule, SalesModule, FinanceModule, WhatsAppModule, CrmModule, FilesModule, EmailsModule, UsersModule, ReportsModule, FiscalModule, ProfileModule, SupportModule], controllers: [HealthController] })
+/** Módulos com rotas da aplicação. Os fitness tests de permissão percorrem exatamente esta lista. */
+export const featureModules = [AuthModule, CompaniesModule, CustomersModule, ServicesModule, SalesModule, FinanceModule, WhatsAppModule, CrmModule, FilesModule, EmailsModule, UsersModule, ReportsModule, FiscalModule, ProfileModule, SupportModule];
+
+@Module({ imports: [DatabaseModule, ...featureModules], controllers: [HealthController] })
 export class AppModule {}

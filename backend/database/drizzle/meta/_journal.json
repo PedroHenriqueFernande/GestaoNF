@@ -288,6 +288,13 @@
       "when": 1794750757097,
       "tag": "0040_low_white_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795448378076,
+      "tag": "0041_account_member_permissions",
+      "breakpoints": true
     }
   ]
 }

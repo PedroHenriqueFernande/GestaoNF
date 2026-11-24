@@ -1,30 +1,35 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { companies, companyFiscalCertificates, companyUsers } from '@gestaonf/database/schema';
-import { and, eq, exists, sql } from 'drizzle-orm';
+import { ALL_PERMISSIONS } from '@gestaonf/permissions';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { isValidCpf, isValidCnpj } from '../customers/tax-id.js';
 import { DatabaseService } from '../database/database.module.js';
 import type { createCompanySchema, updateCompanySchema } from './companies.schemas.js';
 import { AccountsService } from '../accounts/accounts.service.js';
-import { companyAvailable } from '../accounts/account-policy.js';
-import { companyManagerQuery, isCompanyManagerRole } from './company-access.js';
+import { presentMembership, requireMembershipPermission, resolveMemberships } from '../permissions/permission-resolver.js';
 
 @Injectable()
 export class CompaniesService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(AccountsService) private readonly accounts: AccountsService) {}
 
-  list(userId: string) {
-    return this.database.db.select({ id: companies.id, name: companies.name, role: companyUsers.role, accountId: companies.accountId, logoId: companies.logoId }).from(companyUsers)
-      .innerJoin(companies, eq(companies.id, companyUsers.companyId))
-      .where(and(eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id)));
+  async list(userId: string) {
+    const memberships = await resolveMemberships(this.database.db, userId, 'all');
+    if (!memberships.length) return [];
+    const rows = await this.database.db.select({ id: companies.id, name: companies.name, accountId: companies.accountId, logoId: companies.logoId })
+      .from(companies).where(inArray(companies.id, memberships.map(m => m.actor.companyId)));
+    const byId = new Map(rows.map(row => [row.id, row]));
+    return memberships.flatMap(m => {
+      const row = byId.get(m.actor.companyId);
+      return row ? [{ ...row, ...presentMembership(m) }] : [];
+    });
   }
 
   async get(companyId: string, userId: string) {
-    const [row] = await this.database.db.select({ company: companies, role: companyUsers.role }).from(companies)
-      .innerJoin(companyUsers, and(eq(companyUsers.companyId, companies.id), eq(companyUsers.userId, userId)))
-      .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), eq(companyUsers.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
-    if (!row) throw new NotFoundException('Empresa não encontrada');
-    return { ...row.company, role: row.role };
+    const [membership] = await resolveMemberships(this.database.db, userId, [companyId]);
+    const [company] = membership ? await this.database.db.select().from(companies).where(eq(companies.id, companyId)).limit(1) : [];
+    if (!membership || !company) throw new NotFoundException('Empresa não encontrada');
+    return { ...company, ...presentMembership(membership) };
   }
 
   async create(userId: string, input: z.output<typeof createCompanySchema>) {
@@ -38,12 +43,11 @@ export class CompaniesService {
       await tx.insert(companyUsers).values({ companyId: created.id, userId, role: 'OWNER' });
       return created;
     });
-    return { ...company, role: 'OWNER' };
+    return { ...company, roleLabel: 'OWNER' as const, accountOwner: true, permissions: [...ALL_PERMISSIONS], role: 'OWNER' as const };
   }
 
   async update(companyId: string, userId: string, input: z.output<typeof updateCompanySchema>) {
     const current = await this.get(companyId, userId);
-    if (!isCompanyManagerRole(current.role)) throw new ForbiddenException('Sem permissão para alterar a empresa');
     this.validateTaxId(input.kind ?? current.kind as 'PF' | 'PJ', input.taxId === undefined ? current.taxId : input.taxId);
     this.validateTradeName(input.kind ?? current.kind as 'PF' | 'PJ', input.tradeName === undefined ? current.tradeName : input.tradeName);
     this.validateTaxRegime(
@@ -52,9 +56,9 @@ export class CompaniesService {
       input.simplesIbsCbsRegime === undefined ? current.simplesIbsCbsRegime : input.simplesIbsCbsRegime,
     );
     this.validateCaepf(input.kind ?? current.kind, input.caepfCode === undefined ? current.caepfCode : input.caepfCode);
-    const allowed = companyManagerQuery(this.database.db, companyId, userId);
-    const [updated] = await this.database.db.transaction(async (tx) => {
+    const { updated, membership } = await this.database.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`);
+      const membership = await requireMembershipPermission(tx, userId, companyId, 'company.edit', 'PATCH /companies/current');
       const [locked] = await tx.select({ kind: companies.kind, taxId: companies.taxId, countryCode: companies.countryCode }).from(companies)
         .where(eq(companies.id, companyId)).limit(1);
       const nextKind = input.kind ?? locked?.kind;
@@ -65,11 +69,12 @@ export class CompaniesService {
           .where(and(eq(companyFiscalCertificates.companyId, companyId), eq(companyFiscalCertificates.status, 'ACTIVE'))).limit(1);
         if (certificate) throw new ConflictException('Desative o certificado antes de alterar o CPF/CNPJ, tipo ou país da empresa.');
       }
-      return tx.update(companies).set({ ...input, updatedAt: new Date() })
-        .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), exists(allowed))).returning();
+      const [updated] = await tx.update(companies).set({ ...input, updatedAt: new Date() })
+        .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'))).returning();
+      return { updated, membership };
     });
-    if (!updated) throw new ForbiddenException('Sem permissão para alterar a empresa');
-    return { ...updated, role: current.role };
+    if (!updated) throw new NotFoundException('Empresa não encontrada');
+    return { ...updated, ...presentMembership(membership) };
   }
 
   private validateTaxId(kind: 'PF' | 'PJ', taxId: string | null | undefined) {

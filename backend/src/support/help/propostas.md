@@ -11,9 +11,9 @@ Uma proposta passa pelas situações **Rascunho**, **Enviada**, **Aceita** (ou *
 
 ## Passo a passo
 1. No menu da esquerda, abra **CRM** e clique em **Propostas**.
-2. Clique em **Nova proposta**. Escolha uma negociação (**Buscar lead ou negociação**) ou um cliente (**Buscar cliente**). Atalhos: em **Clientes**, o botão de criar proposta na linha do cliente, ou **Criar proposta** dentro de uma negociação do CRM.
+2. Clique em **Nova proposta**. Escolha uma negociação (**Buscar lead ou negociação**) ou um cliente (**Buscar cliente**). Atalhos: em **Clientes**, o botão de criar proposta na linha do cliente, ou **Criar proposta** dentro de uma negociação do CRM. Criar a partir de um cliente exige **Gerenciar propostas** e **Cadastrar leads**.
 3. Em "Construir proposta", confira o **Destinatário** (contato e negociação). Se o lead ainda não é cliente, escolha **Novo cadastro** ou **Cliente existente**. Ele é cadastrado como cliente ao salvar a proposta.
-4. Em **Oferta**, preencha o **Título da proposta** e escolha o **Serviço** de cada linha, a **Quantidade**, o **Preço unitário** e o **Desconto** (em **R$** ou **%**). Para mais serviços, use **Adicionar outro serviço**. Para cadastrar um serviço novo ali mesmo, use **Novo serviço**.
+4. Em **Oferta**, preencha o **Título da proposta** e escolha o **Serviço** e a **Quantidade** de cada linha. A permissão **Alterar preço e desconto em propostas** libera a edição do **Preço unitário** e do **Desconto** (em **R$** ou **%**). Ao incluir um serviço sem preço de catálogo, você pode preencher esses valores. Para mais serviços, use **Adicionar outro serviço**. Para cadastrar um serviço novo ali mesmo, use **Novo serviço**.
 5. Em **Condições**, defina a **Validade**, a **Forma e prazo de pagamento** e as **Condições comerciais**.
 6. Clique em **Salvar rascunho**.
 7. Clique em **PDF** para gerar o documento e compartilhar com o cliente.

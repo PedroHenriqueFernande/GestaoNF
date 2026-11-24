@@ -279,3 +279,6 @@
 @media (prefers-reduced-motion: reduce) {
   .finance-overview, .finance-detail, .finance-loading div, .finance-refresh .is-spinning { animation: none; }
 }
+dl.finance-detail__date-fields > div { display: grid; gap: 4px; min-width: 0; }
+dl.finance-detail__date-fields dt { color: var(--finance-ink); font-size: 10px; font-weight: 700; }
+dl.finance-detail__date-fields dd { margin: 0; color: var(--finance-ink); font-size: 12px; }

@@ -2,8 +2,10 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { AlertCircle, Calculator, Hash, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { canOpenScreen, PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions';
 import { api, type FiscalSeries, type TaxProfile, type TaxRevisionInput, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
+import { usePermissions } from '../permissions/usePermissions';
 import { NfseReadinessCard } from './NfseReadinessCard';
 import './fiscal.css';
 
@@ -40,14 +42,17 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
   useEffect(() => { if (companies.data && !companies.data.some(row => row.id === companyId)) setCompanyId(companies.data[0]?.id ?? ''); }, [companies.data, companyId]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
   useEffect(() => { setError(''); setMessage(''); setEditingProfile(null); setAdvancing(null); setHistorySeriesId(null); }, [companyId, mode]);
-  const company = companies.data?.find(row => row.id === companyId);
-  const canManage = company?.role === 'OWNER' || company?.role === 'ADMIN';
+  const access = usePermissions(companyId);
+  /** A tela inteira já exige a chave do modo (Etapa 10); aqui ela libera as ações. */
+  const canManage = access.can(mode === 'series' ? 'fiscal.series' : 'fiscal.tax');
+  /** `fiscal.tax` não depende de `services.access`: sem ela, a lista de serviços não é pedida. */
+  const canListServices = access.can('services.access');
   const profile = useQuery({ queryKey: ['company', companyId], queryFn: () => api.company(companyId), enabled: !!companyId });
   const series = useQuery({ queryKey: ['fiscal-series', companyId], queryFn: () => api.fiscalSeries(companyId), enabled: !!companyId && mode === 'series' });
   const adjustments = useQuery({ queryKey: ['fiscal-series-adjustments', companyId, historySeriesId],
     queryFn: () => api.fiscalSeriesAdjustments(companyId, historySeriesId!), enabled: !!companyId && !!historySeriesId && mode === 'series' });
   const rules = useQuery({ queryKey: ['fiscal-tax', companyId], queryFn: () => api.taxProfiles(companyId), enabled: !!companyId && mode === 'tax' });
-  const services = useQuery({ queryKey: ['fiscal-services', companyId, serviceSearch], queryFn: () => api.services(companyId, { status: 'ACTIVE', search: serviceSearch, page: 0, limit: 100 }), enabled: !!companyId && mode === 'tax' });
+  const services = useQuery({ queryKey: ['fiscal-services', companyId, serviceSearch], queryFn: () => api.services(companyId, { status: 'ACTIVE', search: serviceSearch, page: 0, limit: 100 }), enabled: !!companyId && mode === 'tax' && canListServices });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => { sessionStorage.removeItem('gestaonf.companyId'); queryClient.clear(); window.location.assign('/Clientes'); } });
 
   async function run(action: () => Promise<unknown>, success: string) {
@@ -105,7 +110,7 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
       <header className="fiscal-heading"><div><span>FISCAL / CONFIGURAÇÕES</span><h1>{mode === 'series' ? 'Séries e numeração' : 'Controle de tributação'}</h1>
         <p>{mode === 'series' ? 'Organize a série e o próximo número da declaração de serviços.' : 'Salve sugestões de impostos para usar nas vendas de serviços.'}</p></div>
         <span className="fiscal-heading__icon">{mode === 'series' ? <Hash size={29} /> : <Calculator size={29} />}</span></header>
-      <nav className="fiscal-tabs" aria-label="Seções fiscais"><Link to="/fiscal/series" aria-current={mode === 'series' ? 'page' : undefined}>Séries e numeração</Link><Link to="/fiscal/tributacao" aria-current={mode === 'tax' ? 'page' : undefined}>Controle de tributação</Link></nav>
+      <nav className="fiscal-tabs" aria-label="Seções fiscais">{canOpenScreen(access.viewer, 'fiscal-series') && <Link to="/fiscal/series" aria-current={mode === 'series' ? 'page' : undefined}>Séries e numeração</Link>}{canOpenScreen(access.viewer, 'fiscal-tax') && <Link to="/fiscal/tributacao" aria-current={mode === 'tax' ? 'page' : undefined}>Controle de tributação</Link>}</nav>
       {error && <p className="fiscal-alert fiscal-alert--error" role="alert"><AlertCircle size={17} />{error}</p>}
       {message && <p className="fiscal-alert fiscal-alert--success" role="status"><ShieldCheck size={17} />{message}</p>}
       {mode === 'series' ? <>
@@ -149,8 +154,8 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
         {canManage && <section className="fiscal-card" id="fiscal-rule-form"><h2>{editingProfile ? `Nova revisão de ${editingProfile.name}` : 'Nova regra tributária'}</h2>
           <form className="fiscal-form fiscal-form--tax" onSubmit={saveRule}>
             {!editingProfile && <><label>Nome da regra<input required maxLength={160} value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Serviços da empresa" /></label>
-              <label>Aplicar a<select value={scope} onChange={event => { setScope(event.target.value as TaxProfile['scope']); setServiceId(''); setMunicipality(''); }}><option value="COMPANY">Todos os serviços da empresa</option><option value="SERVICE">Um serviço</option><option value="SERVICE_MUNICIPALITY">Um serviço em um município</option></select></label>
-              {scope !== 'COMPANY' && <label>Serviço<input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} placeholder="Buscar serviço" /><select required value={serviceId} onChange={event => setServiceId(event.target.value)}><option value="">Selecione</option>{services.data?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+              <label>Aplicar a<select value={scope} onChange={event => { setScope(event.target.value as TaxProfile['scope']); setServiceId(''); setMunicipality(''); }}><option value="COMPANY">Todos os serviços da empresa</option><option value="SERVICE" disabled={!canListServices}>Um serviço</option><option value="SERVICE_MUNICIPALITY" disabled={!canListServices}>Um serviço em um município</option></select></label>{!canListServices && <small className="field-hint">{PERMISSION_DENIED_MESSAGE}</small>}
+              {scope !== 'COMPANY' && <label>Serviço<input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} placeholder="Buscar serviço" /><select required value={serviceId} disabled={!canListServices} onChange={event => setServiceId(event.target.value)}>{canListServices ? <><option value="">Selecione</option>{services.data?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</> : <option value={serviceId}>Serviço desta regra</option>}</select></label>}
               {scope === 'SERVICE_MUNICIPALITY' && <label>Código IBGE do município<input required inputMode="numeric" pattern="[0-9]{7}" maxLength={7} value={municipality} onChange={event => setMunicipality(event.target.value)} /></label>}
               <label className="fiscal-check"><input type="checkbox" checked={isDefault} onChange={event => setIsDefault(event.target.checked)} />Aplicar automaticamente como padrão</label>
             </>}

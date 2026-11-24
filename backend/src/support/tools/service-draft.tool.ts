@@ -9,6 +9,7 @@ const nullableString = { type: ['string', 'null'] };
 
 export function serviceDraftTool(actions: SupportActionsService): ToolSpec<z.output<typeof argsSchema>> {
   return {
+    permission: 'services.create',
     definition: {
       type: 'function', name: 'preparar_cadastro_servico', strict: true,
       description: 'Prepara o cadastro de um serviço para o usuário conferir e confirmar. Não grava nada. Obrigatório: name. Use null para campos não informados. Preço com ponto decimal (ex.: 150.00). Código de tributação nacional com 6 dígitos, só se o usuário informar.',

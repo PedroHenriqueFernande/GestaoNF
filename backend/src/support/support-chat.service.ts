@@ -57,7 +57,7 @@ export class SupportChatService {
       });
       const toolContext = { ...ctx, conversationId: conversation.id, messageId: assistantId };
       const base: unknown[] = [...history, { role: 'user', content: text }];
-      const tools = this.registry.definitions();
+      const tools = this.registry.definitions(ctx);
       for (let round = 0; round < MAX_ROUNDS; round++) {
         const response = await this.llm.respond({ instructions, input: [...base, ...produced], tools });
         produced.push(...response.output);

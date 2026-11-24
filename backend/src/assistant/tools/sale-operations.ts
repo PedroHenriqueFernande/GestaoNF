@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { amount, cents, itemAmounts } from '../../sales/sales-money.js';
 import type { CreateSaleInput } from '../../sales/sales.schemas.js';
 import type { SalesService, SalesTx } from '../../sales/sales.service.js';
-import { rules } from '../nero-policy.js';
 import { brDate, isoDate, money, PAYMENT_METHODS, PAYMENT_NAMES, paymentLabel, toMoney, toQuantity } from './sale-support.js';
 import type { WriteOperation } from './types.js';
 
@@ -45,12 +44,12 @@ const quantityText = (value: string) => Number(value).toLocaleString('pt-BR', { 
 
 export function createSaleOperation(salesService: SalesService): WriteOperation<Args> {
   return {
-    kind: 'WRITE', name: 'criar_venda', allowed: rules.anyMember,
+    kind: 'WRITE', name: 'criar_venda', permission: 'sales.create',
     description: 'Lança uma venda já confirmada. dados: {"cliente_id": id de buscar_clientes ou {"$ref": n}, "data": "AAAA-MM-DD" (data da venda), "itens": [{"servico_id": id de buscar_servicos ou {"$ref": n}, "quantidade": "1", "valor_unitario": "5000.00", "desconto": null, "descricao": null}], "parcelas": [{"forma": PIX|DINHEIRO|CARTAO_CREDITO|CARTAO_DEBITO|BOLETO|TRANSFERENCIA|OUTRO, "valor": "2500.00", "recebida_em": "AAAA-MM-DD" se já foi pago, ou "vencimento": "AAAA-MM-DD" se vai vencer}], "os": null, "observacoes": null}. As parcelas devem somar o total.',
     schema: argsSchema,
     summarize: (args) => `Nova venda com ${Array.isArray(args.itens) ? args.itens.length : 0} item(ns) e ${Array.isArray(args.parcelas) ? args.parcelas.length : 0} parcela(s)`,
     async execute(tx, ctx, args, options) {
-      const { sale, items, installments } = await salesService.createConfirmedInTx(tx as SalesTx, ctx.companyId, ctx.userId, options.idempotencyKey, toDomain(args));
+      const { sale, items, installments } = await salesService.createConfirmedInTx(tx as SalesTx, ctx.actor, options.idempotencyKey, toDomain(args), 'tool:criar_venda');
       const itemText = items.map((item, index) => `${item.serviceNameSnapshot} ${quantityText(item.quantity)} × ${money(item.unitPrice)}${item.discountAmount !== '0.00' ? ` (desconto ${money(item.discountAmount)})` : ''}${args.itens[index]?.descricao ? ` — ${shorten(args.itens[index].descricao!, 80)}` : ''}`).join('; ');
       const partsText = installments.map((part) => `${part.number}) ${installmentLabel(part.paymentMethod)} ${money(part.amount)} ${part.initialReceivedOn ? `recebida em ${brDate(part.initialReceivedOn)}` : `vence em ${brDate(part.dueOn!)}`}`).join('; ');
       return {

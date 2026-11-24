@@ -7,7 +7,7 @@ palavras-chave: [tributação, imposto, impostos, iss, regra tributária, alíqu
 ## O que é
 O **Controle de tributação** guarda regras com **sugestões** de percentuais de impostos (ISS, PIS, COFINS, CSLL, IRRF, INSS e retenção do ISS) para preencher suas vendas de serviços. É uma ajuda: a regra não decide sozinha o imposto da nota. Os valores usados ficam registrados em cada venda, e o município, o regime e as retenções ainda são conferidos na emissão. Confirme os percentuais com seu contador.
 
-A tela fica em **Fiscal › Controle de tributação**. Só proprietário e administrador cadastram regras.
+A tela fica em **Fiscal › Controle de tributação**. A tela está disponível para quem tem a permissão **Controle de tributação**. Regras de um serviço específico exigem também **Acessar Serviços**.
 
 ## Passo a passo
 1. No menu da esquerda, abra **Fiscal** e clique em **Controle de tributação**.
@@ -24,5 +24,5 @@ Para usar a regra, abra uma venda no **Portal de Serviços** e escolha em **Regr
 ## Problemas comuns
 - A regra não aparece na venda: ela precisa estar ativa e se aplicar a todos os serviços do pedido. Regras de um serviço só aparecem quando todos os itens usam aquele serviço.
 - Quero mudar a alíquota sem afetar vendas antigas: use **Nova revisão**. Vendas já feitas guardam os valores usados na época.
-- Não consigo cadastrar regras: seu usuário precisa ser proprietário ou administrador.
+- Não vejo a tela: seu usuário precisa da permissão **Controle de tributação**. As opções "Um serviço" e "Um serviço em um município" ficam desativadas sem **Acessar Serviços**.
 - Dúvida sobre qual percentual usar: confirme com seu contador. O sistema apenas guarda as sugestões que você informa.

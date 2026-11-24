@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { ReportsReadService } from '../../reports/reports-read.service.js';
 import type { ReportType } from '../../reports/reports.schemas.js';
 import { money } from '../nero-format.js';
-import { rules } from '../nero-policy.js';
 import { compactList, label, optionalSearch, parseToolArgs, PERIOD_VALUES, periodProperties, resolvePeriod } from './read-support.js';
 import type { ReadTool } from './types.js';
 
@@ -95,7 +94,7 @@ const formatValue = (value: unknown, kind: SummaryKind) => (kind === 'money' ? m
 
 export function createReportTool(reports: ReportsReadService): ReadTool {
   return {
-    kind: 'READ', name: 'relatorio', allowed: rules.anyMember,
+    kind: 'READ', name: 'relatorio', permission: 'reports.access',
     description: 'Lê um dos relatórios do GestãoNF: servicos_fechados, recebimentos, entradas_de_leads, clientes, catalogo_de_servicos, reunioes, taxa_de_desqualificacao, taxa_de_perda. Os dois catálogos aceitam SEM_PERIODO; os demais exigem período. Respeita o que o usuário pode ver no CRM.',
     parameters: {
       type: 'object',
@@ -106,19 +105,18 @@ export function createReportTool(reports: ReportsReadService): ReadTool {
       const args = parseToolArgs(schema, raw);
       const definition = TYPES[args.tipo];
       const range = resolvePeriod(args, ctx.today, { allowNone: definition.catalog });
-      const result = await reports.read({ companyId: ctx.companyId, userId: ctx.userId }, definition.type, {
+      const result = await reports.read(ctx.actor, definition.type, {
         limit: 10, status: 'ALL', ...(range ? { from: range.from, to: range.to } : {}), ...(args.busca ? { search: args.busca } : {}),
-      });
-      const assigned = result.visibility === 'ASSIGNED';
+      }, 'tool:relatorio');
       const summary = translateSummary(definition, result.summary as Record<string, unknown>);
       const pairs = Object.entries(summary).map(([name, { valor, tipo }]) => `${name} ${formatValue(valor, tipo)}`).join(', ').slice(0, 200);
       return {
         output: {
-          relatorio: definition.label, periodo: range ?? 'sem filtro de data', visibilidade: assigned ? 'somente o que é seu' : 'empresa',
+          relatorio: definition.label, periodo: range ?? 'sem filtro de data', visibilidade: 'empresa',
           resumo: Object.fromEntries(Object.entries(summary).map(([name, { valor }]) => [name, valor])),
           items: compactList((result.items as Record<string, unknown>[]).map((row) => project(definition, row))).items, haMais: Boolean(result.nextCursor),
         },
-        memory: `Relatório ${definition.label}${range ? ` de ${range.from} a ${range.to}` : ''}${args.busca ? ` (busca "${args.busca}")` : ''}${assigned ? ' (somente o que é seu)' : ''}: ${pairs}`,
+        memory: `Relatório ${definition.label}${range ? ` de ${range.from} a ${range.to}` : ''}${args.busca ? ` (busca "${args.busca}")` : ''}: ${pairs}`,
       };
     },
   };

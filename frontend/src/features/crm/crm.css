@@ -99,6 +99,10 @@
 .crm-modal__header>button:hover{background:#edf3f5;color:var(--crm-ink)}
 .crm-modal form{display:flex;min-height:0;flex:1;flex-direction:column}
 .crm-modal__body{min-height:0;overflow-y:auto;padding:22px 24px}
+.crm-fieldset{border:0;margin:0;padding:0;min-width:0}
+.crm-company-field{display:grid;gap:6px;margin:0 0 16px;color:#405a66;font-size:11px;font-weight:700}
+.crm-company-field select{width:100%;min-height:39px;border:1px solid #ccd8de;border-radius:4px;background:#fff;padding:8px 10px;color:inherit;font:inherit}
+.crm-card__company{display:block;color:#586e78;font-size:.75rem}
 .crm-form-section+.crm-form-section{margin-top:25px;padding-top:22px;border-top:1px solid #e2e9ec}
 .crm-form-section__heading{display:flex;align-items:flex-start;gap:10px;margin-bottom:15px;color:var(--crm-teal)}
 .crm-form-section__heading h3{margin:0 0 2px;color:var(--crm-ink);font-family:var(--display-font);font-size:14px}

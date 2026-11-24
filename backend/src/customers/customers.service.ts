@@ -4,12 +4,20 @@ import { and, count, eq, ilike, or, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DatabaseService } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/validate.js';
+import { requirePermission, type Actor } from '../permissions/actor.js';
 import { createCustomerSchema, listCustomersSchema, updateCustomerSchema } from './customers.schemas.js';
 import { validateCustomerTaxId } from './tax-id.js';
 
 type CreateCustomer = z.output<typeof createCustomerSchema>;
 type UpdateCustomer = z.output<typeof updateCustomerSchema>;
 type ListCustomers = z.output<typeof listCustomersSchema>;
+
+/** A situação e os dados do cliente têm permissões próprias. */
+function requireCustomerChange(actor: Actor, before: { status: string }, input: UpdateCustomer, entry: string) {
+  const { status, ...fields } = input;
+  if (status !== undefined && status !== before.status) requirePermission(actor, 'customers.deactivate', entry);
+  if (Object.keys(fields).length > 0) requirePermission(actor, 'customers.edit', entry);
+}
 
 @Injectable()
 export class CustomersService {
@@ -67,9 +75,11 @@ export class CustomersService {
   }
 
   /** Altera dentro da transação recebida; devolve a linha antes e depois. Duplicidade vira ConflictException. */
-  async updateInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, id: string, input: UpdateCustomer) {
+  async updateInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], actor: Actor, id: string, input: UpdateCustomer, entry: string) {
+    const companyId = actor.companyId;
     const [existing] = await db.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, id))).for('update');
     if (!existing) throw new NotFoundException('Cliente não encontrado');
+    requireCustomerChange(actor, existing, input, entry);
     const merged = { ...existing, ...input };
     if (merged.kind !== 'PF' && merged.kind !== 'PJ') throw new BadRequestException('Tipo inválido');
     validateCustomerTaxId(merged.kind, merged.taxId, merged.tradeName);
@@ -84,8 +94,8 @@ export class CustomersService {
     }
   }
 
-  async update(companyId: string, id: string, input: UpdateCustomer) {
-    return (await this.database.db.transaction((tx) => this.updateInTx(tx, companyId, id, input))).after;
+  async update(actor: Actor, id: string, input: UpdateCustomer, entry: string) {
+    return (await this.database.db.transaction((tx) => this.updateInTx(tx, actor, id, input, entry))).after;
   }
 
   private validateFiscalData(input: { kind: string; caepfCode?: string | null; foreignTaxId?: string | null; noForeignTaxIdReason?: string | null }) {

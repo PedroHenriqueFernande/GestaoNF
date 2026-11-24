@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiQuery, ApiTags } fr
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { AnyMember, RequireAllPermissions, RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { beginUploadSchema, fileAccessSchema, fileIdSchema, fileListSchema, uploadKeySchema } from './files.schemas.js';
 import { FilesService } from './files.service.js';
@@ -14,9 +15,11 @@ import { FilesService } from './files.service.js';
 export class FilesController {
   constructor(@Inject(FilesService) private readonly files: FilesService) {}
   @Get('capabilities')
+  @AnyMember()
   @ApiOperation({ summary: 'Consulta disponibilidade e limites de upload' })
   capabilities(@Req() request: RequestContext) { return this.files.capabilities(this.ctx(request)); }
   @Post('uploads')
+  @RequireAllPermissions(['sales.attachments_view', 'sales.create'])
   @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiBody({ schema: z.toJSONSchema(beginUploadSchema, { io: 'input' }) as Record<string, unknown> })
   @ApiOperation({ summary: 'Reserva arquivo e gera PUT temporário para o R2 privado' })
@@ -24,14 +27,16 @@ export class FilesController {
     reply.header('Cache-Control', 'no-store');
     return this.files.begin(this.ctx(request), parseInput(beginUploadSchema, body), parseInput(uploadKeySchema, request.headers['idempotency-key']));
   }
-  @Post(':id/complete') @HttpCode(200)
+  @Post(':id/complete') @RequireAllPermissions(['sales.attachments_view', 'sales.create']) @HttpCode(200)
   @ApiOperation({ summary: 'Valida bytes, processa imagem e disponibiliza arquivo; repetição é idempotente' })
   complete(@Req() request: RequestContext, @Param('id') id: string) { return this.files.complete(this.ctx(request), parseInput(fileIdSchema, id)); }
   @Get()
+  @RequirePermission('sales.attachments_view')
   @ApiOperation({ summary: 'Lista apenas arquivos disponíveis no escopo do usuário' })
   @ApiQuery({ name: 'kind', required: false, enum: ['ALL', 'IMAGE', 'PDF'] })
   list(@Req() request: RequestContext, @Query() query: unknown) { return this.files.list(this.ctx(request), parseInput(fileListSchema, query)); }
   @Get(':id/access')
+  @RequirePermission('sales.attachments_view')
   @ApiOperation({ summary: 'Autoriza download temporário; PDF sempre como attachment' })
   @ApiQuery({ name: 'disposition', required: false, enum: ['inline', 'attachment'] })
   download(@Req() request: RequestContext, @Param('id') id: string, @Query() query: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
@@ -39,8 +44,9 @@ export class FilesController {
     return this.files.download(this.ctx(request), parseInput(fileIdSchema, id), parseInput(fileAccessSchema, query).disposition);
   }
   @Get(':id')
+  @RequirePermission('sales.attachments_view')
   get(@Req() request: RequestContext, @Param('id') id: string) { return this.files.get(this.ctx(request), parseInput(fileIdSchema, id)); }
-  @Delete(':id') @HttpCode(204)
+  @Delete(':id') @RequirePermission('sales.attachments_view') @HttpCode(204)
   @ApiOperation({ summary: 'Cancela upload ou exclui arquivo sem venda; remoção física pelo worker' })
   remove(@Req() request: RequestContext, @Param('id') id: string) { return this.files.remove(this.ctx(request), parseInput(fileIdSchema, id)); }
   private ctx(request: RequestContext) { return { companyId: request.companyId!, userId: request.userId! }; }

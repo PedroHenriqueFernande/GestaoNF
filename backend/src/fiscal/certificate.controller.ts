@@ -2,6 +2,7 @@ import { BadRequestException, Controller, Delete, Get, Inject, Post, Req, UseGua
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { RequirePermission } from '../permissions/permission.decorators.js';
 import { CertificateService } from './certificate.service.js';
 
 @ApiTags('Fiscal - certificado')
@@ -13,9 +14,11 @@ export class CertificateController {
   constructor(@Inject(CertificateService) private readonly certificates: CertificateService) {}
 
   @Get()
+  @RequirePermission('company.access')
   get(@Req() req: RequestContext) { return this.certificates.view(req.companyId!); }
 
   @Post()
+  @RequirePermission('company.certificate')
   async upload(@Req() req: RequestContext & FastifyRequest) {
     if (!req.isMultipart()) throw new BadRequestException('Envie arquivo PFX/P12 e senha em multipart/form-data.');
     let pfx: Buffer | undefined;
@@ -39,6 +42,7 @@ export class CertificateController {
   }
 
   @Delete()
+  @RequirePermission('company.certificate')
   async disable(@Req() req: RequestContext) {
     await this.certificates.disable(req.companyId!, req.userId!);
     return { disabled: true };

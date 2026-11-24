@@ -2,12 +2,15 @@ import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ArrowLeft, FileDown } from 'lucide-react';
 import { api, type ReportType } from '../../api/client';
-import { monthPeriod, reports } from '../reports/report-definitions';
+import { exportableReports, monthPeriod, reports } from '../reports/report-definitions';
+import { usePermissions } from '../permissions/usePermissions';
 import { reportPdfFilename, saveBlob } from './download';
 
 export function ReportPdfForm({ companyId, onBack }: { companyId: string; onBack: () => void }) {
   const initial = monthPeriod(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  const [type, setType] = useState<ReportType>('closed-services');
+  /** Só os tipos que o usuário pode exportar (mesma regra da Tarefa 12.9). O formulário só é alcançável com algum deles. */
+  const allowed = exportableReports(usePermissions(companyId).can);
+  const [type, setType] = useState<ReportType>(() => allowed[0]?.type ?? 'closed-services');
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [validation, setValidation] = useState('');
@@ -31,7 +34,7 @@ export function ReportPdfForm({ companyId, onBack }: { companyId: string; onBack
     <div className="support-form__head"><h3>Relatório em PDF</h3><p className="support-muted">Gere o arquivo na hora, com os dados da empresa selecionada.</p></div>
     <label>Tipo de relatório
       <select value={type} onChange={(event) => setType(event.target.value as ReportType)}>
-        {reports.map((report) => <option key={report.type} value={report.type}>{report.title}</option>)}
+        {allowed.map((report) => <option key={report.type} value={report.type}>{report.title}</option>)}
       </select>
     </label>
     <div className="support-form__dates">

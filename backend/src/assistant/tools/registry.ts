@@ -1,4 +1,5 @@
 // backend/src/assistant/tools/registry.ts
+import { toolAllowed } from '../../permissions/actor.js';
 import type { ExecutionContext } from '../execution-context.js';
 import type { ReadTool, WriteOperation } from './types.js';
 
@@ -18,7 +19,9 @@ export class ToolRegistry {
     return this;
   }
 
-  readTools(ctx: ExecutionContext) { return [...this.reads.values()].filter((tool) => tool.allowed(ctx)); }
-  writeOperations(ctx: ExecutionContext) { return [...this.writes.values()].filter((operation) => operation.allowed(ctx)); }
+  readTools(ctx: ExecutionContext) { return [...this.reads.values()].filter((tool) => toolAllowed(ctx.actor, tool.permission) && (tool.available?.(ctx) ?? true)); }
+  writeOperations(ctx: ExecutionContext) { return [...this.writes.values()].filter((operation) => toolAllowed(ctx.actor, operation.permission)); }
+  /** Todas as ferramentas registradas, sem filtro (fitness 3 e teste da tabela). */
+  all(): (ReadTool | WriteOperation)[] { return [...this.reads.values(), ...this.writes.values()]; }
   write(name: string) { return this.writes.get(name) ?? null; }
 }

@@ -16,7 +16,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
   companies?: Company[];
   companyId: string;
   onCompanyChange: (id: string) => void;
-  /** Só o Portal de Serviços: "Ver todas", checkboxes e "Ver selecionadas". */
+  /** "Ver todas", caixas e "Ver selecionadas" quando há duas empresas elegíveis. */
   allowMultiple?: boolean;
   scope?: CompanyScope;
 }) {
@@ -24,6 +24,9 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<string[]>([]);
   const multiple = allowMultiple ? scope?.multiple ?? null : null;
+  const eligible = new Set(scope?.eligibleIds);
+  const canCombine = allowMultiple && eligible.size >= 2;
+  const draftIds = draft.filter(id => eligible.has(id));
   const activeCompany = companies?.find((item) => item.id === companyId);
   const searchable = (companies?.length ?? 0) > SEARCH_THRESHOLD;
   const visible = useMemo(() => {
@@ -34,7 +37,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
 
   useEffect(() => { if (!dropdown.open) setQuery(''); }, [dropdown.open]);
   // Rascunho dos checkboxes: recriado a cada abertura; Esc ou clique fora o descartam.
-  useEffect(() => { if (dropdown.open) setDraft(multiple?.ids ?? (companyId ? [companyId] : [])); }, [dropdown.open]);
+  useEffect(() => { if (dropdown.open) setDraft(multiple?.ids ?? (eligible.has(companyId) ? [companyId] : [])); }, [dropdown.open]);
 
   function choose(id: string) {
     dropdown.close(true);
@@ -43,7 +46,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
   function toggleDraft(id: string) { setDraft((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
   function applyDraft() {
     dropdown.close(true);
-    if (draft.length === 1) onCompanyChange(draft[0]); else scope?.selectMany(draft);
+    if (draftIds.length === 1) onCompanyChange(draftIds[0]); else scope?.selectMany(draftIds);
   }
 
   const label = multiple
@@ -66,7 +69,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
 
     <div id="workspace-company-menu" ref={dropdown.panelRef} className={`dropdown-panel dropdown-panel--center header-company__panel${dropdown.open ? ' is-open' : ''}`} inert={!dropdown.open}>
       <div className="dropdown-heading"><span>Suas empresas</span><span className="dropdown-count">{companies?.length ?? 0}</span></div>
-      {allowMultiple && <button type="button" className={`dropdown-item header-company__all${multiple?.mode === 'all' ? ' is-selected' : ''}`} style={stagger(index++)} aria-pressed={multiple?.mode === 'all'} onClick={() => { dropdown.close(true); scope?.selectAll(); }}>
+      {canCombine && <button type="button" className={`dropdown-item header-company__all${multiple?.mode === 'all' ? ' is-selected' : ''}`} style={stagger(index++)} aria-pressed={multiple?.mode === 'all'} onClick={() => { dropdown.close(true); scope?.selectAll(); }}>
         <Layers size={17} aria-hidden="true" />Ver todas as empresas
       </button>}
       {searchable && <label className="header-company__search">
@@ -78,12 +81,12 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
           const selected = !multiple && item.id === companyId;
           // O checkbox fica fora de .dropdown-item: Tab o alcança; as setas a partir dele seguem a ordem do painel (useDropdown).
           return <div key={item.id} className="header-company__row">
-            {allowMultiple && <input type="checkbox" className="header-company__check" checked={draft.includes(item.id)} onChange={() => toggleDraft(item.id)} aria-label={`Incluir ${item.name} na visão`} />}
+            {canCombine && eligible.has(item.id) && <input type="checkbox" className="header-company__check" checked={draftIds.includes(item.id)} onChange={() => toggleDraft(item.id)} aria-label={`Incluir ${item.name} na visão`} />}
             <button type="button" className={`dropdown-item header-company__option${selected ? ' is-selected' : ''}`} style={stagger(index++)} aria-pressed={selected} onClick={() => choose(item.id)}>
               <CompanyLogo company={item} className="header-company__initials" />
               <span className="header-company__option-text">
                 <strong title={item.name}>{item.name}</strong>
-                <small>{companyRoleLabel(item.role)}</small>
+                <small>{companyRoleLabel(item.roleLabel)}</small>
               </span>
               {selected && <Check size={17} strokeWidth={2.4} aria-label="Empresa ativa" />}
             </button>
@@ -91,7 +94,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
         })}
         {!visible.length && <p className="dropdown-empty">Nenhuma empresa encontrada.</p>}
       </div>
-      {allowMultiple && <button type="button" className="dropdown-item header-company__apply" style={stagger(index++)} disabled={!draft.length} onClick={applyDraft}>Ver selecionadas ({draft.length})</button>}
+      {canCombine && <button type="button" className="dropdown-item header-company__apply" style={stagger(index++)} disabled={!draftIds.length} onClick={applyDraft}>Ver selecionadas ({draftIds.length})</button>}
       <div className="dropdown-separator" />
       <Link to="/empresa" className="dropdown-item" style={stagger(index)} onClick={() => dropdown.close()}><Settings2 size={17} aria-hidden="true" />Gerenciar empresas</Link>
     </div>

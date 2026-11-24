@@ -1,3 +1,4 @@
+import type { RoleLabel } from '@gestaonf/permissions';
 export function formatTaxId(value: string | null | undefined, kind: 'PF' | 'PJ' = 'PF'): string {
   const clean = (value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, kind === 'PF' ? 11 : 14);
   if (!clean) return '';
@@ -33,8 +34,11 @@ export function formatDate(value: string): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
 }
 
-const COMPANY_ROLE_LABELS: Record<string, string> = { OWNER: 'Proprietário', ADMIN: 'Administrador', MANAGER: 'Gerente', COLLABORATOR: 'Colaborador' };
+const COMPANY_ROLE_LABELS: Record<RoleLabel, string> = { OWNER: 'Proprietário', MANAGER: 'Gerente', COLLABORATOR: 'Colaborador' };
 
 export function companyRoleLabel(role: string | null | undefined): string {
-  return role ? COMPANY_ROLE_LABELS[role] ?? 'Usuário' : 'Usuário';
+  return role && role in COMPANY_ROLE_LABELS ? COMPANY_ROLE_LABELS[role as RoleLabel] : 'Usuário';
 }
+
+/** Rótulo de apresentação do vínculo do usuário com uma empresa (fora da lista de apresentação, telas usam isto e não o campo). */
+export const companyRoleOf = (company: { roleLabel: RoleLabel }): string => companyRoleLabel(company.roleLabel);

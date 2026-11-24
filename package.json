@@ -5,7 +5,8 @@
   "workspaces": [
     "frontend",
     "backend",
-    "backend/database"
+    "backend/database",
+    "packages/permissions"
   ],
   "scripts": {
     "infra:up": "docker compose up -d postgres redis",
@@ -17,13 +18,15 @@
     "frontend:test:e2e": "npm run test:e2e -w frontend",
     "backend:dev": "npm run dev -w backend",
     "backend:typecheck": "npm run typecheck -w backend",
-    "backend:test": "npm run test -w backend",
+    "backend:test": "npm run test -w @gestaonf/api",
     "backend:test:e2e": "npm run test:e2e -w backend",
     "db:generate": "npm run db:generate -w backend/database",
     "db:migrate": "npm run db:migrate -w backend/database",
     "db:check": "npm run db:check -w backend/database",
     "db:typecheck": "npm run typecheck -w backend/database",
     "db:test": "npm run test -w backend/database",
+    "permissions:test": "npm run test -w packages/permissions",
+    "permissions:typecheck": "npm run typecheck -w packages/permissions",
     "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }

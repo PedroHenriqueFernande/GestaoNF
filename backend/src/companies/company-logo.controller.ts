@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiTags } from '@nestj
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
+import { RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { beginImageUploadSchema } from '../files/image-normalize.js';
 import { emptySchema, logoFileIdSchema, logoUploadKeySchema, setCompanyLogoSchema } from './company-logo.schemas.js';
@@ -23,10 +24,11 @@ export class CompanyLogoController {
   }
 
   @Post('current/logo/uploads')
+  @RequirePermission('company.edit')
   @UseGuards(CompanyGuard)
   @ApiHeader({ name: 'X-Company-Id', required: true }) @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiBody({ schema: z.toJSONSchema(beginImageUploadSchema, { io: 'input' }) as Record<string, unknown> })
-  @ApiOperation({ summary: 'Reserva envio da foto da empresa e gera PUT temporário para o R2 privado (OWNER/ADMIN)' })
+  @ApiOperation({ summary: 'Reserva envio da foto da empresa e gera PUT temporário para o R2 privado (exige company.edit)' })
   async begin(@Req() request: RequestContext, @Body() body: unknown, @Query() query: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     parseInput(emptySchema, query ?? {});
     reply.header('Cache-Control', 'private, no-store');
@@ -35,7 +37,7 @@ export class CompanyLogoController {
     return result;
   }
 
-  @Post('current/logo/uploads/:id/complete') @HttpCode(200)
+  @Post('current/logo/uploads/:id/complete') @RequirePermission('company.edit') @HttpCode(200)
   @UseGuards(CompanyGuard)
   @ApiHeader({ name: 'X-Company-Id', required: true })
   @ApiOperation({ summary: 'Valida a imagem, gera as variantes WebP e deixa a foto pronta; repetição é idempotente' })
@@ -47,10 +49,11 @@ export class CompanyLogoController {
   }
 
   @Put('current/logo')
+  @RequirePermission('company.edit')
   @UseGuards(CompanyGuard)
   @ApiHeader({ name: 'X-Company-Id', required: true })
   @ApiBody({ schema: z.toJSONSchema(setCompanyLogoSchema, { io: 'input' }) as Record<string, unknown> })
-  @ApiOperation({ summary: 'Associa a foto pronta à empresa ou remove com logoId null (OWNER/ADMIN)' })
+  @ApiOperation({ summary: 'Associa a foto pronta à empresa ou remove com logoId null (exige company.edit)' })
   setLogo(@Req() request: RequestContext, @Body() body: unknown, @Query() query: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     parseInput(emptySchema, query ?? {});
     reply.header('Cache-Control', 'private, no-store');

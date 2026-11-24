@@ -24,6 +24,8 @@ import { EmailDispatchService } from '../src/emails/email-dispatch.service.js';
 import { ResendProviderService } from '../src/emails/resend-provider.service.js';
 import { EmailPayloadService } from '../src/emails/email-payload.service.js';
 import { testAccount } from './account-fixture.js';
+import { ALL_PERMISSIONS } from '@gestaonf/permissions';
+import { grantMember, LEGACY_COLLABORATOR, LEGACY_MANAGER } from './permission-fixtures.js';
 import { WhatsAppLinkService } from '../src/whatsapp/whatsapp-link.service.js';
 
 config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
@@ -35,7 +37,7 @@ let owner: string, stranger: string, account: string, accountB: string, companyA
 const password = 'senha-de-teste-123456';
 @Global() @Module({ providers: [{ provide: DatabaseService, useFactory: () => ({ db }) }], exports: [DatabaseService] }) class TestDatabaseModule {}
 @Module({ imports: [TestDatabaseModule, UsersModule, CompaniesModule] }) class TestAppModule {}
-async function http(method: 'GET'|'POST'|'PATCH', url: string, body?: unknown, userId: string | null = owner, key?: string, companyId = companyA) {
+async function http(method: 'GET'|'POST'|'PATCH'|'PUT', url: string, body?: unknown, userId: string | null = owner, key?: string, companyId = companyA) {
   const token = userId ? await new SignJWT({}).setProtectedHeader({ alg:'HS256' }).setSubject(userId).setIssuer('gestaonf').setAudience('gestaonf-api').setIssuedAt().setExpirationTime('5m').sign(new TextEncoder().encode(secret)) : null;
   return app.inject({ method, url, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'x-company-id': companyId, ...(key ? { 'idempotency-key':key } : {}), ...(body !== undefined ? { 'content-type':'application/json' } : {}) }, ...(body !== undefined ? { payload: JSON.stringify(body) } : {}) });
 }
@@ -54,6 +56,18 @@ async function tokenFor(id: string) {
 async function acceptNew(token: string, clientType = 'mobile') { return http('POST','/user-invitations/accept-new',{ token,password,passwordConfirmation:password,client:clientType },null); }
 async function resetResend(id: string) { await db.update(s.userInvitations).set({ lastSentAt:new Date(Date.now()-120_000) }).where(eq(s.userInvitations.id,id)); }
 async function latestRow(id: string) { return (await db.select().from(s.userInvitations).where(eq(s.userInvitations.id,id)))[0]; }
+async function memberRow(userId = stranger) {
+  const list=await service.list(account,owner,{search:'',limit:25,offset:0});
+  return list.items.find((i:Record<string,unknown>)=>i.type==='MEMBER'&&i.id===userId) as { id:string; version:string; roleLabel:string; permissions:string[]; accountOwner:boolean; companies:{ companyId:string; status:string }[] };
+}
+async function joined(companyIds=[companyA]) {
+  const created=await invite(companyIds,'stranger@example.test');
+  expect((await http('POST','/user-invitations/accept-existing',{token:created.token},stranger)).statusCode).toBe(200);
+  return memberRow();
+}
+const putAccess=(body:Record<string,unknown>,key=randomUUID(),userId=stranger,as=owner)=>http('PUT',`/accounts/${account}/users/${userId}/access`,body,as,key);
+const events=(type:string)=>db.select().from(s.userManagementEvents).where(eq(s.userManagementEvents.eventType,type));
+const seller=['sales.access','sales.create','customers.access','services.access'];
 beforeAll(async () => {
   const databaseUrl = process.env.CRM_TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL requerida para banco isolado');
@@ -102,7 +116,7 @@ describe('usuários convidados, PostgreSQL e HTTP',()=>{
     const list=(await http('GET',`/accounts/${account}/users`)).json();expect(JSON.stringify(list)).not.toContain(created.token);expect(JSON.stringify(list)).not.toContain('tokenHash');
   });
   it('idempotência cria uma vez em concorrência e detecta conteúdo diferente',async()=>{
-    const key=randomUUID(),input={name:'Ana',email:'ana@example.test',companyIds:[companyA]};
+    const key=randomUUID(),input={name:'Ana',email:'ana@example.test',companyIds:[companyA],roleLabel:'COLLABORATOR' as const,permissions:[]};
     const results=await Promise.all(Array.from({length:4},()=>service.create(account,owner,input,key)));
     expect(new Set(results.map(r=>r.id)).size).toBe(1);expect((await db.select({value:count()}).from(s.emailMessages))[0].value).toBe(1);
     await expect(service.create(account,owner,{...input,name:'Outra'},key)).rejects.toMatchObject({status:409});
@@ -172,7 +186,7 @@ describe('usuários convidados, PostgreSQL e HTTP',()=>{
   });
   it('editar destinos invalida link anterior e aplica só a nova seleção',async()=>{
     const created=await invite();await resetResend(created.id);
-    const changed=await http('PATCH',`/accounts/${account}/user-invitations/${created.id}/companies`,{version:1,companyIds:[companyB]},owner,randomUUID());expect(changed.statusCode).toBe(200);
+    const changed=await http('PATCH',`/accounts/${account}/user-invitations/${created.id}/access`,{version:1,companyIds:[companyB],roleLabel:'COLLABORATOR',permissions:[]},owner,randomUUID());expect(changed.statusCode).toBe(200);
     expect((await acceptNew(created.token)).statusCode).toBe(410);
     const accepted=await acceptNew(await tokenFor(created.id));expect(accepted.json().companies.map((c:{id:string})=>c.id)).toEqual([companyB]);
   });
@@ -194,18 +208,37 @@ describe('usuários convidados, PostgreSQL e HTTP',()=>{
   it('gestão de empresas libera vagas e preserva identidade e vínculos externos',async()=>{
     const created=await invite([companyA,companyB],'stranger@example.test');await http('POST','/user-invitations/accept-existing',{token:created.token},stranger);
     const list=await service.list(account,owner,{search:'stranger',limit:25,offset:0});const member=list.items.find((m:Record<string,unknown>)=>m.type==='MEMBER')!;
-    const changed=await http('PATCH',`/accounts/${account}/users/${stranger}/companies`,{companyIds:[companyB],version:member.version},owner,randomUUID());expect(changed.statusCode).toBe(200);
+    const changed=await putAccess({companyIds:[companyB],version:member.version,roleLabel:'COLLABORATOR',permissions:[]});expect(changed.statusCode).toBe(200);
     expect((await http('GET','/companies',undefined,stranger)).json().map((c:{id:string})=>c.id).sort()).toEqual([companyB,otherCompany].sort());
     expect((await service.capacity(account,owner)).find(c=>c.companyId===companyA)?.available).toBe(5);
-    expect((await http('PATCH',`/accounts/${account}/users/${stranger}/companies`,{companyIds:[companyB],version:member.version},owner,randomUUID())).statusCode).toBe(409);
+    expect((await putAccess({companyIds:[companyB],version:member.version,roleLabel:'COLLABORATOR',permissions:[]})).statusCode).toBe(409);
     expect((await auth.login({email:'stranger@example.test',password,client:'mobile'})).user.id).toBe(stranger);
   });
   it('titular é protegido; convidado não administra usuários nem cria empresa da contratação',async()=>{
     const created=await invite([companyA],'stranger@example.test');await http('POST','/user-invitations/accept-existing',{token:created.token},stranger);
-    expect((await http('GET',`/accounts/${account}/users`,undefined,stranger)).statusCode).toBe(404);
+    expect((await http('GET',`/accounts/${account}/users`,undefined,stranger)).json()).toMatchObject({ statusCode:403, code:'ACCOUNT_OWNER_REQUIRED' }); // Spec 8.2, critério 19
     expect((await http('POST','/companies',{name:'Invadida',accountId:account},stranger)).statusCode).toBe(404);
     const members=await service.list(account,owner,{search:'owner',limit:25,offset:0});const root=members.items.find((i:Record<string,unknown>)=>i.type==='MEMBER')!;
     expect((await http('POST',`/accounts/${account}/users/${owner}/deactivate`,{version:root.version},owner,randomUUID())).statusCode).toBe(409);
+  });
+  it('membro com rótulo Proprietário e todas as permissões não gerencia usuários (critérios 2 e 19)',async()=>{
+    const created=await invite([companyA],'stranger@example.test');await http('POST','/user-invitations/accept-existing',{token:created.token},stranger);
+    await grantMember(db,account,stranger,[...ALL_PERMISSIONS],'OWNER');
+    for (const [method,url] of [['GET',`/accounts/${account}/users`],['GET',`/accounts/${account}/users/capacity`],['POST',`/accounts/${account}/user-invitations`]] as const) {
+      const res=await http(method,url,method==='POST'?{name:'X',email:'x@example.test',companyIds:[companyA]}:undefined,stranger,randomUUID());
+      expect(res.json()).toMatchObject({ statusCode:403, code:'ACCOUNT_OWNER_REQUIRED' });
+    }
+    expect((await http('GET',`/accounts/${accountB}/users`,undefined,owner)).statusCode).toBe(404);
+  });
+  it('lista mostra rótulo e permissões; a versão muda quando o acesso muda (Spec 8.2)',async()=>{
+    const before=await joined();
+    expect((await memberRow(owner))).toMatchObject({ roleLabel:'OWNER', accountOwner:true, permissions:[...ALL_PERMISSIONS] });
+    await grantMember(db,account,stranger,['customers.access'],'MANAGER');
+    const after=await memberRow();
+    expect(after).toMatchObject({ roleLabel:'MANAGER', permissions:['customers.access'], accountOwner:false });
+    expect(after.version).not.toBe(before.version);
+    expect((await http('POST',`/accounts/${account}/users/${stranger}/deactivate`,{version:before.version},owner,randomUUID())).statusCode).toBe(409);
+    expect((await http('POST',`/accounts/${account}/users/${stranger}/deactivate`,{version:after.version},owner,randomUUID())).statusCode).toBe(200);
   });
   it('cadastro/login/aceite não criam contratação; abertura pública é pendente e idempotente',async()=>{
     const fresh=await auth.register({name:'Novo titular',email:'fresh@example.test',password,client:'mobile'});
@@ -242,6 +275,7 @@ describe('usuários convidados, PostgreSQL e HTTP',()=>{
   });
   it('remoção revoga apenas o contexto do Nero e reativação não restaura consentimento antigo',async()=>{
     const created=await invite([companyA,companyB],'stranger@example.test');await http('POST','/user-invitations/accept-existing',{token:created.token},stranger);
+    await grantMember(db,account,stranger,['nero.use']); // só a fixture: o convidado nasce sem permissões e eligibleCompanies exige nero.use
     const [connection]=await db.insert(s.whatsappConnections).values({metaAppId:'users-test',messagingAccountId:'users-waba',phoneNumberId:'users-phone',displayPhoneNumber:'15550000000'}).returning();
     const [link]=await db.insert(s.whatsappLinks).values({connectionId:connection.id,userId:stranger,senderId:'5511999999999'}).returning();
     for(const [index,companyId] of [companyA,companyB].entries()){
@@ -255,5 +289,279 @@ describe('usuários convidados, PostgreSQL e HTTP',()=>{
     const links=new WhatsAppLinkService({db} as DatabaseService);expect((await links.eligibleCompanies(link.id,stranger)).map(c=>c.companyId)).toEqual([companyB]);
     await service.updateCompanies(account,owner,stranger,[companyA,companyB],changed.version as string,randomUUID());
     expect((await links.eligibleCompanies(link.id,stranger)).map(c=>c.companyId)).toEqual([companyB]);
+  });
+});
+
+describe('acesso do membro (Spec 8.2, D11)',()=>{
+  it('grava empresas, rótulo e permissões num comando, com evento e idempotência (critério 14)',async()=>{
+    const m=await joined(), key=randomUUID();
+    const body={ version:m.version, companyIds:[companyA,companyB], roleLabel:'MANAGER', permissions:seller };
+    const first=await putAccess(body,key);
+    expect(first.statusCode).toBe(200);
+    expect((await putAccess(body,key)).json()).toEqual(first.json());
+    const [event,...others]=await events('MEMBER_ACCESS_CHANGED');
+    expect(others).toHaveLength(0);
+    expect(event.changes).toMatchObject({ companies:{ added:[companyB], removed:[] }, roleLabel:{ before:'COLLABORATOR', after:'MANAGER' }, permissions:{ removed:[] } });
+    expect([...(event.changes as { permissions:{ added:string[] } }).permissions.added].sort()).toEqual([...seller].sort());
+    const companiesSeen=(await http('GET','/companies',undefined,stranger)).json() as { id:string; permissions:string[]; roleLabel:string }[];
+    expect(companiesSeen.filter(c=>c.id!==otherCompany).map(c=>c.id).sort()).toEqual([companyA,companyB].sort());
+    expect(companiesSeen.find(c=>c.id===companyA)).toMatchObject({ roleLabel:'MANAGER' });
+    expect([...companiesSeen.find(c=>c.id===companyA)!.permissions].sort()).toEqual([...seller].sort());
+  });
+  it('valida chaves e dependências sem completar em silêncio, sem gravar nada',async()=>{
+    const m=await joined();
+    expect((await putAccess({ version:m.version, companyIds:[companyA], roleLabel:'COLLABORATOR', permissions:['sales.create'] })).json())
+      .toMatchObject({ statusCode:422, code:'PERMISSION_DEPENDENCY_MISSING', missing:expect.arrayContaining([{ permission:'sales.create', requires:'sales.access' }]) });
+    expect((await putAccess({ version:m.version, companyIds:[companyA], roleLabel:'COLLABORATOR', permissions:['sales.fly'] })).json())
+      .toMatchObject({ statusCode:422, code:'UNKNOWN_PERMISSION', unknown:['sales.fly'] });
+    expect((await putAccess({ version:m.version, companyIds:[companyA], roleLabel:'ADMIN', permissions:[] })).statusCode).toBe(400);
+    expect((await memberRow()).permissions).toEqual([]);
+  });
+  it('versão, corrida e chave reutilizada',async()=>{
+    const m=await joined();
+    const body=(permissions:string[])=>({ version:m.version, companyIds:[companyA], roleLabel:'COLLABORATOR', permissions });
+    const statuses=(await Promise.all([putAccess(body(['customers.access'])),putAccess(body(['services.access']))])).map(r=>r.statusCode).sort();
+    expect(statuses).toEqual([200,409]);
+    expect((await putAccess(body(['customers.access']))).json()).toMatchObject({ code:'VERSION_CONFLICT' });
+    const key=randomUUID(), fresh=await memberRow();
+    await putAccess({ ...body([]), version:fresh.version },key);
+    expect((await putAccess({ ...body(['customers.access']), version:fresh.version },key)).json()).toMatchObject({ code:'IDEMPOTENCY_CONFLICT' });
+    expect(await events('MEMBER_ACCESS_CHANGED')).toHaveLength(2);
+  });
+  it('titular protegido e usuário fora da contratação (critério 1)',async()=>{
+    const root=await memberRow(owner);
+    expect((await putAccess({ version:root.version, companyIds:[companyA], roleLabel:'OWNER', permissions:[] },randomUUID(),owner)).json()).toMatchObject({ code:'OWNER_PROTECTED' });
+    expect((await putAccess({ version:'a'.repeat(64), companyIds:[companyA], roleLabel:'COLLABORATOR', permissions:[] },randomUUID(),randomUUID())).statusCode).toBe(404);
+  });
+  it('sem empresas desativa e preserva a linha de permissões (Spec 8.2)',async()=>{
+    const m=await joined();
+    expect((await putAccess({ version:m.version, companyIds:[], roleLabel:'COLLABORATOR', permissions:['customers.access'] })).statusCode).toBe(200);
+    expect(await memberRow()).toMatchObject({ permissions:['customers.access'] });
+    expect((await http('GET','/companies',undefined,stranger)).json().map((c:{id:string})=>c.id)).toEqual([otherCompany]);
+  });
+  it('PATCH users/:id/companies foi removida; o PUT access a substitui (Spec 6.4)',async()=>{
+    const m=await joined();
+    expect((await http('PATCH',`/accounts/${account}/users/${stranger}/companies`,{companyIds:[companyB],version:m.version},owner,randomUUID())).statusCode).toBe(404);
+    expect((await memberRow()).companies.filter(c=>c.status==='ACTIVE').map(c=>c.companyId)).toEqual([companyA]);
+  });
+});
+
+describe('acesso do convite (Spec 8.2, D5)',()=>{
+  const post=(extra:Record<string,unknown>,email=`${randomUUID()}@example.test`)=>http('POST',`/accounts/${account}/user-invitations`,{ name:'Ana', email, companyIds:[companyA], ...extra },owner,randomUUID());
+  it('orienta editar o membro ativo na contratação ao convidá-lo para qualquer empresa',async()=>{
+    await joined();
+    const counts = async () => Promise.all([
+      db.select({ value: count() }).from(s.userInvitations),
+      db.select({ value: count() }).from(s.emailMessages),
+      db.select({ value: count() }).from(s.userManagementCommands),
+      db.select({ value: count() }).from(s.userManagementEvents),
+    ]);
+    const before = await counts();
+    for (const companyId of [companyB, companyA]) {
+      const result = await post({ companyIds: [companyId] }, ' STRANGER@example.test ');
+      expect(result.statusCode).toBe(409);
+      expect(result.json()).toMatchObject({
+        statusCode: 409, code: 'USER_ALREADY_LINKED', userId: stranger,
+        message: 'Este usuário já tem acesso nesta contratação. Abra o usuário na lista, marque a nova empresa e ajuste as permissões lá.',
+      });
+    }
+    expect(await counts()).toEqual(before);
+    expect((await service.capacity(account, owner)).every(company => company.reserved === 0)).toBe(true);
+  });
+  it('a lista encontra o e-mail inteiro após recusar o convite de um membro ativo',async()=>{
+    const email = `ana@${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(55)}.br`;
+    expect(email).toHaveLength(254);
+    const [member] = await db.insert(s.users).values({ name: 'Ana', email }).returning({ id: s.users.id });
+    await db.insert(s.companyUsers).values({ companyId: companyA, userId: member.id, role: 'COLLABORATOR' });
+    const blocked = await post({ companyIds: [companyB] }, email);
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json()).toMatchObject({ code: 'USER_ALREADY_LINKED', userId: member.id });
+
+    const listUrl = (search: string) => `/accounts/${account}/users?${new URLSearchParams({ search })}`;
+    const result = await http('GET', listUrl(email));
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({ total: 1, items: [{ id: member.id, email, status: 'ACTIVE' }] });
+    expect((await http('GET', listUrl(`${email}x`))).statusCode).toBe(400);
+  });
+  it('protege o titular e informa que ele já tem acesso a todas as empresas',async()=>{
+    const result = await post({ companyIds: [companyB] }, 'owner@example.test');
+    expect(result.statusCode).toBe(409);
+    expect(result.json()).toEqual({
+      statusCode: 409, code: 'OWNER_PROTECTED', message: 'O titular da contratação já tem acesso a todas as empresas.',
+    });
+  });
+  it('convite nasce com as permissões marcadas, num único comando; sem marcar, nasce vazio (critério 18)',async()=>{
+    const res=await post({ roleLabel:'MANAGER', permissions:['customers.access'] });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ roleLabel:'MANAGER', permissions:['customers.access'] });
+    expect(await latestRow(res.json().id)).toMatchObject({ roleLabel:'MANAGER', permissions:['customers.access'] });
+    const [event]=await events('INVITATION_CREATED');
+    expect(event.changes).toMatchObject({ roleLabel:{ after:'MANAGER' }, permissions:{ added:['customers.access'] } });
+    expect(await latestRow((await post({})).json().id)).toMatchObject({ roleLabel:'COLLABORATOR', permissions:[] });
+  });
+  it('convite inválido devolve 422 e não cria nada',async()=>{
+    expect((await post({ permissions:['sales.create'] })).json()).toMatchObject({ code:'PERMISSION_DEPENDENCY_MISSING' });
+    expect(await db.select().from(s.userInvitations)).toHaveLength(0);
+  });
+  it('mudar só permissões não reenvia; mudar empresas segue o reenvio',async()=>{
+    const created=await invite([companyA]);
+    const mails=async()=>(await db.select().from(s.emailMessages).where(eq(s.emailMessages.invitationId,created.id))).length;
+    const sent=await mails();
+    const patch=(body:Record<string,unknown>)=>http('PATCH',`/accounts/${account}/user-invitations/${created.id}/access`,body,owner,randomUUID());
+    const onlyAccess=await patch({ version:created.version, companyIds:[companyA], roleLabel:'MANAGER', permissions:['customers.access'] });
+    expect(onlyAccess.json()).toMatchObject({ version:created.version+1, roleLabel:'MANAGER', permissions:['customers.access'], delivery:{ id:expect.any(String) } });
+    expect(await mails()).toBe(sent);
+    expect((await http('POST','/user-invitations/preview',{ token:created.token },null)).statusCode).toBe(200);
+    await resetResend(created.id);
+    const moved=await patch({ version:created.version+1, companyIds:[companyB], roleLabel:'MANAGER', permissions:['customers.access'] });
+    expect(moved.statusCode).toBe(200);
+    expect(await mails()).toBe(sent+1);
+    expect((await http('POST','/user-invitations/preview',{ token:created.token },null)).statusCode).toBe(410);
+    expect(await events('INVITATION_ACCESS_CHANGED')).toHaveLength(2);
+  });
+  it('PATCH user-invitations/:id/companies foi removida; o PATCH …/access a substitui (Spec 6.4)',async()=>{
+    const created=await invite([companyA]);
+    expect((await http('PATCH',`/accounts/${account}/user-invitations/${created.id}/companies`,{version:created.version,companyIds:[companyB]},owner,randomUUID())).statusCode).toBe(404);
+    expect(await latestRow(created.id)).toMatchObject({ version:created.version, status:'PENDING' });
+  });
+});
+
+describe('aceite grava o acesso do convite (Spec 8.2, critério 13)',()=>{
+  const memberAccess=async(userId:string)=>(await db.select().from(s.accountMembers).where(and(eq(s.accountMembers.accountId,account),eq(s.accountMembers.userId,userId))))[0];
+  it('reenvia e edita convite anterior de membro ativo, cujo aceite só acrescenta empresas',async()=>{
+    const pending = await invite([companyB], 'stranger@example.test');
+    // Estado produzido pelo fluxo anterior, em que membros podiam receber convites adicionais.
+    await db.insert(s.companyUsers).values({ companyId: companyA, userId: stranger, role: 'COLLABORATOR' });
+    await grantMember(db, account, stranger, ['customers.access'], 'MANAGER');
+    const before = await memberAccess(stranger);
+    await resetResend(pending.id);
+    const changed = await http('PATCH', `/accounts/${account}/user-invitations/${pending.id}/access`, {
+      version: pending.version, companyIds: [companyA, companyB], roleLabel: 'OWNER', permissions: ['services.access'],
+    }, owner, randomUUID());
+    expect(changed.statusCode).toBe(200);
+    await resetResend(pending.id);
+    const resent = await http('POST', `/accounts/${account}/user-invitations/${pending.id}/resend`, {
+      version: changed.json().version,
+    }, owner, randomUUID());
+    expect(resent.statusCode).toBe(202);
+
+    const accepted = await http('POST', '/user-invitations/accept-existing', { token: await tokenFor(pending.id) }, stranger);
+    expect(accepted.statusCode).toBe(200);
+    expect(await memberAccess(stranger)).toEqual(before);
+    const member = await memberRow();
+    expect(member.companies.filter(company => company.status === 'ACTIVE').map(company => company.companyId).sort())
+      .toEqual([companyA, companyB].sort());
+    const [audit] = await events('INVITATION_ACCEPTED');
+    expect(audit.changes).toMatchObject({
+      companies: { added: [companyB], removed: [] },
+      roleLabel: { before: 'MANAGER', after: 'MANAGER' }, permissions: { added: [], removed: [] },
+    });
+  });
+  it('serializa o aceite e uma nova tentativa de convite ao mesmo e-mail',async()=>{
+    const [thirdCompany] = await db.insert(s.companies).values({ accountId: account, name: 'Empresa C' }).returning();
+    const pending = await invite([companyB], 'stranger@example.test');
+    await db.insert(s.companyUsers).values({ companyId: companyA, userId: stranger, role: 'COLLABORATOR' });
+    await grantMember(db, account, stranger, ['customers.access'], 'MANAGER');
+    const before = await memberAccess(stranger);
+    const [accepted, rejected] = await Promise.all([
+      http('POST', '/user-invitations/accept-existing', { token: pending.token }, stranger),
+      http('POST', `/accounts/${account}/user-invitations`, {
+        name: 'Ana', email: 'stranger@example.test', companyIds: [thirdCompany.id],
+      }, owner, randomUUID()),
+    ]);
+    expect(accepted.statusCode).toBe(200);
+    expect(rejected.statusCode).toBe(409);
+    expect(rejected.json()).toMatchObject({ code: 'USER_ALREADY_LINKED', userId: stranger });
+    expect(await memberAccess(stranger)).toEqual(before);
+    expect(await db.select().from(s.userInvitations)).toHaveLength(1);
+    const companies = await service.capacity(account, owner);
+    expect(companies.find(company => company.companyId === companyB)).toMatchObject({ occupied: 1, reserved: 0 });
+    expect(companies.find(company => company.companyId === thirdCompany.id)).toMatchObject({ occupied: 0, reserved: 0 });
+  });
+  it('repete o aceite existente em concorrência sem duplicar a concessão',async()=>{
+    const pending = await invite([companyA], 'stranger@example.test');
+    const accept = () => http('POST', '/user-invitations/accept-existing', { token: pending.token }, stranger);
+    const { responses } = await db.transaction(async tx => {
+      await tx.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.id, account)).for('update');
+      const responses = Promise.all([accept(), accept()]);
+      // Só libera a contratação após ambos os aceites lerem PENDING e aguardarem a trava.
+      await vi.waitFor(async () => {
+        const [waiting] = await client<{ total: number }[]>`select count(*)::int as total from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'`;
+        expect(waiting.total).toBe(2);
+      }, { timeout: 5000 });
+      return { responses };
+    });
+    const results = await responses;
+    expect(results.map(result => result.statusCode)).toEqual([200, 200]);
+    for (const result of results) expect(result.json()).toMatchObject({ accepted: true, invitationId: pending.id });
+    expect((await memberAccess(stranger)).version).toBe(1);
+    expect(await events('INVITATION_ACCEPTED')).toHaveLength(1);
+    expect((await http('POST', '/user-invitations/accept-existing', { token: pending.token }, owner)).statusCode).toBe(410);
+  });
+  it('aceita em paralelo o mesmo usuário em contratações diferentes, cada uma com seu acesso',async()=>{
+    const anotherAccount = await testAccount(db, owner);
+    const [anotherCompany] = await db.insert(s.companies).values({ accountId: anotherAccount, name: 'Outra contratação' }).returning();
+    await db.insert(s.companyUsers).values({ companyId: anotherCompany.id, userId: owner, role: 'OWNER' });
+    const pending = await invite([companyB], 'stranger@example.test');
+    const another = await http('POST', `/accounts/${anotherAccount}/user-invitations`, {
+      name: 'Ana', email: 'stranger@example.test', companyIds: [anotherCompany.id], roleLabel: 'COLLABORATOR', permissions: ['services.access'],
+    }, owner, randomUUID());
+    expect(another.statusCode).toBe(202);
+    await db.insert(s.companyUsers).values({ companyId: companyA, userId: stranger, role: 'COLLABORATOR' });
+    await grantMember(db, account, stranger, ['customers.access'], 'MANAGER');
+    const before = await memberAccess(stranger);
+    const tokens = [pending.token, await tokenFor(another.json().id)];
+
+    const results = await Promise.all(tokens.map(token => http('POST', '/user-invitations/accept-existing', { token }, stranger)));
+    expect(results.map(result => result.statusCode)).toEqual([200, 200]);
+    expect(await memberAccess(stranger)).toEqual(before);
+    const [newAccess] = await db.select().from(s.accountMembers).where(and(eq(s.accountMembers.accountId, anotherAccount), eq(s.accountMembers.userId, stranger)));
+    expect(newAccess).toMatchObject({ roleLabel: 'COLLABORATOR', permissions: ['services.access'] });
+  });
+  it('convite sem permissões gera membro sem permissões; com permissões, grava as do convite',async()=>{
+    const empty=await invite([companyA]);
+    const created=(await acceptNew(empty.token)).json().user.id as string;
+    expect(await memberAccess(created)).toMatchObject({ roleLabel:'COLLABORATOR', permissions:[] });
+    const res=await http('POST',`/accounts/${account}/user-invitations`,{ name:'Bia', email:'stranger@example.test', companyIds:[companyA], roleLabel:'MANAGER', permissions:['customers.access'] },owner,randomUUID());
+    await http('POST','/user-invitations/accept-existing',{ token:await tokenFor(res.json().id) },stranger);
+    expect(await memberAccess(stranger)).toMatchObject({ roleLabel:'MANAGER', permissions:['customers.access'] });
+    const accepted=(await events('INVITATION_ACCEPTED')).find(e=>e.targetUserId===stranger)!;
+    expect(accepted.changes).toMatchObject({ permissions:{ added:['customers.access'] }, roleLabel:{ before:null, after:'MANAGER' } });
+  });
+  it('ex-membro convidado de novo tem a linha sobrescrita pelo convite',async()=>{
+    const m=await joined();
+    await putAccess({ version:m.version, companyIds:[], roleLabel:'MANAGER', permissions:[...ALL_PERMISSIONS] });
+    const again=await invite([companyA],'stranger@example.test');
+    await http('POST','/user-invitations/accept-existing',{ token:again.token },stranger);
+    const row=await memberAccess(stranger);
+    expect(row).toMatchObject({ roleLabel:'COLLABORATOR', permissions:[] });
+    expect(row.version).toBeGreaterThan(2);
+  });
+  it.each([['Colaborador (34)',LEGACY_COLLABORATOR,'COLLABORATOR'],['Gerente (38)',LEGACY_MANAGER,'MANAGER'],['Proprietário (45)',ALL_PERMISSIONS,'OWNER']] as const)('ex-membro %s com vínculo inativo e convite vazio: o aceite zera, reativa, sobe a versão e audita',async(_name,legacy,label)=>{
+    await joined();
+    await grantMember(db,account,stranger,legacy,label);
+    await db.update(s.companyUsers).set({ status:'INACTIVE' }).where(and(eq(s.companyUsers.userId,stranger),eq(s.companyUsers.companyId,companyA)));
+    const before=await memberAccess(stranger);
+    const again=await invite([companyA],'stranger@example.test');
+    const accepted=await http('POST','/user-invitations/accept-existing',{ token:again.token },stranger);
+    expect(accepted.statusCode).toBe(200);
+    const row=await memberAccess(stranger);
+    expect(row).toMatchObject({ roleLabel:'COLLABORATOR', permissions:[] });
+    expect(row.version).toBe(before.version+1);
+    expect((await db.select().from(s.companyUsers).where(and(eq(s.companyUsers.userId,stranger),eq(s.companyUsers.companyId,companyA))))[0].status).toBe('ACTIVE');
+    const audit=(await events('INVITATION_ACCEPTED')).filter(e=>e.targetUserId===stranger).at(-1)!;
+    expect((audit.changes as { permissions:{ removed:string[] } }).permissions.removed.slice().sort()).toEqual([...legacy].sort());
+    expect((await http('POST','/user-invitations/accept-existing',{ token:again.token },stranger)).statusCode).toBe(200);
+    expect((await memberAccess(stranger)).version).toBe(row.version);
+  });
+  it('convite expirado é recusado e não altera o acesso',async()=>{
+    const m=await joined();
+    expect((await putAccess({ version:m.version, companyIds:[], roleLabel:'MANAGER', permissions:['customers.access'] })).statusCode).toBe(200);
+    const before=await memberAccess(stranger);
+    const again=await invite([companyB],'stranger@example.test');
+    await db.update(s.userInvitations).set({ expiresAt:new Date(Date.now()-1000) }).where(eq(s.userInvitations.id,again.id));
+    expect((await http('POST','/user-invitations/accept-existing',{ token:again.token },stranger)).statusCode).toBe(410);
+    expect(await memberAccess(stranger)).toMatchObject({ roleLabel:'MANAGER', permissions:['customers.access'], version:before.version });
   });
 });

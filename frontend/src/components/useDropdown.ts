@@ -26,6 +26,12 @@ export function useDropdown<T extends HTMLElement = HTMLButtonElement>() {
     (position === 'first' ? items[0] : items[items.length - 1]).focus();
   }, []);
 
+  /** Abre e foca o primeiro ou o último item (APG Menu Button). */
+  const openAt = useCallback((position: 'first' | 'last') => {
+    setOpen(true);
+    requestAnimationFrame(() => focusItem(position));
+  }, [focusItem]);
+
   useEffect(() => {
     if (!open) return;
     const closeOutside = (event: Event) => {
@@ -70,10 +76,8 @@ export function useDropdown<T extends HTMLElement = HTMLButtonElement>() {
   const onTriggerKeyDown = useCallback((event: ReactKeyboardEvent) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
-    const position = event.key === 'ArrowDown' ? 'first' : 'last';
-    setOpen(true);
-    requestAnimationFrame(() => focusItem(position));
-  }, [focusItem]);
+    openAt(event.key === 'ArrowDown' ? 'first' : 'last');
+  }, [openAt]);
 
-  return { open, setOpen, toggle, close, rootRef, triggerRef, panelRef, onTriggerKeyDown };
+  return { open, setOpen, toggle, close, openAt, rootRef, triggerRef, panelRef, onTriggerKeyDown };
 }

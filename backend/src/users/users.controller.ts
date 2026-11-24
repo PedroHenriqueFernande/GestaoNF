@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Inject, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Inject, Param, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -6,7 +6,7 @@ import { AccessGuard, type RequestContext } from '../auth/access.guard.js';
 import { authResponse } from '../auth/auth-response.js';
 import { parseInput } from '../common/validate.js';
 import { emailKeySchema } from '../emails/emails.schemas.js';
-import { acceptNewSchema, createInvitationSchema, invitationCompaniesSchema, invitationVersionSchema, membershipSelectionSchema, previewSchema, userListSchema } from './users.schemas.js';
+import { acceptNewSchema, createInvitationSchema, invitationAccessSchema, invitationVersionSchema, memberAccessSchema, previewSchema, userListSchema } from './users.schemas.js';
 import { UsersService } from './users.service.js';
 import { InvitationThrottleService } from './invitation-throttle.service.js';
 
@@ -27,12 +27,12 @@ export class UsersController {
   create(@Req() r: RequestContext, @Param('accountId') accountId: string, @Body() body: unknown) { return this.users.create(this.ids(accountId).accountId, r.userId!, parseInput(createInvitationSchema, body), this.key(r)); }
   @Post('user-invitations/:id/resend') @HttpCode(202) @keyDoc() @bodyDoc(invitationVersionSchema)
   resend(@Req() r: RequestContext, @Param('accountId') a: string, @Param('id') id: string, @Body() body: unknown) { const ids = this.ids(a, id); return this.users.rotate(ids.accountId, r.userId!, ids.id!, parseInput(invitationVersionSchema, body).version, this.key(r)); }
-  @Patch('user-invitations/:id/companies') @keyDoc() @bodyDoc(invitationCompaniesSchema)
-  targets(@Req() r: RequestContext, @Param('accountId') a: string, @Param('id') id: string, @Body() body: unknown) { const ids = this.ids(a, id), input = parseInput(invitationCompaniesSchema, body); return this.users.rotate(ids.accountId, r.userId!, ids.id!, input.version, this.key(r), input.companyIds); }
+  @Patch('user-invitations/:id/access') @keyDoc() @bodyDoc(invitationAccessSchema) @ApiOperation({ summary: 'Empresas, rótulo e permissões do convite pendente' })
+  invitationAccess(@Req() r: RequestContext, @Param('accountId') a: string, @Param('id') id: string, @Body() body: unknown) { const ids = this.ids(a, id); return this.users.updateInvitationAccess(ids.accountId, r.userId!, ids.id!, parseInput(invitationAccessSchema, body), this.key(r)); }
   @Post('user-invitations/:id/revoke') @HttpCode(200) @keyDoc() @bodyDoc(invitationVersionSchema)
   revoke(@Req() r: RequestContext, @Param('accountId') a: string, @Param('id') id: string, @Body() body: unknown) { const ids = this.ids(a, id); return this.users.revoke(ids.accountId, r.userId!, ids.id!, parseInput(invitationVersionSchema, body).version, this.key(r)); }
-  @Patch('users/:id/companies') @keyDoc() @bodyDoc(membershipSelectionSchema)
-  memberships(@Req() r: RequestContext, @Param('accountId') a: string, @Param('id') id: string, @Body() body: unknown) { const ids = this.ids(a, id), input = parseInput(membershipSelectionSchema, body); return this.users.updateCompanies(ids.accountId, r.userId!, ids.id!, input.companyIds, input.version, this.key(r)); }
+  @Put('users/:id/access') @keyDoc() @bodyDoc(memberAccessSchema) @ApiOperation({ summary: 'Empresas, rótulo e permissões do membro num único comando' })
+  access(@Req() r: RequestContext, @Param('accountId') a: string, @Param('id') id: string, @Body() body: unknown) { const ids = this.ids(a, id); return this.users.updateAccess(ids.accountId, r.userId!, ids.id!, parseInput(memberAccessSchema, body), this.key(r)); }
   @Post('users/:id/deactivate') @HttpCode(200) @keyDoc() @bodyDoc(z.strictObject({ version: z.string().length(64) }))
   deactivate(@Req() r: RequestContext, @Param('accountId') a: string, @Param('id') id: string, @Body() body: unknown) { const ids = this.ids(a, id); return this.users.updateCompanies(ids.accountId, r.userId!, ids.id!, [], parseInput(z.strictObject({ version: z.string().length(64) }), body).version, this.key(r)); }
 }

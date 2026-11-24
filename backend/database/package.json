@@ -14,6 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@gestaonf/permissions": "*",
     "dotenv": "18.0.6",
     "drizzle-orm": "0.45.3",
     "postgres": "3.4.9"

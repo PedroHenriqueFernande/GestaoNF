@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { localWebOrigin } from './origin';
+import { memberCompany, ownerCompany } from './companies';
 
 const A = '11111111-1111-4111-8111-111111111111', B = '22222222-2222-4222-8222-222222222222', C = '33333333-3333-4333-8333-333333333333';
 const companies = [
-  { id: A, name: 'Alfa Serviços', role: 'OWNER', accountId: 'acc1', logoId: null },
-  { id: B, name: 'Beta Consultoria', role: 'OWNER', accountId: 'acc2', logoId: null },
-  { id: C, name: 'Cinza Obras', role: 'ADMIN', accountId: 'acc1', logoId: null },
+  ownerCompany(A, 'Alfa Serviços', 'acc1'),
+  ownerCompany(B, 'Beta Consultoria', 'acc2'),
+  memberCompany(C, 'Cinza Obras', 'acc1', ['sales.access', 'finance.access'], 'MANAGER'),
 ];
 const saleId = (n: number) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, '0')}`;
 const sale = (n: number, companyId: string, status = 'CONFIRMED') => ({ id: saleId(n), companyId, orderCode: '14872', workOrderNumber: null, customerId: 'cust', customerNameSnapshot: `Cliente ${n}`,
@@ -15,7 +16,7 @@ type Calls = { overview: URLSearchParams[]; single: (string | undefined)[]; deta
 const newCalls = (): Calls => ({ overview: [], single: [], details: [], finance: [], posts: 0, customers: [], overviewStatus: 200 });
 const view = (page: Page) => page.evaluate(() => ({ view: sessionStorage.getItem('gestaonf.companyView'), active: sessionStorage.getItem('gestaonf.companyId') }));
 
-async function mockApi(page: Page, calls: Calls) {
+async function mockApi(page: Page, calls: Calls, companyList = companies) {
   await page.addInitScript(id => { if (!sessionStorage.getItem('gestaonf.companyId')) sessionStorage.setItem('gestaonf.companyId', id); }, A);
   const cors = { 'access-control-allow-origin': localWebOrigin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Company-Id, Idempotency-Key', 'access-control-allow-methods': 'GET, POST, PATCH, PUT, OPTIONS' };
   await page.route('**:4030/**', async route => {
@@ -23,7 +24,7 @@ async function mockApi(page: Page, calls: Calls) {
     const reply = (json: unknown, status = 200) => route.fulfill({ status, json, headers: cors });
     if (method === 'OPTIONS') return reply({});
     if (url.pathname === '/auth/me') return reply({ id: 'user', name: 'Pedro', email: 'pedro@example.test', avatarId: null, profileVersion: 1 });
-    if (url.pathname === '/companies') return reply(companies);
+    if (url.pathname === '/companies') return reply(companyList);
     if (url.pathname === '/companies/logos/access') return reply({ items: [] });
     if (url.pathname === '/sales/overview') {
       calls.overview.push(url.searchParams);
@@ -129,6 +130,24 @@ test('seletor fora do Portal: seleção única, empresa ativa e visão preservad
 const openPicker = (page: Page) => page.getByRole('button', { name: /^(Empresa ativa|Visão):/ }).click();
 const menuOf = (page: Page) => page.locator('#workspace-company-menu');
 
+test('Ver todas oferece só empresas com sales.access (critério 11)', async ({ page }) => {
+  const calls = newCalls();
+  await mockApi(page, calls, [
+    memberCompany(A, 'Alfa Serviços', 'acc1', ['sales.access']),
+    memberCompany(B, 'Beta Consultoria', 'acc2', ['sales.access']),
+    memberCompany(C, 'Cinza Obras', 'acc3', ['customers.access']),
+  ]);
+  await page.goto('/portal-de-servicos');
+  await openPicker(page);
+  await expect(menuOf(page).getByRole('checkbox', { name: 'Incluir Alfa Serviços na visão' })).toBeVisible();
+  await expect(menuOf(page).getByRole('checkbox', { name: 'Incluir Beta Consultoria na visão' })).toBeVisible();
+  await expect(menuOf(page).getByRole('checkbox', { name: 'Incluir Cinza Obras na visão' })).toHaveCount(0);
+  await expect(menuOf(page).getByRole('button', { name: /^Cinza Obras/ })).toBeVisible();
+  await menuOf(page).getByRole('button', { name: 'Ver todas as empresas' }).click();
+  await expect(page.getByRole('button', { name: 'Visão: todas as empresas (2). Trocar empresas' })).toBeVisible();
+  await expect.poll(() => calls.overview.at(-1)?.get('companies')).toBe('all');
+});
+
 test('lista consolidada: empresa por linha, total por aba e volta à lista por empresa', async ({ page }) => {
   const calls = newCalls();
   await mockApi(page, calls);
@@ -146,9 +165,9 @@ test('lista consolidada: empresa por linha, total por aba e volta à lista por e
   await expect(rows.nth(0).locator('.sales-company')).toHaveAttribute('title', 'Alfa Serviços');
   await expect(rows.nth(1).locator('.sales-company__name')).toHaveText('Beta Consultoria');
   await expect(rows.nth(0).getByRole('button', { name: 'Abrir pedido 14872 de Alfa Serviços' })).toBeVisible();
-  await expect(page.locator('.sales-ledger__sum')).toHaveText(/Total sem cancelados: R\$\s1\.284,86/);
-  await page.getByRole('button', { name: 'Cancelados', exact: true }).click();
-  await expect(page.locator('.sales-ledger__sum')).toHaveText(/Total cancelado: R\$\s1\.284,86/);
+  await expect(page.locator('.sales-ledger__sum')).toHaveText(/Total sem excluídas: R\$\s1\.284,86/);
+  await page.getByRole('button', { name: 'Excluídas', exact: true }).click();
+  await expect(page.locator('.sales-ledger__sum')).toHaveText(/Total excluído: R\$\s1\.284,86/);
   expect(calls.overview.at(-1)!.get('status')).toBe('CANCELED');
   await openPicker(page);
   await menuOf(page).getByRole('checkbox', { name: 'Incluir Cinza Obras na visão' }).uncheck();

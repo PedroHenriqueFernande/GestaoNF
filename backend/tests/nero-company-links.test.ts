@@ -8,9 +8,10 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import * as schema from '@gestaonf/database/schema';
 import { DatabaseService } from '../src/database/database.module.js';
+import { grantMember } from './permission-fixtures.js';
 import { MetaMediaClient } from '../src/whatsapp/meta-media.client.js';
 import { WhatsAppLinkService } from '../src/whatsapp/whatsapp-link.service.js';
 import { WhatsAppOutboundService } from '../src/whatsapp/whatsapp-outbound.service.js';
@@ -97,12 +98,12 @@ beforeEach(async () => {
   await db.insert(schema.companyUsers).values(companies.map((company) => ({ companyId: company.id, userId, role: 'OWNER' })));
 });
 
-async function pair(companyId: string, senderId: string, existingLinkId?: string) {
-  const challenge = await links.createChallenge(userId, companyId, existingLinkId ? { mode: 'EXISTING_NUMBER', linkId: existingLinkId } : {});
+async function pair(companyId: string, senderId: string, existingLinkId?: string, user = userId) {
+  const challenge = await links.createChallenge(user, companyId, existingLinkId ? { mode: 'EXISTING_NUMBER', linkId: existingLinkId } : {});
   const text = new URL(challenge.waLink).searchParams.get('text')!;
   expect((await links.captureCandidate(connectionId, senderId, senderId, text))?.accepted).toBe(true);
-  await links.confirm(userId, companyId, challenge.challengeId);
-  return (await links.status(userId, companyId)).link!;
+  await links.confirm(user, companyId, challenge.challengeId);
+  return (await links.status(user, companyId)).link!;
 }
 
 async function inbound(senderId: string, text: string, payload: Record<string, unknown> = {}) {
@@ -222,5 +223,24 @@ describe('opt-out', () => {
     expect((await links.status(userId, companyA)).linked).toBe(false);
     expect((await links.status(userId, companyB)).linked).toBe(false);
     expect((await links.status(userId, companyC)).link?.linkId).toBe(c.linkId);
+  });
+});
+
+describe('permissão do Nero (nero.use)', () => {
+  it('sem nero.use a empresa sai da elegibilidade e o Nero responde que não há acesso (critério 3)', async () => {
+    const [{ accountId }] = await db.select({ accountId: schema.companies.accountId }).from(schema.companies).where(eq(schema.companies.id, companyA));
+    const [{ id: member }] = await db.insert(schema.users).values({ name: 'Membro', email: `${randomUUID()}@example.test` }).returning();
+    await db.insert(schema.companyUsers).values({ companyId: companyA, userId: member, role: 'COLLABORATOR' });
+    await grantMember(db, accountId!, member, ['nero.use']);
+    const sender = phone();
+    const link = await pair(companyA, sender, undefined, member);
+    expect((await links.eligibleCompanies(link.linkId, member)).map((item) => item.companyId)).toEqual([companyA]);
+
+    await grantMember(db, accountId!, member, []);
+    expect(await links.eligibleCompanies(link.linkId, member)).toEqual([]);
+    await inbound(sender, 'Oi');
+    const [sent] = await db.select().from(schema.whatsappOutboundMessages)
+      .where(eq(schema.whatsappOutboundMessages.recipientId, sender)).orderBy(desc(schema.whatsappOutboundMessages.createdAt)).limit(1);
+    expect(sent.body).toBe('Seu usuário não tem acesso ao Nero. Fale com o responsável pela conta.');
   });
 });

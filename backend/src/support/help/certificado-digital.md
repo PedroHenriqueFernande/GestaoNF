@@ -5,12 +5,12 @@ rota: empresa
 palavras-chave: [certificado, certificado digital, a1, pfx, p12, senha do certificado, icp-brasil, vencido]
 ---
 ## O que é
-Para emitir NFS-e, a empresa precisa de um **certificado digital A1** (arquivo `.pfx` ou `.p12`) em nome do mesmo CNPJ cadastrado. Ele é a assinatura digital da empresa e é guardado de forma protegida no sistema. O certificado pertence à empresa, não ao seu usuário pessoal. Só proprietário e administrador podem cadastrar, substituir ou desativar. Os demais usuários apenas consultam.
+Para emitir NFS-e, a empresa precisa de um **certificado digital A1** (arquivo `.pfx` ou `.p12`) em nome do mesmo CNPJ cadastrado. Ele é a assinatura digital da empresa e é guardado de forma protegida no sistema. O certificado pertence à empresa, não ao seu usuário pessoal. Cadastrar, substituir ou desativar está disponível para quem tem a permissão **Certificado digital A1**. Quem só acessa o cadastro da empresa apenas consulta.
 
-Ele fica no cadastro da empresa: menu **Fiscal › Empresa**, ao abrir a empresa, na seção **Certificado digital**.
+Ele fica no cadastro da empresa: menu **Cadastros › Empresa**, ao abrir a empresa, na seção **Certificado digital**.
 
 ## Passo a passo
-1. No menu da esquerda, abra **Fiscal** e clique em **Empresa**.
+1. No menu da esquerda, abra **Cadastros** e clique em **Empresa**.
 2. Na lista **Empresas cadastradas**, clique na empresa para abrir o cadastro. Se ainda não houver empresa, clique em **Novo**, preencha os dados e salve primeiro. A seção de certificado só funciona depois que a empresa foi salva.
 3. Confira se o CNPJ (ou CPF) da empresa está preenchido e salvo. Se alterou algo, clique em **Salvar alterações** antes de continuar.
 4. Role até a seção **Certificado digital**.
@@ -28,4 +28,4 @@ Para trocar o certificado, escolha o novo arquivo e a senha e clique em **Substi
 - Falha ao cadastrar: confira se a senha está correta e se o certificado é do tipo A1 em nome do mesmo CNPJ cadastrado na empresa. Certificado A3 (cartão ou token) não é aceito.
 - "Certificado expirado": cadastre um novo certificado com **Substituir certificado**.
 - Não consigo alterar o CNPJ da empresa: com um certificado ativo, o campo fica bloqueado ("Para alterar, desative primeiro o certificado.").
-- Não aparecem os botões de enviar arquivo: seu usuário só tem acesso de consulta. Peça ao proprietário ou a um administrador.
+- Não aparecem os botões de enviar arquivo: seu usuário não tem a permissão **Certificado digital A1**. Fale com o responsável pela conta.

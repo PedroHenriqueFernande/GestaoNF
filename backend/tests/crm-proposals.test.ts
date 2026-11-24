@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers, grantMember } from './permission-fixtures.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, type HttpException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -22,6 +23,9 @@ import { LeadCaptureService } from '../src/crm/lead-capture.service.js';
 import { ProposalsService } from '../src/crm/proposals.service.js';
 import { ProposalReadService } from '../src/crm/proposal-read.service.js';
 import { SalesService } from '../src/sales/sales.service.js';
+import type { Actor } from '../src/permissions/actor.js';
+import { closure, type PermissionKey } from '@gestaonf/permissions';
+import { resolveActor } from '../src/permissions/permission-resolver.js';
 import * as codes from '../src/sales/sales-codes.js';
 import { createLeadSchema } from '../src/crm/crm.schemas.js';
 import { createProposalSchema, proposalListSchema } from '../src/crm/proposal.schemas.js';
@@ -33,11 +37,12 @@ const secret = 'proposals-isolated-test-secret-with-at-least-32-characters';
 let admin: ReturnType<typeof postgres>, client: ReturnType<typeof postgres>, db: ReturnType<typeof drizzle<typeof s>>;
 let app: NestFastifyApplication, proposals: ProposalsService, capture: LeadCaptureService, read: ProposalReadService, sales: SalesService;
 let owner: string, seller: string, other: string, company: string, companyB: string, service: string;
+let ownerActor: Actor, account: string;
 const ctx = (userId = owner, companyId = company) => ({ userId, companyId });
 @Global() @Module({ providers: [{ provide: DatabaseService, useFactory: () => ({ db }) }], exports: [DatabaseService] })
 class TestDatabaseModule {}
 @Module({ imports: [TestDatabaseModule, CrmModule, ServicesModule] }) class TestAppModule {}
-const item = () => ({ serviceId: service, quantity: '2.0000', unitPrice: '2500.00', discountType: 'PERCENT', discountInput: '10.00' });
+const item = () => ({ serviceId: service, quantity: '2.0000', unitPrice: '2500.00', discountType: 'PERCENT' as const, discountInput: '10.00' });
 async function lead(extra: Record<string, unknown> = {}) {
   return capture.create(ctx(), createLeadSchema.parse({ lead: { name: 'João', email: 'joao@example.test', ...extra }, interest: { primaryServiceId: service } }), randomUUID());
 }
@@ -76,9 +81,13 @@ afterAll(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 beforeEach(async () => {
   const users = await db.insert(s.users).values(['Gestor', 'Vendedor', 'Outro'].map(name => ({ name, email: `${randomUUID()}@example.test` }))).returning(); [owner, seller, other] = users.map(u => u.id);
-  const accountId = await testAccount(db, owner);
+  const accountId = await testAccount(db, owner); account = accountId;
   const companies = await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning(); [company, companyB] = companies.map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' }, { companyId: company, userId: seller, role: 'COLLABORATOR' }, { companyId: company, userId: other, role: 'COLLABORATOR' }]);
+  await grantLegacyMembers(db);
+  const actor = await resolveActor(db, owner, company);
+  if (!actor) throw new Error('Vínculo do titular inválido no teste de propostas');
+  ownerActor = actor;
   const [v] = await db.insert(s.services).values({ companyId: company, name: 'Venda de CRM', suggestedUnitPrice: '2500.00' }).returning(); service = v.id;
 });
 
@@ -146,13 +155,13 @@ describe('propostas comerciais: HTTP e PostgreSQL', () => {
     expect(await proposals.preview(ctx(), p.id)).toEqual(original);
     await expect(proposals.update(ctx(), p.id, { expectedVersion: 3, title: 'Mudança' })).rejects.toMatchObject({ status: 409 });
     await expect(db.update(s.crmProposals).set({ title: 'Mudança direta' }).where(eq(s.crmProposals.id, p.id))).rejects.toBeDefined();
-    const r = await proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID());
+    const r = await proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID(), ownerActor);
     const sale = await sales.get(company, String(r.saleId)); expect(sale.items[0].serviceNameSnapshot).toBe('Venda de CRM'); expect(sale.totalAmount).toBe('4500.00');
   });
   it('aceite não gera venda e conversões concorrentes geram um único pedido DRAFT sem financeiro', async () => {
     const p = await accepted();
     expect((await db.select({ n: count() }).from(s.sales).where(eq(s.sales.companyId, company)))[0].n).toBe(0);
-    const results = await Promise.all(Array.from({ length: 4 }, () => proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID())));
+    const results = await Promise.all(Array.from({ length: 4 }, () => proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID(), ownerActor)));
     for (const r of results) expect(r.saleId).toBe(results[0].saleId);
     const sale = await sales.get(company, String(results[0].saleId)); expect(sale.status).toBe('DRAFT'); expect(sale.orderCode).toMatch(/^\d{5}$/); expect(sale.installments).toEqual([]);
     expect((await db.select().from(s.receivables).where(eq(s.receivables.companyId, company)))).toEqual([]);
@@ -161,19 +170,19 @@ describe('propostas comerciais: HTTP e PostgreSQL', () => {
   it('falha após INSERT do pedido reverte pedido, status e histórico de conversão', async () => {
     const p = await accepted(), original = sales.createDraftInTx.bind(sales);
     vi.spyOn(sales, 'createDraftInTx').mockImplementationOnce(async (...args) => { await original(...args); throw new Error('Falha simulada'); });
-    await expect(proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID())).rejects.toThrow('Falha simulada');
+    await expect(proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID(), ownerActor)).rejects.toThrow('Falha simulada');
     expect((await proposals.get(ctx(), p.id)).status).toBe('ACCEPTED');
     expect((await db.select().from(s.sales).where(eq(s.sales.companyId, company)))).toEqual([]);
     expect((await proposals.events(ctx(), p.id, 20, 0)).total).toBe(3);
   });
   it('pedido convertido exige revisão e só gera recebíveis quando confirmado no Portal', async () => {
-    const p = await accepted(), result = await proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID()), id = String(result.saleId);
-    await expect(sales.confirm(company, id, owner, { expectedVersion: 1, initialReceipts: [] })).rejects.toMatchObject({ status: 400 });
-    const updated = await sales.update(company, id, owner, { expectedVersion: 1, customerId: p.customerId, soldOn: '2026-10-13',
+    const p = await accepted(), result = await proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID(), ownerActor), id = String(result.saleId);
+    await expect(sales.confirm(ownerActor, id, { expectedVersion: 1, initialReceipts: [] }, 'test:proposal-confirm')).rejects.toMatchObject({ status: 400 });
+    const updated = await sales.update(ownerActor, id, { expectedVersion: 1, customerId: p.customerId, soldOn: '2026-10-13',
       items: [{ serviceId: service, quantity: '2.0000', unitPrice: '2500.00', discountAmount: '500.00' }],
-      installments: [{ paymentMethod: 'PIX', amount: '4500.00', dueOn: '2026-11-13' }] });
+      installments: [{ paymentMethod: 'PIX', amount: '4500.00', dueOn: '2026-11-13' }] }, 'test:proposal-update');
     expect(updated.status).toBe('DRAFT');
-    const confirmed = await sales.confirm(company, id, owner, { expectedVersion: 2, initialReceipts: [] });
+    const confirmed = await sales.confirm(ownerActor, id, { expectedVersion: 2, initialReceipts: [] }, 'test:proposal-confirm');
     expect(confirmed.status).toBe('CONFIRMED'); expect(confirmed.sourceProposalId).toBe(p.id); expect(confirmed.installments).toHaveLength(1);
     expect(confirmed.installments[0].paycode).toMatch(/^\d{4}$/);
     expect((await db.select().from(s.receivables).where(eq(s.receivables.saleId, id)))).toHaveLength(1);
@@ -193,11 +202,24 @@ describe('propostas comerciais: HTTP e PostgreSQL', () => {
     const [updated] = await db.select().from(s.crmOpportunities).where(eq(s.crmOpportunities.id, p.opportunityId));
     expect(updated.stageId).toBe(stage.id); expect(updated.commercialStatus).toBe('NEW');
   });
+  it('conversão sem sales.change_price: converte com desconto e edita o rascunho mantendo os itens (D6)', async () => {
+    await grantMember(db, account, seller, [...closure(['proposals.convert'])]);
+    const sellerActor = (await resolveActor(db, seller, company))!;
+    const p = await create({}, { assignedUserId: seller });
+    await proposals.transition(ctx(), p.id, 'send', { expectedVersion: 1 }, randomUUID());
+    await proposals.transition(ctx(), p.id, 'accept', { expectedVersion: 2 }, randomUUID());
+    const id = String((await proposals.convert(ctx(seller), p.id, { expectedVersion: 3 }, randomUUID(), sellerActor)).saleId);
+    const body = (quantity: string, discountAmount: string, amount: string) => ({ expectedVersion: 1, customerId: p.customerId, soldOn: '2026-10-13',
+      items: [{ serviceId: service, quantity, unitPrice: '2500.00', discountAmount }], installments: [{ paymentMethod: 'PIX' as const, amount, dueOn: '2026-11-13' }] });
+    const denied = await sales.update(sellerActor, id, body('1.0000', '500.00', '2000.00'), 'test:proposal-update').then(() => null, (e: HttpException) => e.getResponse());
+    expect(denied).toMatchObject({ permission: 'sales.change_price' });
+    await expect(sales.update(sellerActor, id, body('2.0000', '500.00', '4500.00'), 'test:proposal-update')).resolves.toMatchObject({ status: 'DRAFT' });
+  });
   it('colisão do código de pedido refaz a transação sem duplicar histórico', async () => {
     const p = await accepted();
-    const existing = await sales.create(company, owner, randomUUID(), { customerId: p.customerId, items: [], installments: [] });
+    const existing = await sales.create(ownerActor, randomUUID(), { customerId: p.customerId, items: [], installments: [] }, 'test:proposal-create');
     const free = existing.orderCode === '99999' ? '99998' : '99999'; vi.spyOn(codes, 'orderCode').mockReturnValueOnce(existing.orderCode).mockReturnValueOnce(free);
-    const r = await proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID()); expect(r.orderCode).toBe(free);
+    const r = await proposals.convert(ctx(), p.id, { expectedVersion: 3 }, randomUUID(), ownerActor); expect(r.orderCode).toBe(free);
     expect((await proposals.events(ctx(), p.id, 20, 0)).items.filter(e => e.eventType === 'CONVERTED')).toHaveLength(1);
   });
   it('vencimento inclui o dia local e filtros usam o mesmo status efetivo', async () => {
@@ -217,18 +239,18 @@ describe('propostas comerciais: HTTP e PostgreSQL', () => {
     expect((await db.select().from(s.crmOpportunities).where(eq(s.crmOpportunities.id, p.opportunityId)))[0].commercialStatus).toBe('NEW');
     const clone = await proposals.duplicate(ctx(), p.id, { expectedVersion: 3 }, randomUUID()); expect(clone.proposalId).not.toBe(p.id);
     const settings = await proposals.settings(ctx()); await proposals.updateSettings(ctx(), { expectedVersion: settings.version, winOpportunityOnProposalConversion: false });
-    const a = await accepted(); await proposals.convert(ctx(), a.id, { expectedVersion: 3 }, randomUUID());
+    const a = await accepted(); await proposals.convert(ctx(), a.id, { expectedVersion: 3 }, randomUUID(), ownerActor);
     expect((await db.select().from(s.crmOpportunities).where(eq(s.crmOpportunities.id, a.opportunityId)))[0].commercialStatus).toBe('NEW');
   });
-  it('empresa e responsável restringem consulta, PDF e replay após transferência', async () => {
+  it('empresa isola consulta, PDF e replay; a visibilidade dentro dela é da empresa inteira (Spec 10)', async () => {
     const l = await lead({ assignedUserId: seller }); const key = randomUUID();
     const input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: { kind: 'PF' }, items: [item()] });
     const p = await proposals.create(ctx(seller), input, key), id = String(p.proposalId);
-    expect((await http('GET', `/crm/proposals/${id}/pdf`, undefined, other)).statusCode).toBe(404);
+    expect((await http('GET', `/crm/proposals/${id}/pdf`, undefined, other)).statusCode).toBe(200); // Spec 10
     expect((await http('GET', `/crm/proposals/${id}`, undefined, owner, companyB)).statusCode).toBe(404);
-    expect((await read.list(ctx(other), proposalListSchema.parse({}))).total).toBe(0);
+    expect((await read.list(ctx(other), proposalListSchema.parse({}))).total).toBe(1); // Spec 10
     await db.update(s.crmOpportunities).set({ assignedUserId: other }).where(eq(s.crmOpportunities.id, l.opportunityId));
-    await expect(proposals.create(ctx(seller), input, key)).rejects.toMatchObject({ status: 404 });
+    await expect(proposals.create(ctx(seller), input, key)).resolves.toMatchObject({ proposalId: p.proposalId }); // Spec 10: o replay devolve o mesmo resultado, a proposta segue visível
   });
   it('PDF autenticado é documento binário e contratos constam no Swagger', async () => {
     const p = await accepted(), response = await http('GET', `/crm/proposals/${p.id}/pdf`);
@@ -236,5 +258,47 @@ describe('propostas comerciais: HTTP e PostgreSQL', () => {
     const preview = await http('GET', `/crm/proposals/${p.id}/preview`); expect(preview.json().snapshot.recipient.name).toBe('João');
     const document = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle('API').setVersion('1').addBearerAuth().build());
     expect(document.paths['/crm/proposals/{id}/convert']?.post).toBeDefined(); expect(document.paths['/crm/proposals']?.post?.requestBody).toBeDefined();
+  });
+});
+
+describe('permissões das propostas (D6, Spec 7.2)', () => {
+  const as = (keys: PermissionKey[]) => grantMember(db, account, seller, [...closure(keys)]);
+  const denied = (work: Promise<unknown>) => work.then(() => null, (e: HttpException) => e.getResponse());
+  const catalogItem = () => ({ ...item(), discountInput: '0.00' });
+  const fresh = async () => (await lead({ email: `${randomUUID()}@example.test` })).opportunityId;
+  const input = (opportunityId: string, items: unknown[]) => createProposalSchema.parse({ opportunityId, newCustomer: { kind: 'PF' }, items });
+
+  it('sem proposals.change_price: preço do catálogo passa; desconto ou outro preço devolvem 403', async () => {
+    await as(['proposals.manage', 'customers.create']);
+    expect(await denied(proposals.create(ctx(seller), input(await fresh(), [item()]), randomUUID()))).toMatchObject({ code: 'PERMISSION_DENIED', permission: 'proposals.change_price' });
+    expect(await denied(proposals.create(ctx(seller), input(await fresh(), [{ ...catalogItem(), unitPrice: '2400.00' }]), randomUUID()))).toMatchObject({ permission: 'proposals.change_price' });
+    await expect(proposals.create(ctx(seller), input(await fresh(), [catalogItem()]), randomUUID())).resolves.toMatchObject({ status: 'DRAFT' });
+  });
+  it('rascunho: manter os termos gravados passa; aumentar o desconto exige a chave; duplicar mantém', async () => {
+    const p = await create();
+    await as(['proposals.manage']);
+    await expect(proposals.update(ctx(seller), p.id, { expectedVersion: 1, items: [item()] })).resolves.toMatchObject({ version: 2 });
+    await expect(proposals.update(ctx(seller), p.id, { expectedVersion: 2, items: [{ ...item(), quantity: '3.0000' }] })).resolves.toMatchObject({ version: 3 });
+    expect(await denied(proposals.update(ctx(seller), p.id, { expectedVersion: 3, items: [{ ...item(), discountInput: '15.00' }] }))).toMatchObject({ permission: 'proposals.change_price' });
+    expect(await denied(proposals.update(ctx(seller), p.id, { expectedVersion: 3, items: [{ ...item(), discountType: 'AMOUNT' as const }] }))).toMatchObject({ permission: 'proposals.change_price' });
+    await expect(proposals.duplicate(ctx(seller), p.id, { expectedVersion: 3 }, randomUUID())).resolves.toMatchObject({ status: 'DRAFT' });
+  });
+  it('desconto em R$: reduzir a quantidade com o mesmo valor exige a chave; reduzir o desconto passa (5.9)', async () => {
+    const amountItem = { ...item(), discountType: 'AMOUNT' as const, discountInput: '500.00' };
+    const p = await create({ items: [amountItem] });
+    await as(['proposals.manage']);
+    expect(await denied(proposals.update(ctx(seller), p.id, { expectedVersion: 1, items: [{ ...amountItem, quantity: '1.0000' }] }))).toMatchObject({ permission: 'proposals.change_price' });
+    await expect(proposals.update(ctx(seller), p.id, { expectedVersion: 1, items: [{ ...amountItem, quantity: '1.0000', discountInput: '250.00' }] })).resolves.toMatchObject({ version: 2 });
+  });
+  it('cliente novo exige customers.create; negociação nova exige crm.create', async () => {
+    await as(['proposals.manage', 'proposals.change_price']);
+    const before = await customerCount();
+    expect(await denied(proposals.create(ctx(seller), input(await fresh(), [item()]), randomUUID()))).toMatchObject({ permission: 'customers.create' });
+    expect(await customerCount()).toBe(before);
+    const p = await create();
+    const withOpportunity = () => createProposalSchema.parse({ customerId: p.customerId, createOpportunity: true, items: [item()] });
+    expect(await denied(proposals.create(ctx(seller), withOpportunity(), randomUUID()))).toMatchObject({ permission: 'crm.create' });
+    await as(['proposals.manage', 'proposals.change_price', 'crm.create']);
+    await expect(proposals.create(ctx(seller), withOpportunity(), randomUUID())).resolves.toMatchObject({ customerId: p.customerId });
   });
 });

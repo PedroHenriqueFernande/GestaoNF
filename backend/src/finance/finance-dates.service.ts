@@ -1,19 +1,24 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { receivables, saleInstallments, sales } from '@gestaonf/database/schema';
 import { and, eq } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
+import { requirePermission, type Actor } from '../permissions/actor.js';
 import { FinanceReadService } from './finance-read.service.js';
 import type { FinanceDateUpdateInput } from './finance.schemas.js';
 
 @Injectable()
 export class FinanceDatesService {
+  private readonly logger = new Logger(FinanceDatesService.name);
+
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(FinanceReadService) private readonly finance: FinanceReadService,
   ) {}
 
-  async update(companyId: string, saleId: string, installmentId: string, input: FinanceDateUpdateInput) {
-    await this.database.db.transaction(async (tx) => {
+  async update(actor: Actor, saleId: string, installmentId: string, input: FinanceDateUpdateInput, entry: string) {
+    const companyId = actor.companyId;
+    requirePermission(actor, 'finance.edit_dates', entry);
+    const changed = await this.database.db.transaction(async (tx) => {
       const [sale] = await tx.select({ status: sales.status, version: sales.version, soldOn: sales.soldOn })
         .from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, saleId))).for('update').limit(1);
       if (!sale || sale.status !== 'CONFIRMED') throw new NotFoundException('Venda confirmada não encontrada no Financeiro');
@@ -34,18 +39,26 @@ export class FinanceDatesService {
       if (!installment.initialReceivedOn && input.dueOn === null) {
         throw new BadRequestException('Informe o vencimento deste recebimento');
       }
-      if (sale.soldOn === input.soldOn && installment.dueOn === input.dueOn) return;
+      const soldOnChanged = sale.soldOn !== input.soldOn;
+      const dueOnChanged = installment.dueOn !== input.dueOn;
+      if (!soldOnChanged && !dueOnChanged) return null;
 
       const updatedAt = new Date();
       await tx.update(sales).set({ soldOn: input.soldOn, version: sale.version + 1, updatedAt })
         .where(and(eq(sales.companyId, companyId), eq(sales.id, saleId)));
-      if (installment.dueOn !== input.dueOn) {
+      if (dueOnChanged) {
         await tx.update(saleInstallments).set({ dueOn: input.dueOn, updatedAt })
           .where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, saleId), eq(saleInstallments.id, installmentId)));
         await tx.update(receivables).set({ dueOn: input.dueOn, updatedAt })
           .where(and(eq(receivables.companyId, companyId), eq(receivables.id, receivable.id)));
       }
+      return {
+        soldOnChanged, dueOnChanged,
+        soldOnBefore: sale.soldOn, soldOnAfter: input.soldOn,
+        dueOnBefore: installment.dueOn, dueOnAfter: input.dueOn,
+      };
     });
+    if (changed) this.logger.log({ event: 'sale_dates_changed', companyId, saleId, installmentId, userId: actor.userId, ...changed });
     return this.finance.detail(companyId, saleId);
   }
 }

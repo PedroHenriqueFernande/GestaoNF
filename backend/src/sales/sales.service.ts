@@ -1,18 +1,23 @@
-import { companyAvailable } from '../accounts/account-policy.js';
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { companies, companyUsers, customers, nfseSeries, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
+import { companies, customers, nfseSeries, receivableMovements, receivables, saleInstallments, saleItems, saleReferenceHistory, sales, saleStatusHistory, services, storedFiles, users } from '@gestaonf/database/schema';
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
 import { FilesService, publicFile } from '../files/files.service.js';
 import { FiscalService } from '../fiscal/fiscal.service.js';
 import { saleFiscalState } from '../fiscal/sale-fiscal-state.js';
+import { can, requirePermission, type Actor } from '../permissions/actor.js';
+import { requireMembershipPermission } from '../permissions/permission-resolver.js';
+import { requireItemPrice, takeKeptItem, type PricedItem } from './sale-price-policy.js';
 import { amount, cents, itemAmounts } from './sales-money.js';
 import { orderCode, paycodes } from './sales-codes.js';
 import { createSaleSchema, type ConfirmSaleInput, type CreateSaleInput, type ListSalesInput, type ListSalesOverviewInput, type UpdateConfirmedSaleInput, type UpdateSaleInput } from './sales.schemas.js';
 
 export type SalesTx = Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
+
+/** A conversão de proposta preserva preços já autorizados na proposta. */
+type SaleWritePolicy = { actor: Actor; entry: string; trustedPrices?: boolean; keptItems?: PricedItem[] };
 
 export function constraintName(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null;
@@ -21,12 +26,41 @@ export function constraintName(error: unknown): string | null {
   return 'cause' in error ? constraintName(error.cause) : null;
 }
 
+/**
+ * Trava da venda (D14): fora do "Editar venda" (updateConfirmed), só o rascunho é alterável.
+ * Versão divergente é outro erro (VERSION_CONFLICT), para a interface oferecer recarregar.
+ */
+function assertDraft(sale: { status: string; version: number }, expectedVersion: number) {
+  if (sale.status !== 'DRAFT') {
+    throw new ConflictException({ statusCode: 409, code: 'SALE_LOCKED', message: sale.status === 'CONFIRMED' ? 'Esta venda está confirmada. Para alterar, use "Editar venda".' : 'Venda excluída não pode ser alterada.' });
+  }
+  if (sale.version !== expectedVersion) throw new ConflictException({ statusCode: 409, code: 'VERSION_CONFLICT', message: 'Pedido alterado. Atualize antes de salvar.' });
+}
+
+/** Baixa registrada junto com a venda exige `finance.receive` (D6), em qualquer canal. */
+function requireInitialReceipts(actor: Actor, count: number, entry: string) {
+  if (count > 0) requirePermission(actor, 'finance.receive', entry);
+}
+const receivedCount = (parts: readonly object[]) => parts.filter(part => 'receivedOn' in part).length;
+
+/** Quem não vê anexos não os altera: enviar a lista (que substitui a atual) exige `sales.attachments_view` (D18). */
+function requireAttachmentChange(actor: Actor, attachmentIds: readonly string[] | undefined, entry: string) {
+  if (attachmentIds !== undefined) requirePermission(actor, 'sales.attachments_view', entry);
+}
+
+/** Sem `sales.attachments_view`, o detalhe não revela anexos (D18): `null` significa "não visível". */
+export function presentSale<T extends { attachments: unknown }>(actor: Actor, sale: T): Omit<T, 'attachments'> & { attachments: T['attachments'] | null } {
+  return { ...sale, attachments: can(actor, 'sales.attachments_view') ? sale.attachments : null };
+}
+
 @Injectable()
 export class SalesService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(FilesService) private readonly files: FilesService,
     @Inject(FiscalService) private readonly fiscal: FiscalService) {}
 
-  private async prepare(companyId: string, input: CreateSaleInput | UpdateConfirmedSaleInput, existing?: { customerId: string; serviceIds: Set<string>; fiscalSeriesId?: string | null; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }, db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0] = this.database.db) {
+  private async prepare(input: CreateSaleInput | UpdateConfirmedSaleInput, policy: SaleWritePolicy, existing?: { customerId: string; serviceIds: Set<string>; fiscalSeriesId?: string | null; itemSnapshots?: Map<string, typeof saleItems.$inferSelect> }, db: DatabaseService['db'] | SalesTx = this.database.db) {
+    const companyId = policy.actor.companyId;
+    const keptPool = [...(policy.keptItems ?? [])];
     const [customer] = await db.select().from(customers)
       .where(and(eq(customers.companyId, companyId), eq(customers.id, input.customerId))).limit(1);
     if (!customer || (customer.status !== 'ACTIVE' && customer.id !== existing?.customerId)) throw new BadRequestException('Selecione um cliente ativo desta empresa');
@@ -47,6 +81,7 @@ export class SalesService {
       const calculated = itemAmounts(item.quantity, item.unitPrice, item.discountAmount);
       const original = 'id' in item && typeof item.id === 'string' ? existing?.itemSnapshots?.get(item.id) : undefined;
       if (original && original.serviceId !== item.serviceId) throw new BadRequestException('Serviço original do item não corresponde ao cadastro');
+      if (!policy.trustedPrices) requireItemPrice(policy.actor, item, original ?? takeKeptItem(keptPool, item), service.suggestedUnitPrice, policy.entry);
       const tax = original && item.taxProfileId === undefined ? null : await this.fiscal.resolveTax(companyId, service.id,
         input.soldOn ?? new Date().toISOString().slice(0, 10), company?.city ?? null, db, item.taxProfileId);
       itemRows.push({
@@ -78,7 +113,8 @@ export class SalesService {
     };
   }
 
-  async create(companyId: string, userId: string, key: string, input: CreateSaleInput) {
+  async create(actor: Actor, key: string, input: CreateSaleInput, entry: string) {
+    const { companyId, userId } = actor;
     const hash = createHash('sha256').update(JSON.stringify({ userId, input })).digest('hex');
     const previous = await this.database.db.select({ id: sales.id, requestHash: sales.requestHash }).from(sales)
       .where(and(eq(sales.companyId, companyId), eq(sales.idempotencyKey, key))).limit(1);
@@ -89,7 +125,7 @@ export class SalesService {
     for (let attempt = 0; attempt < 128; attempt++) {
       try {
         const id = await this.database.db.transaction(async (tx) => {
-          const sale = await this.createDraftInTx(tx, companyId, userId, key, input, { requestHash: hash });
+          const sale = await this.createDraftInTx(tx, actor, key, input, { requestHash: hash }, entry);
           return sale.id;
         });
         return this.get(companyId, id);
@@ -108,9 +144,12 @@ export class SalesService {
   }
 
   /** Internal only: composes a draft sale with another domain command atomically. */
-  async createDraftInTx(tx: Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, key: string, input: CreateSaleInput,
-    options: { requestHash: string; sourceProposalId?: string; frozenItems?: Array<Pick<typeof saleItems.$inferSelect, 'serviceId' | 'serviceNameSnapshot' | 'descriptionSnapshot' | 'unitLabelSnapshot' | 'nationalTaxCodeSnapshot' | 'nbsCodeSnapshot'>> }) {
-    const prepared = await this.prepare(companyId, input, undefined, tx);
+  async createDraftInTx(tx: SalesTx, actor: Actor, key: string, input: CreateSaleInput,
+    options: { requestHash: string; sourceProposalId?: string; frozenItems?: Array<Pick<typeof saleItems.$inferSelect, 'serviceId' | 'serviceNameSnapshot' | 'descriptionSnapshot' | 'unitLabelSnapshot' | 'nationalTaxCodeSnapshot' | 'nbsCodeSnapshot'>> }, entry: string) {
+    const { companyId, userId } = actor;
+    requireInitialReceipts(actor, receivedCount(input.installments), entry);
+    requireAttachmentChange(actor, input.attachmentIds, entry);
+    const prepared = await this.prepare(input, { actor, entry, trustedPrices: Boolean(options.sourceProposalId) }, undefined, tx);
     if (options.frozenItems) for (const [i, snapshot] of options.frozenItems.entries()) {
       if (!prepared.itemRows[i] || prepared.itemRows[i].serviceId !== snapshot.serviceId) throw new BadRequestException('Snapshot de proposta não corresponde ao serviço');
       Object.assign(prepared.itemRows[i], snapshot);
@@ -133,14 +172,15 @@ export class SalesService {
    * O número do pedido é sorteado; uma colisão é repetida dentro de um savepoint, sem abortar a transação externa.
    * Devolve as linhas lidas pela própria transação (o pedido ainda não está visível para outras conexões).
    */
-  async createConfirmedInTx(tx: SalesTx, companyId: string, userId: string, key: string, rawInput: CreateSaleInput) {
+  async createConfirmedInTx(tx: SalesTx, actor: Actor, key: string, rawInput: CreateSaleInput, entry: string) {
+    const { companyId, userId } = actor;
     // Defesa: o domínio só aceita dados normalizados (ex.: quantidade "1.0000", nunca "1").
     const input = createSaleSchema.parse(rawInput);
     const requestHash = createHash('sha256').update(JSON.stringify({ userId, input })).digest('hex');
     let sale: typeof sales.$inferSelect | undefined;
     for (let attempt = 0; attempt < 16 && !sale; attempt++) {
       try {
-        sale = await tx.transaction((savepoint) => this.createDraftInTx(savepoint, companyId, userId, key, input, { requestHash }));
+        sale = await tx.transaction((savepoint) => this.createDraftInTx(savepoint, actor, key, input, { requestHash }, entry));
       } catch (error) {
         if (!isUniqueViolation(error) || constraintName(error) !== 'sales_company_order_code_uq') throw error;
       }
@@ -148,7 +188,7 @@ export class SalesService {
     if (!sale) throw new ConflictException('Não foi possível reservar um código de pedido; tente novamente');
     const drafts = await tx.select().from(saleInstallments).where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, sale.id))).orderBy(saleInstallments.number);
     const initialReceipts = drafts.filter((part) => part.initialReceivedOn).map((part) => ({ installmentId: part.id, amount: part.amount, paymentMethod: part.paymentMethod as ConfirmSaleInput['initialReceipts'][number]['paymentMethod'], receivedOn: part.initialReceivedOn! }));
-    await this.confirmInTx(tx, companyId, sale.id, userId, { expectedVersion: sale.version, initialReceipts });
+    await this.confirmInTx(tx, actor, sale.id, { expectedVersion: sale.version, initialReceipts }, entry);
     const [confirmed] = await tx.select().from(sales).where(eq(sales.id, sale.id)).limit(1);
     // Lidas de novo depois da confirmação: só então as parcelas têm o paycode gravado.
     const installments = await tx.select().from(saleInstallments).where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, sale.id))).orderBy(saleInstallments.number);
@@ -233,14 +273,21 @@ export class SalesService {
     };
   }
 
-  async update(companyId: string, id: string, userId: string, input: UpdateSaleInput) {
-    const [previous] = await this.database.db.select({ customerId: sales.customerId, fiscalSeriesId: sales.fiscalSeriesId })
+  async update(actor: Actor, id: string, input: UpdateSaleInput, entry: string) {
+    const { companyId, userId } = actor;
+    requireInitialReceipts(actor, receivedCount(input.installments), entry);
+    requireAttachmentChange(actor, input.attachmentIds, entry);
+    const [previous] = await this.database.db.select({ customerId: sales.customerId, fiscalSeriesId: sales.fiscalSeriesId, status: sales.status, version: sales.version })
       .from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).limit(1);
-    const prepared = await this.prepare(companyId, input, previous ? { customerId: previous.customerId, fiscalSeriesId: previous.fiscalSeriesId, serviceIds: new Set() } : undefined);
+    if (!previous) throw new NotFoundException('Pedido não encontrado');
+    assertDraft(previous, input.expectedVersion);
+    const keptItems = await this.database.db.select({ serviceId: saleItems.serviceId, quantity: saleItems.quantity, unitPrice: saleItems.unitPrice, discountAmount: saleItems.discountAmount })
+      .from(saleItems).where(and(eq(saleItems.companyId, companyId), eq(saleItems.saleId, id)));
+    const prepared = await this.prepare(input, { actor, entry, keptItems }, { customerId: previous.customerId, fiscalSeriesId: previous.fiscalSeriesId, serviceIds: new Set() });
     await this.database.db.transaction(async (tx) => {
       const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
       if (!sale) throw new NotFoundException('Pedido não encontrado');
-      if (sale.status !== 'DRAFT' || sale.version !== input.expectedVersion) throw new ConflictException('Rascunho alterado ou já confirmado');
+      assertDraft(sale, input.expectedVersion);
       await tx.delete(saleItems).where(and(eq(saleItems.companyId, companyId), eq(saleItems.saleId, id)));
       await tx.delete(saleInstallments).where(and(eq(saleInstallments.companyId, companyId), eq(saleInstallments.saleId, id)));
       if (prepared.itemRows.length) await tx.insert(saleItems).values(prepared.itemRows.map((row) => ({ ...row, saleId: id })));
@@ -259,14 +306,20 @@ export class SalesService {
     return this.get(companyId, id);
   }
 
-  async updateConfirmed(companyId: string, id: string, userId: string, input: UpdateConfirmedSaleInput) {
+  async updateConfirmed(actor: Actor, id: string, input: UpdateConfirmedSaleInput, entry: string) {
+    requirePermission(actor, 'sales.edit', entry);
+    requireAttachmentChange(actor, input.attachmentIds, entry);
+    const { companyId, userId } = actor;
     const current = await this.get(companyId, id);
+    const newReceipts = input.installments.filter(part => 'receivedOn' in part &&
+      (!part.id || !current.installments.find(existing => existing.id === part.id)?.initialReceivedOn)).length;
+    requireInitialReceipts(actor, newReceipts, entry);
     if (current.status !== 'CONFIRMED') throw new ConflictException('Somente vendas confirmadas podem ser editadas aqui');
     const itemIds = input.items.flatMap((item) => item.id ? [item.id] : []);
     if (new Set(itemIds).size !== itemIds.length || itemIds.some((itemId) => !current.items.some((item) => item.id === itemId))) {
       throw new BadRequestException('Item original inválido nesta venda');
     }
-    const prepared = await this.prepare(companyId, input, {
+    const prepared = await this.prepare(input, { actor, entry }, {
       customerId: current.customerId,
       fiscalSeriesId: current.fiscalSeriesId,
       serviceIds: new Set(current.items.map((item) => item.serviceId)),
@@ -368,13 +421,13 @@ export class SalesService {
   }
 
   /** Corpo de `confirm`, dentro da transação recebida. */
-  async confirmInTx(tx: SalesTx, companyId: string, id: string, userId: string, input: ConfirmSaleInput) {
+  async confirmInTx(tx: SalesTx, actor: Actor, id: string, input: ConfirmSaleInput, entry: string) {
+    const { companyId, userId } = actor;
     const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
     if (!sale) throw new NotFoundException('Pedido não encontrado');
     if (sale.status !== 'DRAFT' || sale.version !== input.expectedVersion) throw new ConflictException('Pedido já confirmado ou versão desatualizada');
-    const [membership] = await tx.select({ id: companyUsers.userId }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId))
-      .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
-    if (!membership) throw new ForbiddenException('Sem acesso à empresa');
+    await requireMembershipPermission(tx, userId, companyId, 'sales.create', entry);
+    requireInitialReceipts(actor, input.initialReceipts.length, entry);
     const [customer] = await tx.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, sale.customerId))).limit(1);
     if (!customer || customer.status !== 'ACTIVE') throw new BadRequestException('Cliente inativo ou indisponível');
     const items = await tx.select().from(saleItems).where(and(eq(saleItems.companyId, companyId), eq(saleItems.saleId, id)));
@@ -410,16 +463,16 @@ export class SalesService {
     await tx.insert(saleStatusHistory).values({ companyId, saleId: id, fromStatus: 'DRAFT', toStatus: 'CONFIRMED', actorUserId: userId });
   }
 
-  async confirm(companyId: string, id: string, userId: string, input: ConfirmSaleInput) {
-    await this.database.db.transaction((tx) => this.confirmInTx(tx, companyId, id, userId, input));
-    return this.get(companyId, id);
+  async confirm(actor: Actor, id: string, input: ConfirmSaleInput, entry: string) {
+    await this.database.db.transaction((tx) => this.confirmInTx(tx, actor, id, input, entry));
+    return this.get(actor.companyId, id);
   }
 
   async updateWorkOrder(companyId: string, id: string, userId: string, expectedVersion: number, workOrderNumber: string | null) {
     await this.database.db.transaction(async (tx) => {
       const [sale] = await tx.select().from(sales).where(and(eq(sales.companyId, companyId), eq(sales.id, id))).for('update').limit(1);
       if (!sale) throw new NotFoundException('Pedido não encontrado');
-      if (sale.status === 'CANCELED' || sale.version !== expectedVersion) throw new ConflictException('Pedido não pode ser alterado nesta versão');
+      assertDraft(sale, expectedVersion);
       if (sale.workOrderNumber === workOrderNumber) return;
       await tx.update(sales).set({ workOrderNumber, version: sale.version + 1, updatedAt: new Date() }).where(eq(sales.id, id));
       await tx.insert(saleReferenceHistory).values({ companyId, saleId: id, oldWorkOrderNumber: sale.workOrderNumber, newWorkOrderNumber: workOrderNumber, actorUserId: userId });

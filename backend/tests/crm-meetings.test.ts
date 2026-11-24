@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers } from './permission-fixtures.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -79,9 +80,24 @@ beforeEach(async () => {
   const accountId = await testAccount(db, owner);
   const cs = await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning(); [company, otherCompany] = cs.map((c) => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: otherCompany, userId: owner, role: 'OWNER' }, { companyId: company, userId: seller, role: 'COLLABORATOR' }, { companyId: company, userId: otherSeller, role: 'COLLABORATOR' }]);
+  await grantLegacyMembers(db);
 });
 
 describe('agenda, PostgreSQL, HTTP e entregas internas', () => {
+  it('responsável da reunião: sem crm.assign, atribuir a outro devolve 403; manter o responsável ao editar passa (D18)', async () => {
+    const l = await lead();
+    const denied = await meetings.create(ctx(seller), input(l.leadId, { assignedUserId: otherSeller }), randomUUID()).then(() => null, (e: { getResponse(): unknown }) => e.getResponse());
+    expect(denied).toMatchObject({ statusCode: 403, code: 'PERMISSION_DENIED', permission: 'crm.assign' });
+    const existing = await meeting();
+    const detail = await meetings.get(ctx(), existing.id);
+    await expect(meetings.update(ctx(seller), existing.id, updateMeetingSchema.parse({ expectedVersion: detail.version, title: 'Título revisado' }))).resolves.toBeTruthy();
+    expect((await meetings.get(ctx(), existing.id)).assignedUserId).toBe(detail.assignedUserId);
+  });
+  it('sem crm.assign, a reunião criada sem responsável fica com o próprio usuário (critério 32)', async () => {
+    const l = await lead();
+    const result = await meetings.create(ctx(seller), input(l.leadId), randomUUID());
+    expect((await meetings.get(ctx(), String(result.meetingId))).assignedUserId).toBe(seller);
+  });
   it('cria agenda, regras e históricos juntos e qualifica apenas o card explícito', async () => {
     const l = await lead();
     const second = await capture.addEntry(ctx(), l.leadId, createEntrySchema.parse({}), randomUUID());
@@ -146,17 +162,17 @@ describe('agenda, PostgreSQL, HTTP e entregas internas', () => {
     expect((await cards.get(ctx(), l.opportunityId)).commercialStatus).toBe('QUALIFIED');
     await expect(meetings.status(ctx(), id, { expectedVersion: 3, status: 'SCHEDULED' })).rejects.toMatchObject({ status: 400 });
   });
-  it('isola empresa, oportunidade privada e o replay após transferência', async () => {
+  it('isola empresa, mostra a negociação à empresa inteira (Spec 10) e o replay após transferência', async () => {
     const l = await lead();
     const r = await meetings.create(ctx(), input(l.leadId, { opportunityId: l.opportunityId, assignedUserId: seller }), randomUUID());
     const id = String(r.meetingId);
-    expect((await meetings.get(ctx(seller), id)).opportunity).toBeNull();
-    await expect(meetings.get(ctx(otherSeller), id)).rejects.toMatchObject({ status: 404 });
+    expect((await meetings.get(ctx(seller), id)).opportunity).toMatchObject({ id: l.opportunityId }); // Spec 10: negociação visível à empresa
+    await expect(meetings.get(ctx(otherSeller), id)).resolves.toMatchObject({ id }); // Spec 10
     await expect(meetings.get(ctx(owner, otherCompany), id)).rejects.toMatchObject({ status: 404 });
     const mine = await lead(seller), key = randomUUID();
     const result = await meetings.create(ctx(seller), input(mine.leadId, { allowConflict: true }), key);
     await meetings.update(ctx(), String(result.meetingId), updateMeetingSchema.parse({ expectedVersion: 1, assignedUserId: otherSeller }));
-    await expect(meetings.create(ctx(seller), input(mine.leadId, { allowConflict: true }), key)).rejects.toMatchObject({ status: 404 });
+    await expect(meetings.create(ctx(seller), input(mine.leadId, { allowConflict: true }), key)).resolves.toMatchObject({ meetingId: result.meetingId }); // Spec 10: o replay devolve o mesmo resultado, a reunião segue visível
   });
   it('configurações concorrentes verificam a versão e colaborador não as altera', async () => {
     const outcomes = await Promise.allSettled([meetings.updateSettings(ctx(), { expectedVersion: 1, defaultReminderMinutes: 60 }), meetings.updateSettings(ctx(), { expectedVersion: 1, defaultReminderMinutes: 15 })]);
@@ -204,7 +220,7 @@ describe('agenda, PostgreSQL, HTTP e entregas internas', () => {
     expect((await http('GET', `/crm/meetings/${id}`, undefined, { companyId: otherCompany })).statusCode).toBe(404);
     expect((await http('PATCH', `/crm/meetings/${id}`, { expectedVersion: 1, title: 'Alterado' })).statusCode).toBe(200);
     expect((await http('PATCH', `/crm/meetings/${id}`, { expectedVersion: 1, title: 'Antigo' })).statusCode).toBe(409);
-    expect((await http('GET', '/crm/meetings/responsibles', undefined, { userId: seller })).json().items).toHaveLength(1);
+    expect((await http('GET', '/crm/meetings/responsibles', undefined, { userId: seller })).json().items).toHaveLength(3); // Spec 10: responsáveis são todos os membros ativos
     const doc = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle('Agenda').setVersion('1').build());
     expect(doc.paths['/crm/meetings'].post?.requestBody).toBeDefined(); expect(doc.paths['/crm/meetings/{id}/reopen'].post).toBeDefined();
   });

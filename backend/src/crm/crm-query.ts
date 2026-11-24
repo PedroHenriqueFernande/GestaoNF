@@ -1,10 +1,19 @@
-import { crmContacts, crmLeadEntries, crmOpportunities } from '@gestaonf/database/schema';
-import { and, eq, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
-import type { CrmAccess } from './crm-policy.service.js';
+import { companies, crmContacts, crmLeadEntries, crmOpportunities } from '@gestaonf/database/schema';
+import { and, eq, ilike, inArray, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { ListInput } from './crm.schemas.js';
 import { escapeLike } from './crm-normalization.js';
 
-export function contactFilters(a: CrmAccess, input: ListInput) {
+/** A mesma condição serve à listagem por empresa e à consolidada. */
+export const inCompanies = (column: AnyColumn, companyIds: readonly string[]) =>
+  companyIds.length === 1 ? eq(column, companyIds[0]) : inArray(column, [...companyIds]);
+
+const zone = alias(companies, 'crm_zone');
+/** Condição no fuso da empresa do registro. O EXISTS sobre a PK vira junção: sem SubPlan por linha e com a data no Index Cond (Tarefas 14.10 e 14.11). */
+export const inCompanyZone = (companyColumn: AnyColumn, condition: (timezone: AnyColumn) => SQL) =>
+  sql`exists (select 1 from ${companies} ${sql.identifier('crm_zone')} where ${zone.id} = ${companyColumn} and ${condition(zone.timezone)})`;
+
+export function contactFilters(input: ListInput) {
   const filters: SQL[] = [];
   if (!input.includeArchived) filters.push(isNull(crmContacts.archivedAt));
   if (input.contactId) filters.push(eq(crmContacts.id, input.contactId));
@@ -14,16 +23,20 @@ export function contactFilters(a: CrmAccess, input: ListInput) {
       ilike(crmContacts.phone, pattern), ilike(crmContacts.phoneKey, escapeLike(input.search.replace(/\D/g, '') || input.search)),
       ilike(crmContacts.taxId, escapeLike(input.search.replace(/[.\-/\s]/g, '').toUpperCase())))!);
   }
-  if (input.periodBy === 'CONTACT_CREATED') filters.push(...period(crmContacts.createdAt, a, input));
+  if (input.periodBy === 'CONTACT_CREATED') filters.push(...period(crmContacts.createdAt, crmContacts.companyId, input));
   return filters;
 }
-export function period(column: SQL | typeof crmContacts.createdAt | typeof crmLeadEntries.receivedAt, a: CrmAccess, input: ListInput) {
-  const filters: SQL[] = [];
-  if (input.from) filters.push(sql`${column} >= (${input.from}::date::timestamp AT TIME ZONE ${a.timezone})`);
-  if (input.to) filters.push(sql`${column} < ((${input.to}::date + 1)::timestamp AT TIME ZONE ${a.timezone})`);
-  return filters;
+/** Período no fuso da empresa de cada registro. */
+export function period(column: AnyColumn, companyColumn: AnyColumn, input: Pick<ListInput, 'from' | 'to'>): SQL[] {
+  if (!input.from && !input.to) return [];
+  return [inCompanyZone(companyColumn, timezone => {
+    const bounds: SQL[] = [];
+    if (input.from) bounds.push(sql`${column} >= (${input.from}::date::timestamp AT TIME ZONE ${timezone})`);
+    if (input.to) bounds.push(sql`${column} < ((${input.to}::date + 1)::timestamp AT TIME ZONE ${timezone})`);
+    return and(...bounds)!;
+  })];
 }
-export function negotiationFilters(a: CrmAccess, input: ListInput) {
+export function negotiationFilters(input: ListInput) {
   const filters: SQL[] = [];
   if (!input.includeArchived) filters.push(isNull(crmOpportunities.archivedAt));
   if (input.assignedUserId) filters.push(eq(crmOpportunities.assignedUserId, input.assignedUserId));
@@ -37,7 +50,7 @@ export function negotiationFilters(a: CrmAccess, input: ListInput) {
     if (input[field]) filters.push(sql`lower(btrim(${crmLeadEntries[field]})) = ${input[field]!.toLowerCase()}`);
   }
   if (input.missingField) filters.push(isNull(crmLeadEntries[input.missingField]));
-  if (input.periodBy === 'ENTRY_RECEIVED') filters.push(...period(crmLeadEntries.receivedAt, a, input));
+  if (input.periodBy === 'ENTRY_RECEIVED') filters.push(...period(crmLeadEntries.receivedAt, crmLeadEntries.companyId, input));
   return filters;
 }
 export const contactJoin = and(eq(crmContacts.companyId, crmOpportunities.companyId), eq(crmContacts.id, crmOpportunities.contactId));

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { companies, companyUsers, emailMessages, userInvitations, userInvitationCompanies } from '@gestaonf/database/schema';
+import { accounts, companies, companyUsers, emailMessages, userInvitations, userInvitationCompanies } from '@gestaonf/database/schema';
 import { and, asc, desc, eq, inArray, lte, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.module.js';
@@ -35,9 +35,9 @@ export class EmailDispatchService {
       const finish = async (code: string) => { await tx.update(emailMessages).set({ sendStatus: row.mayHaveSent ? 'UNKNOWN' : 'FAILED', lastErrorCode: code, leaseToken: null, leaseUntil: null, updatedAt: now }).where(eq(emailMessages.id, row.id)); return null; };
       if (row.firstAttemptAt && now.getTime() - row.firstAttemptAt.getTime() >= 23 * 60 * 60_000) return finish('idempotency_window_expired');
       if (row.attempts >= 8) return finish('attempts_exhausted');
-      const [member] = await tx.select({ id: companyUsers.userId, role: companyUsers.role }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companyUsers.companyId, row.companyId), eq(companyUsers.userId, row.createdByUserId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
+      const [member] = await tx.select({ id: companyUsers.userId, ownerUserId: accounts.ownerUserId }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).innerJoin(accounts, eq(accounts.id, companies.accountId)).where(and(eq(companyUsers.companyId, row.companyId), eq(companyUsers.userId, row.createdByUserId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
       if (!member) return finish('company_access_revoked');
-      if (['MESSAGE', 'TEST'].includes(row.purpose) && !['OWNER', 'ADMIN', 'MANAGER'].includes(member.role)) return finish('send_permission_revoked');
+      if (['MESSAGE', 'TEST'].includes(row.purpose) && member.ownerUserId !== row.createdByUserId) return finish('send_permission_revoked');
       const config = this.provider.config;
       if (config.testMode && !allowedTestRecipient(row.toAddress, config)) return finish('test_recipient_restricted');
       // A row keeps its original test-mode and sender snapshot across configuration changes.

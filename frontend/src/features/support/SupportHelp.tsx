@@ -4,10 +4,10 @@ import { useNavigate } from 'react-router';
 import { api } from '../../api/client';
 import { SupportText } from './SupportText';
 
-export function HelpTopics({ companyId, onBack, onOpen }: { companyId: string; onBack: () => void; onOpen: (id: string) => void }) {
+export function HelpTopics({ companyId, onBack, onOpen }: { companyId: string; onBack?: () => void; onOpen: (id: string) => void }) {
   const topics = useQuery({ queryKey: ['support-help'], queryFn: () => api.supportHelpList(companyId), staleTime: 3600_000 });
   return <div className="support-help">
-    <button type="button" className="support-back" onClick={onBack}><ArrowLeft size={14} />Voltar</button>
+    {onBack && <button type="button" className="support-back" onClick={onBack}><ArrowLeft size={14} />Voltar</button>}
     <div className="support-form__head"><h3>Como fazer...</h3><p className="support-muted">Escolha um assunto para ver o passo a passo.</p></div>
     {topics.isPending && <p className="support-muted">Carregando...</p>}
     {topics.isError && <p className="support-notice support-notice--error">{topics.error.message}</p>}

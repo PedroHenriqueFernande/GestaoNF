@@ -1,0 +1,6 @@
+.no-access-main{width:min(100%,760px);padding:38px 32px 70px;margin:0 auto}
+.no-access-card{border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:0 4px 16px #1231430a;padding:30px;display:grid;gap:14px;justify-items:start}
+.no-access-card h1{font:700 26px var(--display-font);letter-spacing:-.03em;margin:0}
+.no-access-card p{font-size:13px;line-height:1.6;color:var(--muted);margin:0}
+.no-access-help{width:100%}
+@media (max-width:640px){.no-access-main{padding:24px 16px 56px}.no-access-card{padding:22px}}

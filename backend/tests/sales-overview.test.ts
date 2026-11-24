@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers } from './permission-fixtures.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -67,6 +68,7 @@ beforeEach(async () => {
     { companyId: companyB, userId: x, role: 'OWNER' }, { companyId: companyB, userId: u, role: 'COLLABORATOR' },
     { companyId: companyD, userId: o, role: 'OWNER' }, { companyId: companyE, userId: y, role: 'OWNER' }, { companyId: companyE, userId: u, role: 'COLLABORATOR' },
   ]);
+  await grantLegacyMembers(db);
   await db.update(s.accounts).set({ status: 'SUSPENDED' }).where(eq(s.accounts.id, accY));
   [customerA, customerB] = (await db.insert(s.customers).values([{ companyId: companyA, kind: 'PF', name: 'Cliente A' }, { companyId: companyB, kind: 'PF', name: 'Cliente B' }]).returning()).map(c => c.id);
 });
@@ -146,6 +148,7 @@ describe('GET /sales/overview: escopo e isolamento', () => {
     const accountId = await testAccount(db, extraOwner.id);
     const many = await db.insert(s.companies).values(Array.from({ length: 49 }, (_, i) => ({ accountId, name: `Extra ${i}` }))).returning();
     await db.insert(s.companyUsers).values(many.map(c => ({ companyId: c.id, userId: user, role: 'OWNER' })));
+    await grantLegacyMembers(db);
     expect((await http('GET', '/sales/overview?companies=all')).statusCode).toBe(400);
   });
   it('é somente leitura: escrita em /sales/overview não tem rota própria e não altera nada', async () => {
@@ -166,6 +169,7 @@ describe('GET /sales/overview: escopo e isolamento', () => {
     await db.insert(s.companyUsers).values([
       { companyId: companyF, userId: ownerF.id, role: 'OWNER' }, { companyId: companyF, userId: user, role: 'COLLABORATOR' }, { companyId: companyG, userId: user, role: 'OWNER' },
     ]);
+    await grantLegacyMembers(db);
     expect((await http('GET', '/sales/overview?companies=all')).json().companyIds).toEqual([companyA, companyB].sort());
     for (const id of [companyF, companyG]) {
       const res = await http('GET', `/sales/overview?companyIds=${companyA},${id}`);

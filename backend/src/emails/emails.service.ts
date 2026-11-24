@@ -1,10 +1,12 @@
-import { companyAvailable } from '../accounts/account-policy.js';
+import type { AccountDb } from '../accounts/account-policy.js';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { companies, companyUsers, emailEvents, emailMessages } from '@gestaonf/database/schema';
+import { companies, emailEvents, emailMessages } from '@gestaonf/database/schema';
 import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { DatabaseService } from '../database/database.module.js';
+import { AccountOwnerRequiredException } from '../permissions/actor.js';
+import { resolveMemberships } from '../permissions/permission-resolver.js';
 import { parseInput } from '../common/validate.js';
 import { allowedTestRecipient } from './emails.config.js';
 import { emailKeySchema, emailWebhookSchema, sendEmailSchema } from './emails.schemas.js';
@@ -16,7 +18,6 @@ import { escapeEmailHtml } from './email-template.js';
 export type EmailContext = { companyId: string; userId: string };
 export type EmailTransaction = Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
 export type EmailRow = typeof emailMessages.$inferSelect;
-const managerRoles = ['OWNER', 'ADMIN', 'MANAGER'];
 export const DELIVERY_PRIORITY: Record<string, number> = { PENDING: 0, SENT: 1, DELAYED: 2, FAILED: 3, SUPPRESSED: 4, DELIVERED: 5, BOUNCED: 6, COMPLAINED: 7 };
 export const EVENT_STATUS: Record<string, string> = { 'email.sent': 'SENT', 'email.delivery_delayed': 'DELAYED', 'email.delivered': 'DELIVERED', 'email.failed': 'FAILED', 'email.suppressed': 'SUPPRESSED', 'email.bounced': 'BOUNCED', 'email.complained': 'COMPLAINED' };
 export function publicEmail(row: EmailRow) {
@@ -26,23 +27,24 @@ export function publicEmail(row: EmailRow) {
 @Injectable()
 export class EmailsService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(ResendProviderService) readonly provider: ResendProviderService, @Inject(EmailPayloadService) private readonly payloads: EmailPayloadService) {}
-  async member(ctx: EmailContext, tx: Pick<DatabaseService['db'], 'select'> = this.database.db) {
-    const [member] = await tx.select({ role: companyUsers.role, name: companies.name }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companyUsers.companyId, ctx.companyId), eq(companyUsers.userId, ctx.userId), eq(companyUsers.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id))).limit(1);
-    if (!member) throw new ForbiddenException('Sem acesso à empresa');
-    return member;
+  async member(ctx: EmailContext, tx: AccountDb = this.database.db) {
+    const [membership] = await resolveMemberships(tx, ctx.userId, [ctx.companyId]);
+    if (!membership) throw new ForbiddenException('Sem acesso à empresa');
+    const [company] = await tx.select({ name: companies.name }).from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
+    return { accountOwner: membership.actor.accountOwner, name: company.name };
   }
   async capabilities(ctx: EmailContext) {
     const member = await this.member(ctx); const c = this.provider.config;
-    return { enabled: c.enabled, testMode: c.testMode, webhookConfigured: !!c.webhookSecret, canSend: managerRoles.includes(member.role), sender: c.from, testRecipient: managerRoles.includes(member.role) ? c.testRecipient : null, dailyLimit: c.dailyLimit };
+    return { enabled: c.enabled, testMode: c.testMode, webhookConfigured: !!c.webhookSecret, canSend: member.accountOwner, sender: c.from, testRecipient: member.accountOwner ? c.testRecipient : null, dailyLimit: c.dailyLimit };
   }
   async send(ctx: EmailContext, input: z.output<typeof sendEmailSchema>, key: string) {
     const member = await this.member(ctx);
-    if (!managerRoles.includes(member.role)) throw new ForbiddenException('Somente gestores podem enviar e-mails diretamente');
+    if (!member.accountOwner) throw new AccountOwnerRequiredException();
     return this.enqueue(ctx, input, key, 'MESSAGE');
   }
   async test(ctx: EmailContext, scenario: string, key: string) {
     const member = await this.member(ctx);
-    if (!managerRoles.includes(member.role)) throw new ForbiddenException('Somente gestores podem testar o envio');
+    if (!member.accountOwner) throw new AccountOwnerRequiredException();
     const to = scenario === 'OWN' ? this.provider.config.testRecipient : `${scenario.toLowerCase()}@resend.dev`;
     if (!to) throw new ServiceUnavailableException('Configure RESEND_TEST_RECIPIENT');
     return this.enqueue(ctx, { to, subject: 'Teste de e-mail do GestãoNF', message: `O envio de e-mails de ${member.name} está conectado ao Resend.\n\nEste é um teste da infraestrutura de e-mails do sistema.` }, key, 'TEST');
@@ -88,13 +90,15 @@ export class EmailsService {
   }
   async list(ctx: EmailContext, input: { limit: number; offset: number }) {
     const member = await this.member(ctx);
-    const filter = and(eq(emailMessages.companyId, ctx.companyId), managerRoles.includes(member.role) ? undefined : eq(emailMessages.createdByUserId, ctx.userId));
+    if (!member.accountOwner) throw new AccountOwnerRequiredException();
+    const filter = eq(emailMessages.companyId, ctx.companyId);
     const [rows, total] = await Promise.all([this.database.db.select().from(emailMessages).where(filter).orderBy(desc(emailMessages.createdAt), desc(emailMessages.id)).limit(input.limit).offset(input.offset), this.database.db.select({ value: count() }).from(emailMessages).where(filter)]);
     return { items: rows.map(publicEmail), total: total[0].value };
   }
   async get(ctx: EmailContext, id: string) {
     const member = await this.member(ctx);
-    const [row] = await this.database.db.select().from(emailMessages).where(and(eq(emailMessages.id, id), eq(emailMessages.companyId, ctx.companyId), managerRoles.includes(member.role) ? undefined : eq(emailMessages.createdByUserId, ctx.userId))).limit(1);
+    if (!member.accountOwner) throw new AccountOwnerRequiredException();
+    const [row] = await this.database.db.select().from(emailMessages).where(and(eq(emailMessages.id, id), eq(emailMessages.companyId, ctx.companyId))).limit(1);
     if (!row) throw new NotFoundException('E-mail não encontrado');
     const events = row.providerEmailId ? await this.database.db.select({ type: emailEvents.eventType, occurredAt: emailEvents.occurredAt }).from(emailEvents).where(eq(emailEvents.providerEmailId, row.providerEmailId)).orderBy(emailEvents.occurredAt) : [];
     return { ...publicEmail(row), events };

@@ -1,3 +1,4 @@
+import { ALL_PERMISSIONS, ROLE_LABELS, type PermissionKey } from '@gestaonf/permissions';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -26,6 +27,10 @@ const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 };
+
+// O catálogo do workspace gera os dois CHECKs de permissões (Spec 5.4).
+const permissionCatalogSql = sql.raw(`ARRAY[${ALL_PERMISSIONS.map(key => `'${key}'`).join(',')}]::text[]`);
+const roleLabelsSql = sql.raw(ROLE_LABELS.map(label => `'${label}'`).join(','));
 
 const crmMaintenance = {
   ...timestamps,
@@ -90,6 +95,19 @@ export const accounts = pgTable('accounts', {
   ...timestamps,
 }, t => [unique('accounts_owner_command_uq').on(t.ownerUserId, t.requestKey), index('accounts_owner_idx').on(t.ownerUserId), check('accounts_status_chk', sql`${t.status} IN ('PENDING','ACTIVE','SUSPENDED','CANCELED')`)]);
 
+export const accountMembers = pgTable('account_members', {
+  accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'restrict' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  roleLabel: varchar('role_label', { length: 20 }).notNull(),
+  permissions: text('permissions').array().$type<PermissionKey[]>().default(sql`'{}'::text[]`).notNull(),
+  version: integer('version').default(1).notNull(),
+  ...timestamps,
+}, t => [
+  primaryKey({ name: 'account_members_pk', columns: [t.accountId, t.userId] }),
+  check('account_members_role_label_chk', sql`${t.roleLabel} IN (${roleLabelsSql})`),
+  check('account_members_permissions_chk', sql`${t.permissions} <@ ${permissionCatalogSql}`),
+]);
+
 export const invitationRequestLimits = pgTable('invitation_request_limits', { key: char('key', { length: 64 }).primaryKey(), startedAt: timestamp('started_at', { withTimezone: true }).notNull(), count: integer('count').notNull() }, t => [index('invitation_request_limits_started_idx').on(t.startedAt)]);
 
 export const accountSubscriptions = pgTable('account_subscriptions', {
@@ -119,8 +137,21 @@ export const userInvitations = pgTable('user_invitations', {
   resendCount: integer('resend_count').default(0).notNull(),
   resendDay: date('resend_day'),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+  roleLabel: varchar('role_label', { length: 20 }).default('COLLABORATOR').notNull(),
+  permissions: text('permissions').array().$type<PermissionKey[]>().default(sql`'{}'::text[]`).notNull(),
   ...timestamps,
-}, t => [unique('user_invitations_account_id_uq').on(t.accountId, t.id), uniqueIndex('user_invitations_pending_email_uq').on(t.accountId, t.emailNormalized).where(sql`${t.status}='PENDING'`), index('user_invitations_account_idx').on(t.accountId, t.status, t.createdAt), index('user_invitations_expiry_idx').on(t.status, t.expiresAt), check('user_invitations_status_chk', sql`${t.status} IN ('PENDING','ACCEPTED','REVOKED','EXPIRED')`), check('user_invitations_email_chk', sql`${t.emailNormalized}=lower(btrim(${t.emailNormalized}))`), check('user_invitations_accepted_chk', sql`${t.status}<>'ACCEPTED' OR (${t.acceptedByUserId} IS NOT NULL AND ${t.acceptedAt} IS NOT NULL)`), check('user_invitations_revoked_chk', sql`${t.status}<>'REVOKED' OR ${t.revokedAt} IS NOT NULL`)]);
+}, t => [
+  unique('user_invitations_account_id_uq').on(t.accountId, t.id),
+  uniqueIndex('user_invitations_pending_email_uq').on(t.accountId, t.emailNormalized).where(sql`${t.status}='PENDING'`),
+  index('user_invitations_account_idx').on(t.accountId, t.status, t.createdAt),
+  index('user_invitations_expiry_idx').on(t.status, t.expiresAt),
+  check('user_invitations_status_chk', sql`${t.status} IN ('PENDING','ACCEPTED','REVOKED','EXPIRED')`),
+  check('user_invitations_email_chk', sql`${t.emailNormalized}=lower(btrim(${t.emailNormalized}))`),
+  check('user_invitations_accepted_chk', sql`${t.status}<>'ACCEPTED' OR (${t.acceptedByUserId} IS NOT NULL AND ${t.acceptedAt} IS NOT NULL)`),
+  check('user_invitations_revoked_chk', sql`${t.status}<>'REVOKED' OR ${t.revokedAt} IS NOT NULL`),
+  check('user_invitations_role_label_chk', sql`${t.roleLabel} IN (${roleLabelsSql})`),
+  check('user_invitations_permissions_chk', sql`${t.permissions} <@ ${permissionCatalogSql}`),
+]);
 
 export const userInvitationCompanies = pgTable('user_invitation_companies', {
   invitationId: uuid('invitation_id').notNull(), accountId: uuid('account_id').notNull(), companyId: uuid('company_id').notNull(),

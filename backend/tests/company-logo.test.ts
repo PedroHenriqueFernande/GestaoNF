@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
+import { grantLegacyMembers, grantMember, LEGACY_COLLABORATOR } from './permission-fixtures.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Global, HttpException, Logger, Module, ServiceUnavailableException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -16,6 +17,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as s from '@gestaonf/database/schema';
+import { ALL_PERMISSIONS } from '@gestaonf/permissions';
 import { DatabaseService } from '../src/database/database.module.js';
 import { CompaniesModule } from '../src/companies/companies.module.js';
 import { FilesModule } from '../src/files/files.module.js';
@@ -28,6 +30,7 @@ const secret = 'company-logo-isolated-test-secret-with-32-chars-minimum';
 let admin: ReturnType<typeof postgres>, client: ReturnType<typeof postgres>, db: ReturnType<typeof drizzle<typeof s>>;
 let app: NestFastifyApplication, storage: R2StorageService;
 let owner: string, adminUser: string, manager: string, collaborator: string, outsider: string, company: string, companyB: string;
+let accountId: string;
 let png: Buffer;
 const objects = new Map<string, { body: Buffer; mimeType: string }>();
 @Global() @Module({ providers: [{ provide: DatabaseService, useFactory: () => ({ db }) }], exports: [DatabaseService] }) class TestDatabaseModule {}
@@ -95,13 +98,14 @@ beforeEach(async () => {
   vi.spyOn(storage, 'signDownload').mockImplementation(async (_bucket, key) => `https://download.example.test/${encodeURIComponent(key)}`);
   const users = await db.insert(s.users).values(['Dono', 'Admin', 'Gerente', 'Colaborador', 'Externo'].map(name => ({ name, email: `${randomUUID()}@example.test` }))).returning();
   [owner, adminUser, manager, collaborator, outsider] = users.map(u => u.id);
-  const accountId = await testAccount(db, owner);
+  accountId = await testAccount(db, owner);
   [company, companyB] = (await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning()).map(c => c.id);
   await db.insert(s.companyUsers).values([
     { companyId: company, userId: owner, role: 'OWNER' }, { companyId: company, userId: adminUser, role: 'ADMIN' },
     { companyId: company, userId: manager, role: 'MANAGER' }, { companyId: company, userId: collaborator, role: 'COLLABORATOR' },
     { companyId: companyB, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: outsider, role: 'OWNER' },
   ]);
+  await grantLegacyMembers(db);
 });
 afterEach(() => vi.restoreAllMocks());
 afterAll(async () => {
@@ -111,7 +115,7 @@ afterAll(async () => {
 });
 
 describe('empresas: regra de gestão e logoId', () => {
-  it('GET /companies inclui logoId e PATCH continua exigindo OWNER/ADMIN', async () => {
+  it('GET /companies inclui logoId e PATCH exige company.edit', async () => {
     const list = await http('GET', '/companies', undefined, owner, null);
     expect(list.statusCode).toBe(200);
     expect(list.json().find((c: { id: string }) => c.id === company)).toMatchObject({ logoId: null });
@@ -119,13 +123,49 @@ describe('empresas: regra de gestão e logoId', () => {
     expect((await http('PATCH', '/companies/current', { phone: '11999990000' }, manager)).statusCode).toBe(403);
     const updated = await http('PATCH', '/companies/current', { phone: '11999990000' }, adminUser);
     expect(updated.statusCode).toBe(200);
-    expect(updated.json()).toMatchObject({ logoId: null, role: 'ADMIN' });
+    expect(updated.json()).toMatchObject({ logoId: null, role: 'MANAGER', roleLabel: 'MANAGER', accountOwner: false });
     expect((await http('PATCH', '/companies/current', { logoId: randomUUID() })).statusCode).toBe(400);
   });
 });
 
+describe('empresas: permissões efetivas (Spec 8.1)', () => {
+  const pick = async (userId: string, companyId: string) =>
+    (await http('GET', '/companies', undefined, userId, null)).json().find((c: { id: string }) => c.id === companyId);
+  it('GET /companies traz rótulo, titularidade e permissões; role legado = roleLabel', async () => {
+    expect(await pick(owner, company)).toMatchObject({ roleLabel: 'OWNER', accountOwner: true, role: 'OWNER', permissions: [...ALL_PERMISSIONS] });
+    expect(await pick(collaborator, company)).toMatchObject({ roleLabel: 'COLLABORATOR', accountOwner: false, role: 'COLLABORATOR', permissions: [...LEGACY_COLLABORATOR] });
+    expect(await pick(outsider, companyB)).toMatchObject({ roleLabel: 'OWNER', accountOwner: false, permissions: [...ALL_PERMISSIONS] });
+  });
+  it('GET /companies/current traz os mesmos campos', async () => {
+    const current = await http('GET', '/companies/current', undefined, adminUser);
+    expect(current.statusCode).toBe(200);
+    expect(current.json()).toMatchObject({ id: company, roleLabel: 'MANAGER', accountOwner: false, role: 'MANAGER', permissions: [...ALL_PERMISSIONS] });
+  });
+  it('o rótulo não autoriza; a permissão sim (D2 e critério 2)', async () => {
+    await grantMember(db, accountId, collaborator, ['company.access', 'company.edit']);
+    const byCollaborator = await http('PATCH', '/companies/current', { phone: '11999990000' }, collaborator);
+    expect(byCollaborator.statusCode).toBe(200);
+    expect(byCollaborator.json()).toMatchObject({ roleLabel: 'COLLABORATOR', permissions: ['company.access', 'company.edit'] });
+    await grantMember(db, accountId, adminUser, [], 'OWNER');
+    expect((await http('PATCH', '/companies/current', { phone: '11999990001' }, adminUser)).json()).toMatchObject({ statusCode: 403, code: 'PERMISSION_DENIED', permission: 'company.edit' });
+    expect(await pick(adminUser, company)).toMatchObject({ roleLabel: 'OWNER', accountOwner: false, permissions: [] });
+  });
+});
+
 describe('foto da empresa: reserva', () => {
-  it('exige OWNER/ADMIN e vínculo com a empresa', async () => {
+  it('colaborador com company.edit reserva, conclui e associa a foto (o papel legado não decide)', async () => {
+    await grantMember(db, accountId, collaborator, ['company.access', 'company.edit']);
+    const reserved = await reserve(png, collaborator);
+    expect(reserved.statusCode).toBe(201);
+    const [row] = await db.select().from(s.companyLogoFiles).where(eq(s.companyLogoFiles.id, reserved.json().file.id));
+    objects.set(row.stagingKey, { body: png, mimeType: 'image/png' });
+    expect((await http('POST', `/companies/current/logo/uploads/${row.id}/complete`, {}, collaborator)).statusCode).toBe(200);
+    const set = await http('PUT', '/companies/current/logo', { logoId: row.id }, collaborator);
+    expect(set.statusCode).toBe(200);
+    expect(set.json()).toMatchObject({ logoId: row.id, roleLabel: 'COLLABORATOR', role: 'COLLABORATOR' });
+  });
+
+  it('exige company.edit e vínculo com a empresa', async () => {
     expect((await reserve(png, collaborator)).statusCode).toBe(403);
     expect((await reserve(png, manager)).statusCode).toBe(403);
     expect((await reserve(png, outsider, company)).statusCode).toBe(403);
@@ -236,13 +276,13 @@ describe('foto da empresa: finalização', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toBe('Imagem menor que 128 × 128 pixels');
   });
-  it('outro criador ou outra empresa recebe 404; papel rebaixado recebe 403', async () => {
+  it('outro criador ou outra empresa recebe 404; permissão revogada recebe 403', async () => {
     const upload = await pending();
     objects.set(upload.row.stagingKey, { body: png, mimeType: 'image/png' });
     expect((await http('POST', `/companies/current/logo/uploads/${upload.id}/complete`, {}, adminUser)).statusCode).toBe(404);
     expect((await http('POST', `/companies/current/logo/uploads/${upload.id}/complete`, {}, owner, companyB)).statusCode).toBe(404);
     const byAdmin = await pending(png, adminUser);
-    await db.update(s.companyUsers).set({ role: 'COLLABORATOR' }).where(and(eq(s.companyUsers.companyId, company), eq(s.companyUsers.userId, adminUser)));
+    await grantMember(db, accountId, adminUser, LEGACY_COLLABORATOR);
     expect((await http('POST', `/companies/current/logo/uploads/${byAdmin.id}/complete`, {}, adminUser)).statusCode).toBe(403);
   });
   it('COLLABORATOR e MANAGER recebem 403 na finalização; ADMIN conclui a própria reserva', async () => {

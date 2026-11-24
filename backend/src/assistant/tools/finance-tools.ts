@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { FinanceReadService } from '../../finance/finance-read.service.js';
 import { amount, cents } from '../../sales/sales-money.js';
 import { money } from '../nero-format.js';
-import { rules } from '../nero-policy.js';
 import { compactList, label, optionalSearch, orderCodeFrom, parseToolArgs, PERIOD_VALUES, periodProperties, resolvePeriod } from './read-support.js';
 import type { ReadTool } from './types.js';
 
@@ -18,7 +17,7 @@ const schema = z.object({
 
 export function createReceivablesTool(finance: FinanceReadService): ReadTool {
   return {
-    kind: 'READ', name: 'contas_a_receber', allowed: rules.anyMember,
+    kind: 'READ', name: 'contas_a_receber', permission: 'finance.access',
     description: 'Contas a receber das vendas confirmadas: total original, recebido, a receber e vencido, e as vendas com parcelas. Para "o que vence este mês" use base VENCIMENTO; para "o que entrou" use base RECEBIMENTO; para atrasados use vencidas SO_VENCIDAS.',
     parameters: {
       type: 'object',

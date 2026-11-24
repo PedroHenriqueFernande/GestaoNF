@@ -29,6 +29,7 @@ const TEXT = {
   optOut: 'Este número foi desconectado de todas as suas empresas. Para voltar a usar o Nero, vincule novamente pelo GestãoNF.',
   unsupported: 'Por enquanto, envie sua solicitação ao Nero em texto.',
   noCompany: 'Este número não possui uma empresa vinculada com acesso ativo. Entre em Nero no GestãoNF e vincule a empresa por QR Code.',
+  noNeroAccess: 'Seu usuário não tem acesso ao Nero. Fale com o responsável pela conta.',
   pendingLink: 'Para concluir o vínculo, volte ao GestãoNF e confirme o número na tela do Nero.',
   disabled: 'O Nero está temporariamente indisponível. Tente novamente mais tarde ou use o GestãoNF.',
   failure: 'Não consegui concluir agora. Nada foi alterado. Tente novamente em alguns instantes.',
@@ -155,7 +156,11 @@ export class NiloService {
       }
       if (!buttonId && !isAudio && (event.messageType !== 'text' || !text)) { await this.plain(event, TEXT.unsupported, 'unsupported', link.id); await this.finish(batchIds); return; }
       const eligible: CompanyOption[] = await this.links.eligibleCompanies(link.id, link.userId);
-      if (!eligible.length) { await this.plain(event, TEXT.noCompany, 'no-company', link.id); await this.finish(batchIds); return; }
+      if (!eligible.length) {
+        const linked = await this.links.hasLinkedCompanies(link.id, link.userId);
+        await this.plain(event, linked ? TEXT.noNeroAccess : TEXT.noCompany, linked ? 'no-nero-access' : 'no-company', link.id);
+        await this.finish(batchIds); return;
+      }
       const conversation = await this.conversations.resumeOrOpen(link, eligible);
       if (buttonId) await this.handleButton(event, link, conversation, eligible, buttonId);
       else {

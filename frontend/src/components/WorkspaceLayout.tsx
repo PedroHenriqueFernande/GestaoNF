@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Link, useLocation } from 'react-router';
-import { Bot, BriefcaseBusiness, Building2, CalendarDays, Calculator, ChartColumn, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, FileText, FolderOpen, Hash, Landmark, Menu, Plus, ReceiptText, Target, UserCog, UserRoundPlus, UsersRound, Wallet, X } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router';
+import { Bot, ChevronDown, ChevronLeft, ChevronRight, Menu, Plus, X } from 'lucide-react';
+import { canOpenScreen, type ScreenGroup, type ScreenViewer } from '@gestaonf/permissions';
 import type { Company, User } from '../api/client';
 import { CompanyPicker } from './CompanyPicker';
 import type { CompanyScope } from './company-scope';
@@ -10,6 +10,8 @@ import { UserAvatar } from './UserAvatar';
 import { UserMenu } from './UserMenu';
 import { useDropdown } from './useDropdown';
 import { companyRoleLabel } from '../utils/format';
+import { landingPath, menuEntries, QUICK_ACTIONS, screenForPath, type NavGroup, type NavLeaf } from '../features/permissions/screens';
+import { permissionView } from '../features/permissions/usePermissions';
 import { SupportWidget } from '../features/support/SupportWidget';
 import './dropdown.css';
 import './workspace-sidebar.css';
@@ -17,50 +19,6 @@ import './workspace-header.css';
 
 const MOBILE_QUERY = '(max-width: 959px)';
 const COLLAPSED_KEY = 'gestaonf.sidebarCollapsed';
-
-type SectionId = 'profile' | 'customers' | 'services' | 'company' | 'sales' | 'finance' | 'reports' | 'crm' | 'agenda' | 'proposals' | 'nilo' | 'users' | 'fiscal-series' | 'fiscal-tax';
-type GroupId = 'crm' | 'records' | 'fiscal';
-type NavLeaf = { id: SectionId; label: string; path: string; icon: LucideIcon };
-type NavGroup = { group: GroupId; label: string; icon: LucideIcon; items: NavLeaf[] };
-type NavEntry = NavLeaf | NavGroup;
-
-const leaf = {
-  sales: { id: 'sales', label: 'Portal de Serviços', path: '/portal-de-servicos', icon: ReceiptText },
-  finance: { id: 'finance', label: 'Financeiro', path: '/financeiro', icon: Wallet },
-  reports: { id: 'reports', label: 'Relatórios', path: '/relatorios', icon: ChartColumn },
-  crm: { id: 'crm', label: 'Leads e oportunidades', path: '/crm', icon: Target },
-  agenda: { id: 'agenda', label: 'Agenda', path: '/agenda', icon: CalendarDays },
-  proposals: { id: 'proposals', label: 'Propostas', path: '/propostas', icon: FileText },
-  customers: { id: 'customers', label: 'Clientes', path: '/Clientes', icon: UsersRound },
-  services: { id: 'services', label: 'Serviços', path: '/serviço', icon: ClipboardList },
-  users: { id: 'users', label: 'Usuários', path: '/usuarios', icon: UserCog },
-  company: { id: 'company', label: 'Empresa', path: '/empresa', icon: Building2 },
-  fiscalSeries: { id: 'fiscal-series', label: 'Séries e numeração', path: '/fiscal/series', icon: Hash },
-  fiscalTax: { id: 'fiscal-tax', label: 'Controle de tributação', path: '/fiscal/tributacao', icon: Calculator },
-} satisfies Record<string, NavLeaf>;
-
-const quickActions = [
-  { label: 'Nova venda de serviço', path: '/portal-de-servicos?novo=1', icon: ReceiptText },
-  { label: 'Nova proposta', path: '/propostas?novo=1', icon: FileText },
-  { label: 'Novo cliente', path: '/Clientes?novo=1', icon: UserRoundPlus },
-] as const;
-
-function sectionFor(pathname: string): SectionId {
-  if (pathname === '/meu-perfil') return 'profile';
-  if (pathname === '/fiscal/series') return 'fiscal-series';
-  if (pathname === '/fiscal/tributacao') return 'fiscal-tax';
-  if (pathname === '/empresa') return 'company';
-  if (pathname === '/usuarios') return 'users';
-  if (pathname === '/serviço' || pathname === '/servicos') return 'services';
-  if (pathname === '/portal-de-servicos') return 'sales';
-  if (pathname === '/financeiro') return 'finance';
-  if (pathname === '/relatorios' || pathname.startsWith('/relatorios/')) return 'reports';
-  if (pathname === '/crm') return 'crm';
-  if (pathname === '/agenda') return 'agenda';
-  if (pathname === '/propostas') return 'proposals';
-  if (pathname === '/nero' || pathname === '/nilo') return 'nilo';
-  return 'customers';
-}
 
 function readCollapsed() {
   try { return window.localStorage.getItem(COLLAPSED_KEY) === '1'; } catch { return false; }
@@ -71,7 +29,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
   companies?: Company[];
   companyId: string;
   onCompanyChange: (id: string) => void;
-  /** Só o Portal de Serviços: seletor com "Ver todas" e checkboxes. */
+  /** Habilita a seleção combinada do módulo no seletor de empresas. */
   allowMultiple?: boolean;
   scope?: CompanyScope;
   onLogout: () => void;
@@ -87,22 +45,31 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
   const sidebarRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
   const quick = useDropdown();
-  const pathname = decodeURIComponent(location.pathname).toLocaleLowerCase('pt-BR');
-  const section = sectionFor(pathname);
   const company = companies?.find((item) => item.id === companyId);
-  const isOwner = companies?.some((item) => item.role === 'OWNER') ?? false;
+  const access = permissionView(companies, companyId);
+  const section = screenForPath(location.pathname);
+  const navigate = useNavigate();
+  /** Troca pelo seletor: se a tela atual não abre na empresa escolhida, grava a escolha e navega no mesmo evento, sem entregar a troca à página. Assim nenhuma consulta da tela que sai usa o X-Company-Id sem acesso (Spec 7.4). */
+  function changeCompany(id: string) {
+    const target = permissionView(companies, id).viewer;
+    if (!onboarding && section && !canOpenScreen(target, section)) {
+      sessionStorage.setItem('gestaonf.companyId', id);
+      scope?.clear();
+      navigate(landingPath(target), { replace: true });
+      return;
+    }
+    onCompanyChange(id);
+  }
+  /** Onboarding (sem empresa): só Empresa, para cadastrar a primeira. */
+  const onboardingViewer: ScreenViewer = { accountOwner: false, permissions: new Set(['company.access']) };
+  const entries = menuEntries(onboarding ? onboardingViewer : access.viewer);
+  const quickActions = onboarding ? [] : QUICK_ACTIONS.filter((action) => access.can(action.requires));
+  const canSell = !onboarding && access.can('sales.create');
+  const showNero = onboarding || canOpenScreen(access.viewer, 'nero');
   const isCollapsed = collapsed && !mobile;
 
-  const entries: NavEntry[] = [
-    leaf.sales,
-    leaf.finance,
-    { group: 'crm', label: 'CRM', icon: BriefcaseBusiness, items: [leaf.crm, leaf.agenda, leaf.proposals] },
-    leaf.reports,
-    { group: 'records', label: 'Cadastros', icon: FolderOpen, items: [leaf.customers, leaf.services, ...(isOwner ? [leaf.users] : [])] },
-    { group: 'fiscal', label: 'Fiscal', icon: Landmark, items: [leaf.company, leaf.fiscalSeries, leaf.fiscalTax] },
-  ];
   const activeGroup = entries.find((entry): entry is NavGroup => 'group' in entry && entry.items.some((item) => item.id === section))?.group;
-  const [openGroups, setOpenGroups] = useState<GroupId[]>(() => onboarding ? ['fiscal'] : activeGroup ? [activeGroup] : []);
+  const [openGroups, setOpenGroups] = useState<ScreenGroup[]>(() => onboarding ? ['records'] : activeGroup ? [activeGroup] : []);
 
   useEffect(() => {
     if (activeGroup) setOpenGroups((current) => current.includes(activeGroup) ? current : [...current, activeGroup]);
@@ -149,7 +116,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
 
   const closeNavigation = () => { setMobileOpen(false); quick.close(); };
 
-  function toggleGroup(group: GroupId) {
+  function toggleGroup(group: ScreenGroup) {
     if (isCollapsed) {
       setCollapsed(false);
       setOpenGroups((current) => current.includes(group) ? current : [...current, group]);
@@ -172,6 +139,9 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
     return <Link key={item.id} to={item.path} state={{ workspaceNav: true }} className={`${base}${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined} aria-label={item.label} title={isCollapsed ? item.label : undefined} onClick={closeNavigation}>{content}</Link>;
   }
 
+  // Rede para revogação ou refetch de ['companies'] (Spec 8.3). A troca pelo seletor já navega no evento (changeCompany). Só com a empresa resolvida, para não redirecionar no primeiro render da página.
+  if (!onboarding && company && section && !canOpenScreen(access.viewer, section)) return <Navigate to={landingPath(access.viewer)} replace />;
+
   return <div className={`app-shell client-workspace workspace-layout${mobileOpen ? ' workspace-layout--menu-open' : ''}${isCollapsed ? ' workspace-layout--collapsed' : ''} ${className}`}>
     <a className="workspace-skip-link" href="#workspace-main">Ir para o conteúdo</a>
     {mobileOpen && <button type="button" className="workspace-menu-backdrop" aria-label="Fechar menu de navegação" onClick={() => setMobileOpen(false)} />}
@@ -188,20 +158,20 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
           <button type="button" className="workspace-sidebar__close" aria-label="Fechar menu" onClick={() => setMobileOpen(false)}><X size={20} /></button>
         </div>
 
-        <div ref={quick.rootRef} className="dropdown workspace-cta">
+        {(onboarding || canSell || quickActions.length > 0) && <div ref={quick.rootRef} className="dropdown workspace-cta">
           <div className={`workspace-cta__group${onboarding ? ' is-disabled' : ''}`}>
             {onboarding
               ? <button type="button" className="workspace-cta__main" disabled title="Cadastre uma empresa para liberar esta opção"><Plus size={19} strokeWidth={2.4} aria-hidden="true" /><span className="workspace-cta__label">Nova venda</span></button>
-              : <Link to="/portal-de-servicos?novo=1" className="workspace-cta__main" title={isCollapsed ? 'Nova venda' : undefined} aria-label="Nova venda" onClick={closeNavigation}><Plus size={19} strokeWidth={2.4} aria-hidden="true" /><span className="workspace-cta__label">Nova venda</span></Link>}
-            <span className="workspace-cta__divider" aria-hidden="true" />
-            <button ref={quick.triggerRef} type="button" className="workspace-cta__more" aria-label="Mais ações rápidas" aria-expanded={quick.open} aria-controls="workspace-quick-actions" disabled={onboarding} onClick={quick.toggle} onKeyDown={quick.onTriggerKeyDown}>
+              : canSell && <Link to="/portal-de-servicos?novo=1" className="workspace-cta__main" title={isCollapsed ? 'Nova venda' : undefined} aria-label="Nova venda" onClick={closeNavigation}><Plus size={19} strokeWidth={2.4} aria-hidden="true" /><span className="workspace-cta__label">Nova venda</span></Link>}
+            {(onboarding || (canSell && quickActions.length > 0)) && <span className="workspace-cta__divider" aria-hidden="true" />}
+            {(onboarding || quickActions.length > 0) && <button ref={quick.triggerRef} type="button" className="workspace-cta__more" aria-label="Mais ações rápidas" aria-expanded={quick.open} aria-controls="workspace-quick-actions" disabled={onboarding} onClick={quick.toggle} onKeyDown={quick.onTriggerKeyDown}>
               <ChevronDown size={19} strokeWidth={2.4} aria-hidden="true" />
-            </button>
+            </button>}
           </div>
-          <div id="workspace-quick-actions" ref={quick.panelRef} className={`dropdown-panel workspace-cta__menu${quick.open ? ' is-open' : ''}`} inert={!quick.open}>
+          {quickActions.length > 0 && <div id="workspace-quick-actions" ref={quick.panelRef} className={`dropdown-panel workspace-cta__menu${quick.open ? ' is-open' : ''}`} inert={!quick.open}>
             {quickActions.map(({ label, path, icon: Icon }, index) => <Link key={path} to={path} className="dropdown-item" style={{ '--stagger': `${index * 35}ms` } as CSSProperties} onClick={closeNavigation}><Icon size={17} aria-hidden="true" />{label}</Link>)}
-          </div>
-        </div>
+          </div>}
+        </div>}
 
         <nav className="workspace-sidebar__navigation" aria-label="Módulos">
           {entries.map((entry) => {
@@ -223,11 +193,11 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
           })}
         </nav>
 
-        <div className="workspace-sidebar__assistant">
+        {showNero && <div className="workspace-sidebar__assistant">
           {onboarding
             ? <button type="button" className="workspace-nero workspace-nero--disabled" disabled title="Cadastre uma empresa para liberar esta opção"><span className="workspace-nero__icon"><Bot size={19} aria-hidden="true" /></span><span className="workspace-nero__text"><strong>Nero</strong><small>Seu secretário no WhatsApp</small></span></button>
-            : <Link to="/nero" className={`workspace-nero${section === 'nilo' ? ' is-active' : ''}`} aria-current={section === 'nilo' ? 'page' : undefined} aria-label="Nero" title={isCollapsed ? 'Nero' : undefined} onClick={closeNavigation}><span className="workspace-nero__icon"><Bot size={19} aria-hidden="true" /></span><span className="workspace-nero__text"><strong>Nero</strong><small>Seu secretário no WhatsApp</small></span></Link>}
-        </div>
+            : <Link to="/nero" className={`workspace-nero${section === 'nero' ? ' is-active' : ''}`} aria-current={section === 'nero' ? 'page' : undefined} aria-label="Nero" title={isCollapsed ? 'Nero' : undefined} onClick={closeNavigation}><span className="workspace-nero__icon"><Bot size={19} aria-hidden="true" /></span><span className="workspace-nero__text"><strong>Nero</strong><small>Seu secretário no WhatsApp</small></span></Link>}
+        </div>}
 
         <div className="workspace-sidebar__footer">
           <Link to="/meu-perfil" className="workspace-profile" aria-current={section === 'profile' ? 'page' : undefined} aria-label={`Meu perfil — ${user.name}`} title={isCollapsed ? 'Meu perfil' : undefined} onClick={closeNavigation}>
@@ -242,9 +212,9 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
         <button ref={menuRef} type="button" className="workspace-header__menu" onClick={() => setMobileOpen((value) => !value)} aria-label="Abrir menu de navegação" aria-controls="workspace-sidebar" aria-expanded={mobileOpen}>
           <Menu size={21} aria-hidden="true" />
         </button>
-        <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={onCompanyChange} allowMultiple={allowMultiple} scope={scope} />
+        <CompanyPicker companies={companies} companyId={companyId} onCompanyChange={changeCompany} allowMultiple={allowMultiple} scope={scope} />
         <div className="workspace-header__end">
-          <UserMenu user={user} roleLabel={onboarding ? 'Cadastro pendente' : companyRoleLabel(company?.role)} profileActive={section === 'profile'} onLogout={onLogout} loggingOut={loggingOut} />
+          <UserMenu user={user} roleLabel={onboarding ? 'Cadastro pendente' : companyRoleLabel(company?.roleLabel)} profileActive={section === 'profile'} onLogout={onLogout} loggingOut={loggingOut} />
         </div>
       </header>
       {children}

@@ -16,12 +16,14 @@ O **Portal de Serviços** é onde você registra cada serviço vendido e acompan
 6. Se precisar, escreva as **Observações da venda**.
 7. Clique em **Registrar venda de serviço**. O pedido é salvo e confirmado.
 
-Para acompanhar, use as abas **Todos**, **Confirmados**, **Rascunhos** e **Cancelados** e o campo de busca (pedido, OS ou cliente). Clique em um pedido para abrir e editar. Se o pedido for um **Rascunho**, o botão final se chama **Confirmar pedido**, e **Salvar alterações** guarda sem confirmar. Para ver os detalhes, as baixas e o histórico de um pedido já aberto, clique em **Ver detalhes, baixas e histórico**. Ali também fica o botão **Cancelar pedido**, que pede o motivo. Pedidos com recebimentos líquidos não podem ser cancelados.
+Para acompanhar, use as abas **Todos**, **Confirmados**, **Rascunhos** e **Excluídas** e o campo de busca (pedido, OS ou cliente). Clique em um pedido para abrir e editar. Se o pedido for um **Rascunho**, o botão final se chama **Confirmar pedido**, e **Salvar alterações** guarda sem confirmar. Para ver os detalhes, as baixas e o histórico de um pedido já aberto, clique em **Ver detalhes, baixas e histórico**. Para excluir um pedido, use o menu **⋯** da linha e clique em **Excluir**: o sistema pede o motivo, e o pedido fica no histórico como **Excluída**. Recebimentos ou NFS-e ativos impedem a exclusão.
+
+O que aparece depende das suas permissões. Rascunhos são alterados por quem tem **Criar vendas**. Para editar um pedido confirmado, use **Editar venda**. **Excluir** exige **Excluir venda**. Sem **Alterar preço e desconto na venda**, você pode preencher esses valores ao adicionar um serviço sem preço no catálogo. Para alterar apenas a data de lançamento ou o vencimento, use **Alterar data e vencimento** no **Financeiro**. Veja o tópico "Permissões e acesso".
 
 ## Problemas comuns
 - "Selecione a empresa e o cliente e adicione ao menos um serviço.": falta o cliente ou o serviço.
 - "A soma das formas de pagamento precisa ser igual ao total dos serviços.": ajuste os valores dos recebimentos até fecharem com o total.
 - "Revise quantidade, valores e datas dos serviços e dos recebimentos.": confira se todos os valores são maiores que zero e se as datas estão preenchidas.
 - O pedido ficou como **Rascunho** depois de uma falha: abra o pedido e clique em **Confirmar pedido** (ou **Tentar confirmar**).
-- "Há uma NFS-e autorizada para esta venda. Cancele ou substitua a nota antes de alterar ou cancelar a venda.": com uma NFS-e autorizada, o pedido não pode ser alterado nem cancelado até a nota ser cancelada ou substituída (veja o artigo sobre cancelar ou substituir NFS-e). Enquanto há uma solicitação fiscal em andamento, também não é possível alterar o pedido: aguarde o resultado da nota.
+- Uma NFS-e autorizada bloqueia a edição e a exclusão da venda. Abrir uma substituição libera **Editar** para quem tem a permissão **Editar venda**. A edição volta a ficar bloqueada durante a emissão da substituta e após sua autorização. A exclusão continua bloqueada enquanto houver uma nota ativa ou uma solicitação fiscal em andamento. Veja o artigo "Como cancelar ou substituir uma NFS-e".
 - Não encontro o cliente ou o serviço: cadastre antes em **Cadastros › Clientes** ou **Cadastros › Serviços**.

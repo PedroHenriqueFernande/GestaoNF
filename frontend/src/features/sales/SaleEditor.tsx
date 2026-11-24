@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Plus, Trash2, UsersRound, X } from 'lucide-react';
+import { PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions';
+import { followedDiscountCents } from '../../utils/reference-discount';
 import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service, type StoredFile, type TaxSnapshot } from '../../api/client';
 import { CustomerForm } from '../customers/CustomerForm';
 import { SaleDropdown } from './SaleDropdown';
 import { SaleAttachments } from '../files/SaleAttachments';
 import { NfseSaleActions } from '../fiscal/NfseSaleActions';
+import { usePermissions } from '../permissions/usePermissions';
 
-type ItemLine = { key: string; id?: string; serviceId: string; name: string; taxProfileId?: string | null; taxSnapshot?: TaxSnapshot | null; description?: string | null; performedOn?: string | null; quantity: string; unitPrice: string; discountAmount: string; discountPercent: string; discountBasis: 'AMOUNT' | 'PERCENT' };
+type ItemLine = { key: string; id?: string; serviceId: string; name: string; taxProfileId?: string | null; taxSnapshot?: TaxSnapshot | null; description?: string | null; performedOn?: string | null; quantity: string; unitPrice: string; discountAmount: string; discountPercent: string; discountBasis: 'AMOUNT' | 'PERCENT'; referencePrice: string | null; referenceDiscount: Readonly<{ amount: string; quantity: string }> | null };
 type PaymentLine = { key: string; id?: string; paycode?: string | null; hasHistory?: boolean; initiallyPaid?: boolean; paidAmount?: string; paymentMethod: PaymentMethod; amount: string; dueOn: string; state: 'PAID' | 'PENDING'; receivedOn: string };
 const methods: { value: PaymentMethod; label: string }[] = [
   { value: 'PIX', label: 'PIX' }, { value: 'CASH', label: 'Dinheiro' }, { value: 'CREDIT_CARD', label: 'Cartão de crédito' },
@@ -26,6 +29,18 @@ const grossCents = (line: Pick<ItemLine, 'quantity' | 'unitPrice'>) => {
 const discountCents = (value: string) => Math.round(money(value || '0') * 100);
 const discountPercent = (amount: string, gross: number) => gross > 0 && Number.isFinite(discountCents(amount)) ? (discountCents(amount) / gross * 100).toFixed(2) : '0.00';
 const lineTotalCents = (line: ItemLine) => Math.max(0, grossCents(line) - discountCents(line.discountAmount));
+/** Sem a chave, preço e desconto seguem a referência; serviço sem preço no catálogo e sem original é livre (D6). */
+const priceLocked = (line: Pick<ItemLine, 'referencePrice'>, canChangePrice: boolean) => !canChangePrice && line.referencePrice !== null;
+/** Sem a chave, o desconto em R$ acompanha a quantidade sem passar do da referência, no total nem por unidade (regra em `followedDiscountCents`). */
+function followReferenceDiscount(line: ItemLine): ItemLine {
+  if (!line.referenceDiscount) return line;
+  const cents = followedDiscountCents(discountCents(line.referenceDiscount.amount), line.referenceDiscount.quantity, line.quantity);
+  if (cents === null) return line;
+  const discountAmount = (cents / 100).toFixed(2);
+  return { ...line, discountBasis: 'AMOUNT', discountAmount, discountPercent: discountPercent(discountAmount, grossCents(line)) };
+}
+/** A parcela que o servidor conta como baixa na criação (D6): no rascunho, toda "Já recebida"; no "Editar venda", só a que ainda não era. */
+const needsReceivePermission = (line: PaymentLine, confirmedEdit: boolean) => line.state === 'PAID' && !(confirmedEdit && line.initiallyPaid);
 function changeItem(line: ItemLine, field: 'quantity' | 'unitPrice' | 'discountAmount' | 'discountPercent', value: string): ItemLine {
   const next = { ...line, [field]: value };
   const gross = grossCents(next);
@@ -47,6 +62,11 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   companyId: string; companies: Company[]; draft?: SaleDetail | null; onCompanyChange: (id: string) => void; onClose: () => void; onDetails?: () => void; onCreated: (sale: SaleDetail) => void;
 }) {
   const confirmedEdit = draft?.status === 'CONFIRMED';
+  const mainRef = useRef<HTMLElement>(null);
+  /** Abrir o editor (menu, linha ou ?editar=) leva o foco a ele (Spec D15); o painel/menu que o abriu já foi desmontado. */
+  useEffect(() => { mainRef.current?.focus({ preventScroll: true }); }, []);
+  const access = usePermissions(companyId);
+  const canChangePrice = access.can('sales.change_price'), canAttach = access.can('sales.attachments_view'), canReceive = access.can('finance.receive');
   const [customerId, setCustomerId] = useState(draft?.customerId ?? '');
   const [customerInput, setCustomerInput] = useState(draft?.customerNameSnapshot ?? '');
   const [customerTerm, setCustomerTerm] = useState('');
@@ -58,7 +78,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [serviceHighlight, setServiceHighlight] = useState(0);
-  const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), id: item.id, serviceId: item.serviceId, name: item.serviceNameSnapshot, taxProfileId: draft.status === 'DRAFT' ? item.taxSnapshot?.profileId ?? null : undefined, taxSnapshot: item.taxSnapshot, description: item.descriptionSnapshot, performedOn: item.performedOn, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT' })) ?? []);
+  const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), id: item.id, serviceId: item.serviceId, name: item.serviceNameSnapshot, taxProfileId: draft.status === 'DRAFT' ? item.taxSnapshot?.profileId ?? null : undefined, taxSnapshot: item.taxSnapshot, description: item.descriptionSnapshot, performedOn: item.performedOn, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT', referencePrice: item.unitPrice, referenceDiscount: { amount: item.discountAmount, quantity: item.quantity } })) ?? []);
   const [selectedTaxProfileId, setSelectedTaxProfileId] = useState<string>(() => {
     const profiles = new Set(draft?.items.map(item => item.taxSnapshot?.profileId ?? '') ?? []);
     return profiles.size > 1 ? '__mixed__' : [...profiles][0] ?? '';
@@ -66,10 +86,13 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [ruleChanged, setRuleChanged] = useState(false);
   const [serviceDraft, setServiceDraft] = useState<ItemLine | null>(null);
   const [payments, setPayments] = useState<PaymentLine[]>(draft?.installments.map((part) => ({ key: crypto.randomUUID(), id: part.id, paycode: part.paycode, hasHistory: part.movements.length > 0, initiallyPaid: !!part.initialReceivedOn, paidAmount: part.paidAmount, paymentMethod: part.paymentMethod, amount: part.amount, dueOn: part.dueOn ?? today(), state: part.initialReceivedOn ? 'PAID' : 'PENDING', receivedOn: part.initialReceivedOn ?? today() })) ?? [{ key: crypto.randomUUID(), paymentMethod: 'PIX', amount: '', dueOn: today(), state: 'PENDING', receivedOn: today() }]);
+  const receiptBlocked = !canReceive && payments.some((line) => needsReceivePermission(line, confirmedEdit));
   const [soldOn, setSoldOn] = useState(draft?.soldOn ?? today());
   const [workOrderNumber, setWorkOrderNumber] = useState(draft?.workOrderNumber ?? '');
   const [notes, setNotes] = useState(draft?.notes ?? '');
   const [error, setError] = useState('');
+  /** Negação de permissão: o aviso fica só com o texto padrão, sem o complemento do rascunho. */
+  const [denied, setDenied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [attachments, setAttachments] = useState<StoredFile[]>(draft?.attachments ?? []);
   const [uploading, setUploading] = useState(false);
@@ -81,6 +104,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const serviceToggleRef = useRef<HTMLButtonElement>(null);
   const customerSavePending = useRef(false);
   const queryClient = useQueryClient();
+  const nfseState = useQuery({ queryKey: ['nfse-state', companyId, draft?.id], queryFn: () => api.nfseState(companyId, draft!.id), enabled: confirmedEdit });
 
   const customers = useQuery({ queryKey: ['sales-customers', companyId, customerTerm], queryFn: () => api.customers(companyId, { search: customerTerm, status: 'ACTIVE', page: 0, limit: 100 }), enabled: !!companyId });
   const services = useQuery({ queryKey: ['sales-services', companyId, serviceTerm], queryFn: () => api.services(companyId, { search: serviceTerm, status: 'ACTIVE', page: 0, limit: 100 }), enabled: !!companyId });
@@ -153,7 +177,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   function chooseService(service: Service) {
     setSelectedService(service);
-    setServiceDraft({ key: crypto.randomUUID(), serviceId: service.id, name: service.name, taxProfileId: selectedTaxProfileId && selectedTaxProfileId !== '__mixed__' ? selectedTaxProfileId : null, quantity: '1', unitPrice: service.suggestedUnitPrice ?? '0.00', discountAmount: '0.00', discountPercent: '0.00', discountBasis: 'AMOUNT' });
+    setServiceDraft({ key: crypto.randomUUID(), serviceId: service.id, name: service.name, taxProfileId: selectedTaxProfileId && selectedTaxProfileId !== '__mixed__' ? selectedTaxProfileId : null, quantity: '1', unitPrice: service.suggestedUnitPrice ?? '0.00', discountAmount: '0.00', discountPercent: '0.00', discountBasis: 'AMOUNT', referencePrice: service.suggestedUnitPrice ?? null, referenceDiscount: null });
     setServiceInput(service.name);
     setServiceTerm('');
     setServiceOpen(false);
@@ -203,6 +227,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setDenied(false);
     if (uploading) { setError('Aguarde o envio e a validação dos anexos antes de salvar.'); return; }
     const saveDraftOnly = draft?.status === 'DRAFT' && (event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-action') === 'save-draft';
     setError('');
@@ -212,11 +237,12 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
       payments.some((line) => !fixed(line.amount, 2) || money(line.amount) <= 0 || (line.state === 'PENDING' ? !line.dueOn : !line.receivedOn))) {
       setError('Revise quantidade, valores e datas dos serviços e dos recebimentos.'); return;
     }
+    if (receiptBlocked) { setError(PERMISSION_DENIED_MESSAGE); setDenied(true); paymentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     if (Math.abs(Math.round(total * 100) - Math.round(paymentTotal * 100)) > 0 || total <= 0) {
       setError('A soma das formas de pagamento precisa ser igual ao total dos serviços.'); paymentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
     }
     const payload: SaleInput = {
-      customerId, soldOn, workOrderNumber: workOrderNumber.trim() || null, notes: notes.trim() || null, attachmentIds: attachments.map(file => file.id),
+      customerId, soldOn, workOrderNumber: workOrderNumber.trim() || null, notes: notes.trim() || null, ...(canAttach ? { attachmentIds: attachments.map((file) => file.id) } : {}),
       items: items.map((line) => ({ serviceId: line.serviceId, ...(line.taxProfileId !== undefined ? { taxProfileId: line.taxProfileId } : {}), quantity: fixed(line.quantity, 4)!, unitPrice: fixed(line.unitPrice, 2)!, discountAmount: fixed(line.discountAmount || '0', 2)!, ...(line.description !== undefined ? { description: line.description } : {}), ...(line.performedOn !== undefined ? { performedOn: line.performedOn } : {}) })),
       installments: payments.map((line) => ({ paymentMethod: line.paymentMethod, amount: fixed(line.amount, 2)!, ...(line.state === 'PAID' ? { receivedOn: line.receivedOn } : { dueOn: line.dueOn }) })),
     };
@@ -242,6 +268,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
         const latest = await api.sale(companyId, pendingDraft.id).catch(() => null);
         if (latest?.status === 'CONFIRMED') { onCreated(latest); return; }
       }
+      setDenied(cause instanceof ApiError && cause.code === 'PERMISSION_DENIED');
       setError(cause instanceof Error ? cause.message : 'Não foi possível registrar a venda. Tente novamente.');
     } finally { setSaving(false); }
   }
@@ -250,9 +277,9 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     items.length !== draft.items.length || items.some((line, index) => { const original = draft.items[index]; return !original || line.id !== original.id || line.serviceId !== original.serviceId ||
       fixed(line.quantity, 4) !== fixed(original.quantity, 4) || fixed(line.unitPrice, 2) !== fixed(original.unitPrice, 2) || fixed(line.discountAmount || '0', 2) !== fixed(original.discountAmount, 2) ||
       (line.description ?? null) !== original.descriptionSnapshot || (line.performedOn ?? null) !== original.performedOn; }));
-  return <main id="workspace-main" className="sale-editor-page" tabIndex={-1}>
+  return <main ref={mainRef} id="workspace-main" className="sale-editor-page" tabIndex={-1}>
     <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving || uploading}><ArrowLeft size={17} /> Portal de Serviços</button><span>{confirmedEdit ? `EDITAR PEDIDO #${draft.orderCode}` : draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
-    <div className="sale-editor-heading"><div><span className="sale-eyebrow">GESTÃO DE SERVIÇOS</span><h1>{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1><p>{confirmedEdit ? 'Atualize cliente, serviços, valores, vencimentos e demais dados do pedido.' : 'Registre o serviço, combine os recebimentos e marque o que já foi recebido.'}</p>{onDetails && <button type="button" className="sale-editor-details" onClick={onDetails} disabled={saving || uploading}>Ver detalhes, baixas e histórico</button>}</div><div className="sale-editor-heading__actions"><SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} /><div className="sale-editor-heading__total"><span>TOTAL DA VENDA</span><strong>{brl(total)}</strong></div></div></div>
+    <div className="sale-editor-heading"><div><span className="sale-eyebrow">GESTÃO DE SERVIÇOS</span><h1>{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1>{confirmedEdit && nfseState.data?.lockReason && <p className="sale-field-hint" role="status">{nfseState.data.lockReason}</p>}<p>{confirmedEdit ? 'Atualize cliente, serviços, valores, vencimentos e demais dados do pedido.' : 'Registre o serviço, combine os recebimentos e marque o que já foi recebido.'}</p>{onDetails && <button type="button" className="sale-editor-details" onClick={onDetails} disabled={saving || uploading}>Ver detalhes, baixas e histórico</button>}</div><div className="sale-editor-heading__actions">{canAttach && <SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} />}<div className="sale-editor-heading__total"><span>TOTAL DA VENDA</span><strong>{brl(total)}</strong></div></div></div>
     {confirmedEdit && <div className="sale-editor-fiscal-actions"><NfseSaleActions companyId={companyId} saleId={draft.id} saleVersion={draft.version} disabled={saving || uploading || fiscalDirty} /></div>}
     <form onSubmit={submit} className="sale-editor-form">
       <section className="sale-editor-section sale-editor-section--identity"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2>Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div></div>
@@ -307,15 +334,16 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
             </div>}
           </div>
         </div>
+        {!canChangePrice && <p id="sale-price-hint" className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}
         {!items.length ? <div className="sale-empty-lines">Nenhum serviço adicionado. Selecione um serviço acima para começar.</div> : <div className="sale-lines-scroll">
           <div className="sale-lines-head"><span>Serviço</span><span>Quantidade</span><span>Valor unitário</span><span>Desconto</span><span>Total</span><span /></div>
           {items.map((line) => <div key={line.key} className="sale-item-line">
             <strong title={line.name}>{line.name}</strong>
-            <label className="sale-item-input"><span>Quantidade</span><input type="number" min="0.0001" step="any" aria-label={`Quantidade de ${line.name}`} value={line.quantity} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'quantity', event.target.value) : entry))} /></label>
-            <label className="sale-item-input"><span>Valor unitário</span><input type="number" min="0" step="0.01" aria-label={`Valor unitário de ${line.name}`} value={line.unitPrice} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'unitPrice', event.target.value) : entry))} /></label>
+            <label className="sale-item-input"><span>Quantidade</span><input type="number" min="0.0001" step="any" aria-label={`Quantidade de ${line.name}`} value={line.quantity} onChange={(event) => setItems((current) => current.map((entry) => { if (entry.key !== line.key) return entry; const next = changeItem(entry, 'quantity', event.target.value); return priceLocked(entry, canChangePrice) ? followReferenceDiscount(next) : next; }))} /></label>
+            <label className="sale-item-input"><span>Valor unitário</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" step="0.01" aria-label={`Valor unitário de ${line.name}`} value={line.unitPrice} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'unitPrice', event.target.value) : entry))} /></label>
             <div className="sale-line-discounts">
-              <label className="sale-item-input"><span>Desconto em R$</span><input type="number" min="0" step="0.01" aria-label={`Desconto em reais de ${line.name}`} value={line.discountAmount} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountAmount', event.target.value) : entry))} /></label>
-              <label className="sale-item-input"><span>Desconto em %</span><input type="number" min="0" max="100" step="0.01" aria-label={`Desconto percentual de ${line.name}`} value={line.discountPercent} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountPercent', event.target.value) : entry))} /></label>
+              <label className="sale-item-input"><span>Desconto em R$</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" step="0.01" aria-label={`Desconto em reais de ${line.name}`} value={line.discountAmount} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountAmount', event.target.value) : entry))} /></label>
+              <label className="sale-item-input"><span>Desconto em %</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" max="100" step="0.01" aria-label={`Desconto percentual de ${line.name}`} value={line.discountPercent} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountPercent', event.target.value) : entry))} /></label>
             </div>
             <span className="sale-line-total">{brl(lineTotalCents(line) / 100)}</span>
             <button type="button" className="sale-remove-line" onClick={() => setItems((current) => current.filter((entry) => entry.key !== line.key))} aria-label={`Remover ${line.name}`}><Trash2 size={16} /></button>
@@ -328,21 +356,22 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
         <div className="sale-payment-list">{payments.map((line, index) => <div key={line.key} className="sale-payment-card"><div className="sale-payment-card__title"><strong>{index === 0 ? 'Recebimento' : `Recebimento ${index + 1}`}{line.paycode && <small> · Código {line.paycode}</small>}</strong><button type="button" aria-label={`Remover recebimento ${index + 1}`} title={line.hasHistory ? 'Recebimento com histórico de baixas não pode ser removido' : 'Remover recebimento'} disabled={line.hasHistory} onClick={() => setPayments((current) => current.filter((entry) => entry.key !== line.key))}><Trash2 size={15} /></button></div><div className="sale-payment-grid">
           <div className="sale-field"><span>Forma de pagamento</span><SaleDropdown label={`Forma de pagamento do recebimento ${index + 1}`} value={line.paymentMethod} options={methods} disabled={line.initiallyPaid && line.hasHistory} onChange={(paymentMethod) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, paymentMethod } : entry))} /></div>
           <label className="sale-field"><span>Valor</span><input type="number" min={line.paidAmount && Number(line.paidAmount) > 0 ? line.paidAmount : '0.01'} step="0.01" value={line.amount} disabled={line.initiallyPaid && line.hasHistory} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, amount: event.target.value } : entry))} placeholder="0,00" /></label>
-          <div className="sale-field"><span>Situação</span><SaleDropdown label={`Situação do recebimento ${index + 1}`} value={line.state} options={paymentStates} disabled={line.hasHistory} onChange={(state) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, state } : entry))} /></div>
+          <div className="sale-field"><span>Situação</span><SaleDropdown label={`Situação do recebimento ${index + 1}`} value={line.state} options={canReceive || line.state === 'PAID' ? paymentStates : paymentStates.filter((option) => option.value === 'PENDING')} disabled={line.hasHistory} describedBy={!canReceive && needsReceivePermission(line, confirmedEdit) ? `sale-receipt-hint-${line.key}` : undefined} onChange={(state) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, state } : entry))} /></div>
           {line.state === 'PENDING' && <label className="sale-field"><span>Vencimento</span><input type="date" value={line.dueOn} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, dueOn: event.target.value } : entry))} required /></label>}
-          {line.state === 'PAID' && <label className="sale-field"><span>Recebido em</span><input type="date" value={line.receivedOn} disabled={line.hasHistory} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, receivedOn: event.target.value } : entry))} required /></label>}
-        </div>{line.hasHistory && <p className="sale-payment-history">{brl(Number(line.paidAmount ?? '0'))} já baixados. O histórico do pagamento será preservado.</p>}</div>)}</div>
+          {line.state === 'PAID' && <label className="sale-field"><span>Recebido em</span><input type="date" value={line.receivedOn} disabled={line.hasHistory || (!canReceive && needsReceivePermission(line, confirmedEdit))} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, receivedOn: event.target.value } : entry))} required /></label>}
+        </div>{!canReceive && needsReceivePermission(line, confirmedEdit) && <p id={`sale-receipt-hint-${line.key}`} className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}{line.hasHistory && <p className="sale-payment-history">{brl(Number(line.paidAmount ?? '0'))} já baixados. O histórico do pagamento será preservado.</p>}</div>)}</div>
         <button type="button" className="sale-add-payment" onClick={addPayment}><Plus size={15} /> Adicionar forma de pagamento</button>
         <div className={`sale-payment-balance${Math.round(total * 100) === Math.round(paymentTotal * 100) && total > 0 ? ' is-matched' : ''}`}><span>Distribuído nos recebimentos</span><strong>{brl(paymentTotal)} <small>de {brl(total)}</small></strong></div>
       </section>
 
       <section className="sale-editor-section sale-editor-section--notes"><label className="sale-field"><span>Observações da venda</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Informações úteis para acompanhar este serviço" rows={3} /></label></section>
-      {error && <div className="sale-form-error" role="alert">{error}{pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
+      {error && <div className="sale-form-error" role="alert">{error}{!denied && pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
       <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>{confirmedEdit ? 'Os códigos e o histórico dos pagamentos serão preservados.' : 'Pedido e recebimentos serão registrados na empresa selecionada.'}</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving || uploading}>Cancelar</button>{draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving || uploading}>Salvar alterações</button>}<button type="submit" className="button button--primary" disabled={saving || uploading}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
     </form>
     {selectedService && serviceDraft && <SaleServiceModal
       service={selectedService}
       line={serviceDraft}
+      canChangePrice={canChangePrice}
       onChange={(field, value) => setServiceDraft((current) => current ? changeItem(current, field, value) : null)}
       onSave={saveService}
       onClose={closeServiceModal}
@@ -352,8 +381,9 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   </main>;
 }
 
-function SaleServiceModal({ service, line, onChange, onSave, onClose, returnFocus }: {
+function SaleServiceModal({ service, line, canChangePrice, onChange, onSave, onClose, returnFocus }: {
   service: Service;
+  canChangePrice: boolean;
   line: ItemLine;
   onChange: (field: 'quantity' | 'unitPrice' | 'discountAmount' | 'discountPercent', value: string) => void;
   onSave: () => void;
@@ -382,6 +412,7 @@ function SaleServiceModal({ service, line, onChange, onSave, onClose, returnFocu
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', onKeyDown); returnFocus.current?.focus(); };
   }, [returnFocus]);
 
+  const locked = priceLocked(line, canChangePrice);
   function submitItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!validItem(line)) { setError('Revise a quantidade, o valor e o desconto. O desconto não pode superar o valor do serviço.'); return; }
@@ -394,10 +425,11 @@ function SaleServiceModal({ service, line, onChange, onSave, onClose, returnFocu
       <form onSubmit={submitItem}>
         <div className="sale-service-modal__fields">
           <label className="sale-field"><span>Quantidade</span><input type="number" min="0.0001" step="any" value={line.quantity} onChange={(event) => { setError(''); onChange('quantity', event.target.value); }} required /></label>
-          <label className="sale-field"><span>Valor unitário (R$)</span><input type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => { setError(''); onChange('unitPrice', event.target.value); }} required /></label>
-          <label className="sale-field"><span>Desconto em R$</span><input type="number" min="0" step="0.01" value={line.discountAmount} onChange={(event) => { setError(''); onChange('discountAmount', event.target.value); }} /></label>
-          <label className="sale-field"><span>Desconto em %</span><input type="number" min="0" max="100" step="0.01" value={line.discountPercent} onChange={(event) => { setError(''); onChange('discountPercent', event.target.value); }} /></label>
+          <label className="sale-field"><span>Valor unitário (R$)</span><input type="number" readOnly={locked} aria-describedby={locked ? 'sale-service-price-hint' : undefined} min="0" step="0.01" value={line.unitPrice} onChange={(event) => { setError(''); onChange('unitPrice', event.target.value); }} required /></label>
+          <label className="sale-field"><span>Desconto em R$</span><input type="number" readOnly={locked} aria-describedby={locked ? 'sale-service-price-hint' : undefined} min="0" step="0.01" value={line.discountAmount} onChange={(event) => { setError(''); onChange('discountAmount', event.target.value); }} /></label>
+          <label className="sale-field"><span>Desconto em %</span><input type="number" readOnly={locked} aria-describedby={locked ? 'sale-service-price-hint' : undefined} min="0" max="100" step="0.01" value={line.discountPercent} onChange={(event) => { setError(''); onChange('discountPercent', event.target.value); }} /></label>
         </div>
+        {!canChangePrice && <p id="sale-service-price-hint" className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}
         <div className="sale-service-modal__summary"><div><span>Valor bruto</span><strong>{brl(grossCents(line) / 100)}</strong></div><div><span>Desconto</span><strong>{brl((discountCents(line.discountAmount) || 0) / 100)}</strong></div><div><span>Total do item</span><strong>{brl(lineTotalCents(line) / 100)}</strong></div></div>
         {error && <p className="sale-service-modal__error" role="alert">{error}</p>}
         <footer className="sale-service-modal__footer"><button type="button" className="button button--secondary" onClick={onClose}>Cancelar</button><button type="submit" className="button button--primary">Salvar serviço</button></footer>

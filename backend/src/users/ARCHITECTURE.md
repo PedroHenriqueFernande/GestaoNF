@@ -283,10 +283,10 @@ Contrato administrativo usa conta explícita em path. AccessGuard exige login e 
 | GET `/accounts/:accountId/users/capacity` | Titular; vagas ocupadas/reservadas/disponíveis **por empresa** |
 | GET `/accounts/:accountId/users/companies` | Titular; empresas autorizadas para os checkboxes e capacidade |
 | POST `/accounts/:accountId/user-invitations` | Titular; nome/e-mail/companyIds únicos não vazios + Idempotency-Key; 202 |
-| PATCH `/accounts/:accountId/user-invitations/:id/companies` | Titular; companyIds + version + Idempotency-Key; giro de token e envio novo |
+| PATCH `/accounts/:accountId/user-invitations/:id/access` | Titular; empresas, rótulo e permissões do convite pendente, com versão e Idempotency-Key; novo link e e-mail só quando as empresas mudam |
 | POST `/accounts/:accountId/user-invitations/:id/resend` | Titular; version + Idempotency-Key; 202 |
 | POST `/accounts/:accountId/user-invitations/:id/revoke` | Titular; version + Idempotency-Key; idempotente |
-| PATCH `/accounts/:accountId/users/:userId/companies` | Titular; substituir seleções dentro da conta + versão/hash dos vínculos + Idempotency-Key |
+| PUT `/accounts/:accountId/users/:userId/access` | Titular; empresas, rótulo e permissões do membro num único comando, com versão (vínculos e acesso) e Idempotency-Key |
 | POST `/accounts/:accountId/users/:userId/deactivate` | Titular; desativar vínculos de sua contratação, preservando outras contas |
 | POST `/user-invitations/preview` | Público, limitado; token no body |
 | POST `/user-invitations/accept-new` | Público, limitado; token e senha, sem CPF/e-mail/role fornecidos pelo cliente |

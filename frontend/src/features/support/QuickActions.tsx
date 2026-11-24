@@ -1,11 +1,11 @@
 import type { CSSProperties } from 'react';
 import { BookOpen, ChevronRight, FileDown, UserPlus } from 'lucide-react';
 
-type Props = { aiEnabled: boolean; layout: 'list' | 'chips'; onReport: () => void; onTopics: () => void; onPrompt: (text: string) => void };
+type Props = { aiEnabled: boolean; canReport: boolean; layout: 'list' | 'chips'; onReport: () => void; onTopics: () => void; onPrompt: (text: string) => void };
 
-export function QuickActions({ aiEnabled, layout, onReport, onTopics, onPrompt }: Props) {
+export function QuickActions({ aiEnabled, canReport, layout, onReport, onTopics, onPrompt }: Props) {
   const items = [
-    { label: 'Gerar relatório em PDF', hint: 'Escolha o tipo e o período', icon: FileDown, run: onReport },
+    ...(canReport ? [{ label: 'Gerar relatório em PDF', hint: 'Escolha o tipo e o período', icon: FileDown, run: onReport }] : []),
     { label: 'Como fazer...', hint: 'Guias passo a passo do sistema', icon: BookOpen, run: onTopics },
     ...(aiEnabled ? [{ label: 'Cadastrar cliente', hint: 'O assistente prepara, você confirma', icon: UserPlus, run: () => onPrompt('Quero cadastrar um cliente') }] : []),
   ];

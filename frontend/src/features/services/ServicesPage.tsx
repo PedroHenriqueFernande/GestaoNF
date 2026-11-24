@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Building2, ChevronLeft, ChevronRight, CircleCheck, Pencil, Plus, Search, XCircle } from 'lucide-react';
 import { api, ApiError, type Service, type ServiceInput, type ServiceList, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
+import { usePermissions } from '../permissions/usePermissions';
 import { ServiceForm } from './ServiceForm';
 
 type DrawerState = { mode: 'create' } | { mode: 'edit'; service: Service } | null;
@@ -17,8 +18,11 @@ function formatPrice(value: string | null): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value));
 }
 
-function MobileServiceList({ items, onEdit, onInactivate, onReactivate, reactivating }: {
+type ServiceActions = Readonly<{ edit: boolean; deactivate: boolean }>;
+
+function MobileServiceList({ items, can, onEdit, onInactivate, onReactivate, reactivating }: {
   items: Service[];
+  can: ServiceActions;
   onEdit: (service: Service) => void;
   onInactivate: (service: Service) => void;
   onReactivate: (service: Service) => void;
@@ -27,7 +31,7 @@ function MobileServiceList({ items, onEdit, onInactivate, onReactivate, reactiva
   return <div className="mobile-customer-list">{items.map((service) => <article className="mobile-customer" key={service.id}>
     <div className="mobile-customer__head"><div className="mobile-customer__identity"><strong>{service.name}</strong><small>{service.internalCode || 'Sem código interno'} · {service.unitLabel}</small></div><span className={`status-pill ${service.status === 'ACTIVE' ? 'status-pill--active' : 'status-pill--inactive'}`}>{service.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}</span></div>
     <div className="mobile-customer__details"><div><span>VALOR SUGERIDO</span><strong>{formatPrice(service.suggestedUnitPrice)}</strong></div><div><span>CLASSIFICAÇÃO</span><strong>{service.nationalTaxCode ? `cTribNac ${service.nationalTaxCode}` : 'Pendente'}</strong></div></div>
-    <div className="mobile-customer__actions"><button type="button" onClick={() => onEdit(service)}><Pencil size={15} /> Editar</button>{service.status === 'ACTIVE' ? <button type="button" onClick={() => onInactivate(service)}><XCircle size={15} /> Inativar</button> : <button type="button" onClick={() => onReactivate(service)} disabled={reactivating}><CircleCheck size={15} /> Reativar</button>}</div>
+    <div className="mobile-customer__actions">{can.edit && <button type="button" onClick={() => onEdit(service)}><Pencil size={15} /> Editar</button>}{can.deactivate && (service.status === 'ACTIVE' ? <button type="button" onClick={() => onInactivate(service)}><XCircle size={15} /> Inativar</button> : <button type="button" onClick={() => onReactivate(service)} disabled={reactivating}><CircleCheck size={15} /> Reativar</button>)}</div>
   </article>)}</div>;
 }
 
@@ -36,6 +40,8 @@ export function ServicesPage({ user }: { user: User }) {
   const searchSequence = useRef(0);
   const toastSequence = useRef(0);
   const [companyId, setCompanyId] = useState(() => sessionStorage.getItem('gestaonf.companyId') ?? '');
+  const access = usePermissions(companyId);
+  const can: ServiceActions = { edit: access.can('services.edit'), deactivate: access.can('services.deactivate') };
   const [inputSearch, setInputSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<ServiceStatus>('ACTIVE');
   const [searchRequest, setSearchRequest] = useState<SearchRequest | null>(null);
@@ -160,15 +166,15 @@ export function ServicesPage({ user }: { user: User }) {
             <button type="button" className={selectedStatus === 'ACTIVE' ? 'is-selected' : ''} aria-pressed={selectedStatus === 'ACTIVE'} onClick={() => changeStatus('ACTIVE')}>Ativos</button>
             <button type="button" className={selectedStatus === 'INACTIVE' ? 'is-selected' : ''} aria-pressed={selectedStatus === 'INACTIVE'} onClick={() => changeStatus('INACTIVE')}>Inativos</button>
           </div>
-          <button type="button" className="client-new-button" aria-label="Novo serviço" onClick={openCreate}><Plus size={16} /> Novo</button>
+          {access.can('services.create') && <button type="button" className="client-new-button" aria-label="Novo serviço" onClick={openCreate}><Plus size={16} /> Novo</button>}
         </div>
 
         {searchRequest && searchRequest.companyId === companyId && searchRequest.status === selectedStatus && <div className="client-results" aria-live="polite">
           {list.isPending ? <div className="table-loading" aria-label="Carregando serviços"><div /><div /><div /></div> : list.isError ? <div className="empty-panel"><AlertCircle size={28} /><h2>Não foi possível carregar os serviços</h2><p>{list.error instanceof ApiError ? list.error.message : 'Tente novamente pela lupa.'}</p></div> : <>
             <div className="client-results__heading"><h2>Resultados da pesquisa</h2><span>{list.data.total} {list.data.total === 1 ? 'serviço' : 'serviços'}</span></div>
             {!list.data.items.length ? <div className="client-results__empty"><Search size={23} /><p>{list.data.total ? 'Nenhum serviço nesta página.' : `Nenhum serviço ${selectedStatus === 'INACTIVE' ? 'inativo' : 'ativo'} encontrado.`}</p><span>{list.data.total ? 'Volte à página anterior ou faça uma nova pesquisa.' : searchRequest.term ? 'Experimente outro nome ou código.' : selectedStatus === 'INACTIVE' ? 'Os serviços inativados aparecerão aqui.' : 'Cadastre um serviço pelo botão Novo serviço.'}</span></div> : <>
-              <div className="table-scroll"><table className="customers-table services-table"><thead><tr><th>SERVIÇO</th><th>CÓDIGO</th><th>VALOR SUGERIDO</th><th>CLASSIFICAÇÃO</th><th>SITUAÇÃO</th><th className="align-right">AÇÕES</th></tr></thead><tbody>{list.data.items.map((service) => <tr key={service.id}><td><div className="customer-cell"><div><strong title={service.name}>{service.name}</strong><span>{service.unitLabel}{service.description ? ` · ${service.description}` : ''}</span></div></div></td><td className="mono-cell">{service.internalCode || <span className="muted-text">Não informado</span>}</td><td>{service.suggestedUnitPrice ? formatPrice(service.suggestedUnitPrice) : <span className="muted-text">Não informado</span>}</td><td>{service.nationalTaxCode ? <span className="service-tax-code">cTribNac {service.nationalTaxCode}</span> : <span className="service-classification-pending">Pendente</span>}</td><td><span className={`status-pill ${service.status === 'ACTIVE' ? 'status-pill--active' : 'status-pill--inactive'}`}>{service.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}</span></td><td><div className="row-actions"><button type="button" className="table-action" onClick={() => openEdit(service)} title={`Editar ${service.name}`} aria-label={`Editar ${service.name}`}><Pencil size={16} /></button>{service.status === 'ACTIVE' ? <button type="button" className="table-action table-action--danger" onClick={() => openInactivate(service)} title={`Inativar ${service.name}`} aria-label={`Inativar ${service.name}`}><XCircle size={17} /></button> : <button type="button" className="table-action" onClick={() => reactivateMutation.mutate(service)} disabled={reactivateMutation.isPending} title={`Reativar ${service.name}`} aria-label={`Reativar ${service.name}`}><CircleCheck size={17} /></button>}</div></td></tr>)}</tbody></table></div>
-              <MobileServiceList items={list.data.items} onEdit={openEdit} onInactivate={openInactivate} onReactivate={(service) => reactivateMutation.mutate(service)} reactivating={reactivateMutation.isPending} />
+              <div className="table-scroll"><table className="customers-table services-table"><thead><tr><th>SERVIÇO</th><th>CÓDIGO</th><th>VALOR SUGERIDO</th><th>CLASSIFICAÇÃO</th><th>SITUAÇÃO</th><th className="align-right">AÇÕES</th></tr></thead><tbody>{list.data.items.map((service) => <tr key={service.id}><td><div className="customer-cell"><div><strong title={service.name}>{service.name}</strong><span>{service.unitLabel}{service.description ? ` · ${service.description}` : ''}</span></div></div></td><td className="mono-cell">{service.internalCode || <span className="muted-text">Não informado</span>}</td><td>{service.suggestedUnitPrice ? formatPrice(service.suggestedUnitPrice) : <span className="muted-text">Não informado</span>}</td><td>{service.nationalTaxCode ? <span className="service-tax-code">cTribNac {service.nationalTaxCode}</span> : <span className="service-classification-pending">Pendente</span>}</td><td><span className={`status-pill ${service.status === 'ACTIVE' ? 'status-pill--active' : 'status-pill--inactive'}`}>{service.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}</span></td><td><div className="row-actions">{can.edit && <button type="button" className="table-action" onClick={() => openEdit(service)} title={`Editar ${service.name}`} aria-label={`Editar ${service.name}`}><Pencil size={16} /></button>}{can.deactivate && (service.status === 'ACTIVE' ? <button type="button" className="table-action table-action--danger" onClick={() => openInactivate(service)} title={`Inativar ${service.name}`} aria-label={`Inativar ${service.name}`}><XCircle size={17} /></button> : <button type="button" className="table-action" onClick={() => reactivateMutation.mutate(service)} disabled={reactivateMutation.isPending} title={`Reativar ${service.name}`} aria-label={`Reativar ${service.name}`}><CircleCheck size={17} /></button>)}</div></td></tr>)}</tbody></table></div>
+              <MobileServiceList items={list.data.items} can={can} onEdit={openEdit} onInactivate={openInactivate} onReactivate={(service) => reactivateMutation.mutate(service)} reactivating={reactivateMutation.isPending} />
             </>}
             {list.data.total > 0 && <div className="pagination"><span>{list.data.items.length ? <>Exibindo <strong>{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, list.data.total)}</strong> de <strong>{list.data.total}</strong></> : <>{list.data.total} {list.data.total === 1 ? 'serviço' : 'serviços'}</>}</span><div><button type="button" aria-label="Página anterior" disabled={currentPage === 0} onClick={() => setSearchRequest((current) => current && ({ ...current, page: current.page - 1 }))}><ChevronLeft size={17} /></button><span>Página {currentPage + 1} de {lastPage + 1}</span><button type="button" aria-label="Próxima página" disabled={currentPage >= lastPage} onClick={() => setSearchRequest((current) => current && ({ ...current, page: current.page + 1 }))}><ChevronRight size={17} /></button></div></div>}
           </>}
@@ -176,7 +182,7 @@ export function ServicesPage({ user }: { user: User }) {
       </section>}
     </main>
 
-    {drawer && <ServiceForm companyId={companyId} service={drawer.mode === 'edit' ? drawer.service : undefined} onClose={closeDrawer} saving={saveMutation.isPending} saveError={saveMutation.error} onSave={(input) => saveMutation.mutateAsync({ input, id: drawer.mode === 'edit' ? drawer.service.id : undefined }).then(() => undefined)} />}
+    {drawer && <ServiceForm companyId={companyId} canEditPrice={access.can('services.edit_price')} service={drawer.mode === 'edit' ? drawer.service : undefined} onClose={closeDrawer} saving={saveMutation.isPending} saveError={saveMutation.error} onSave={(input) => saveMutation.mutateAsync({ input, id: drawer.mode === 'edit' ? drawer.service.id : undefined }).then(() => undefined)} />}
 
     {confirmService && <div className="modal-backdrop"><div className="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="service-confirm-title" aria-describedby="service-confirm-description"><div className="confirm-card__icon"><XCircle size={24} /></div><h2 id="service-confirm-title">Inativar serviço?</h2><p id="service-confirm-description"><strong>{confirmService.name}</strong> ficará marcado como inativo. O cadastro e o histórico serão preservados.</p>{inactivateMutation.isError && <div className="inline-error" role="alert">{inactivateMutation.error instanceof Error ? inactivateMutation.error.message : 'Não foi possível inativar.'}</div>}<div className="confirm-card__actions"><button className="button button--secondary" onClick={() => setConfirmService(null)} disabled={inactivateMutation.isPending}>Cancelar</button><button className="button button--danger" onClick={() => inactivateMutation.mutate(confirmService)} disabled={inactivateMutation.isPending}>{inactivateMutation.isPending ? 'Inativando...' : 'Inativar serviço'}</button></div></div></div>}
     {toast && <div key={toast.id} className={`action-toast action-toast--${toast.tone}`} role={toast.tone === 'error' ? 'alert' : 'status'}><div className="action-toast__body"><strong>{toast.title}</strong><span>{toast.description}</span></div></div>}

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, BookOpenText, CircleCheck, ClipboardList, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions';
 import { api, ApiError, type MunicipalTaxCode, type Service, type ServiceInput } from '../../api/client';
 
 const serviceSchema = z.object({
@@ -104,14 +105,17 @@ function MunicipalCodes({ companyId, serviceId }: { companyId: string; serviceId
   </div>;
 }
 
-export function ServiceForm({ companyId, service, onClose, onSave, saving, saveError }: {
+export function ServiceForm({ companyId, service, canEditPrice, onClose, onSave, saving, saveError }: {
   companyId: string;
   service?: Service;
+  /** Sem `services.edit_price`, o preço de um serviço existente fica somente leitura (D6). */
+  canEditPrice: boolean;
   onClose: () => void;
   onSave: (input: ServiceInput) => Promise<void>;
   saving: boolean;
   saveError: unknown;
 }) {
+  const priceLocked = !!service && !canEditPrice;
   const nameRef = useRef<HTMLInputElement | null>(null);
   const form = useForm<Values>({ resolver: zodResolver(serviceSchema), defaultValues: defaults(service) });
   const { errors } = form.formState;
@@ -158,7 +162,7 @@ export function ServiceForm({ companyId, service, onClose, onSave, saving, saveE
               <Field label="Código interno" error={errors.internalCode?.message}><input placeholder="Ex.: SERV-001" aria-invalid={!!errors.internalCode} {...form.register('internalCode')} /></Field>
               <Field label="Unidade comercial" required error={errors.unitLabel?.message}><input placeholder="UN, H, DIÁRIA..." aria-invalid={!!errors.unitLabel} {...form.register('unitLabel')} /></Field>
             </div>
-            <Field label="Valor unitário sugerido" error={errors.suggestedUnitPrice?.message} hint="Valor de referência. O total da NFS-e será definido na prestação."><input placeholder="0,00" inputMode="decimal" aria-invalid={!!errors.suggestedUnitPrice} {...form.register('suggestedUnitPrice')} /></Field>
+            <Field label="Valor unitário sugerido" error={errors.suggestedUnitPrice?.message} hint={priceLocked ? PERMISSION_DENIED_MESSAGE : 'Valor de referência. O total da NFS-e será definido na prestação.'}><input placeholder="0,00" inputMode="decimal" readOnly={priceLocked} aria-invalid={!!errors.suggestedUnitPrice} {...form.register('suggestedUnitPrice')} /></Field>
             <Field label="Descrição" error={errors.description?.message} hint="Até 2.000 caracteres. A descrição final será conferida conforme o ambiente de emissão."><textarea rows={3} maxLength={2000} placeholder="Descreva o serviço..." aria-invalid={!!errors.description} {...form.register('description')} /></Field>
           </div>
           <div className="form-section-heading"><BookOpenText size={17} /><div><h3>Classificação fiscal</h3><p>Códigos de referência para a NFS-e</p></div></div>

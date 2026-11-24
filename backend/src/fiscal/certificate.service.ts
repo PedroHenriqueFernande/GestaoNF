@@ -1,11 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
-import { companyFiscalCertificateEvents, companyFiscalCertificates, companies, companyUsers } from '@gestaonf/database/schema';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
+import { companyFiscalCertificateEvents, companyFiscalCertificates, companies } from '@gestaonf/database/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { createCipheriv, createDecipheriv, createPrivateKey, createPublicKey, randomBytes, randomUUID, X509Certificate } from 'node:crypto';
 import { createSecureContext } from 'node:tls';
 import forge from 'node-forge';
 import { DatabaseService } from '../database/database.module.js';
 import { readFile } from 'node:fs/promises';
+import { requireMembershipPermission } from '../permissions/permission-resolver.js';
 
 const MAX_PFX_BYTES = 2 * 1024 * 1024;
 const CPF_OID = '2.16.76.1.3.1';
@@ -167,9 +168,7 @@ export class CertificateService {
   }
 
   async install(companyId: string, userId: string, pfx: Buffer, passphrase: string) {
-    const [membership] = await this.database.db.select({ role: companyUsers.role }).from(companyUsers)
-      .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'))).limit(1);
-    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Apenas proprietário ou administrador pode cadastrar o certificado.');
+    await requireMembershipPermission(this.database.db, userId, companyId, 'company.certificate', 'POST /fiscal/certificate');
     if (!passphrase || passphrase.length > 1024) throw new BadRequestException('Informe a senha do certificado.');
     const details = readPfx(pfx, passphrase);
     const id = randomUUID();
@@ -177,11 +176,10 @@ export class CertificateService {
     try {
       await this.database.db.transaction(async (tx) => {
         await tx.execute(sql`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`);
-        const [company] = await tx.select({ kind: companies.kind, taxId: companies.taxId, countryCode: companies.countryCode, role: companyUsers.role })
-          .from(companies).innerJoin(companyUsers, and(eq(companyUsers.companyId, companies.id), eq(companyUsers.userId, userId)))
-          .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), eq(companyUsers.status, 'ACTIVE'))).limit(1);
+        await requireMembershipPermission(tx, userId, companyId, 'company.certificate', 'POST /fiscal/certificate');
+        const [company] = await tx.select({ kind: companies.kind, taxId: companies.taxId, countryCode: companies.countryCode })
+          .from(companies).where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'))).limit(1);
         if (!company) throw new NotFoundException('Empresa não encontrada.');
-        if (company.role !== 'OWNER' && company.role !== 'ADMIN') throw new ForbiddenException('Apenas proprietário ou administrador pode cadastrar o certificado.');
         if (!company.taxId || company.countryCode !== 'BR') throw new UnprocessableEntityException('Cadastre primeiro o CPF/CNPJ da empresa brasileira.');
         if (company.kind !== details.identity.kind || company.taxId !== details.identity.taxId)
           throw new UnprocessableEntityException('O CPF/CNPJ do certificado é diferente do cadastrado nesta empresa.');
@@ -203,9 +201,7 @@ export class CertificateService {
   async disable(companyId: string, userId: string) {
     await this.database.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`);
-      const [membership] = await tx.select({ role: companyUsers.role }).from(companyUsers)
-        .where(and(eq(companyUsers.companyId, companyId), eq(companyUsers.userId, userId), eq(companyUsers.status, 'ACTIVE'))).limit(1);
-      if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Sem permissão para desativar o certificado.');
+      await requireMembershipPermission(tx, userId, companyId, 'company.certificate', 'DELETE /fiscal/certificate');
       const [row] = await tx.update(companyFiscalCertificates).set({ status: 'DISABLED', encryptedPayload: null, disabledAt: new Date() })
         .where(and(eq(companyFiscalCertificates.companyId, companyId), eq(companyFiscalCertificates.status, 'ACTIVE'))).returning({ id: companyFiscalCertificates.id });
       if (!row) throw new NotFoundException('Nenhum certificado ativo nesta empresa.');

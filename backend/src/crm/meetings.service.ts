@@ -1,12 +1,14 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import { companyUsers, crmActivities, crmContacts, crmMeetingEvents, crmMeetingParticipants, crmMeetingReminders, crmMeetings, crmOpportunities, crmSettings, users } from '@gestaonf/database/schema';
-import { and, asc, count, desc, eq, gt, ilike, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, ilike, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 import { changedFields, commandHash, expectVersion, escapeLike, lockKeys, type CrmDb, type CrmTx } from './crm-normalization.js';
 import { CrmPolicyService, type CrmAccess } from './crm-policy.service.js';
+import { inCompanies } from './crm-query.js';
 import type { CrmContext } from './crm.schemas.js';
 import type { ConflictInput, CreateMeeting, MeetingListInput, MeetingStatusInput, RescheduleMeeting, UpdateMeeting } from './meeting.schemas.js';
 import { MeetingReminderService } from './meeting-reminder.service.js';
+import { requirePermission } from '../permissions/actor.js';
 
 type Meeting = typeof crmMeetings.$inferSelect;
 type Participant = CreateMeeting['participants'][number];
@@ -52,7 +54,7 @@ export class MeetingsService {
         lt(crmMeetings.startsAt, end), gt(crmMeetings.endsAt, start), exclude ? ne(crmMeetings.id, exclude) : sql`true`)).orderBy(asc(crmMeetings.startsAt), asc(crmMeetings.id));
   }
   private async availability(tx: CrmTx, a: CrmAccess, responsible: string, start: Date, end: Date, exclude: string | undefined, allow: boolean) {
-    await this.policy.assignee(a, responsible, tx, responsible !== a.userId);
+    await this.policy.assignee(a, responsible, tx, exclude ? await this.policy.meeting(a, exclude, tx) : undefined);
     const settings = await this.settings(a, tx);
     const conflicts = await this.conflictsFor(a, responsible, start, end, exclude, tx);
     if (conflicts.length && !allow && settings.conflictPolicy !== 'ALLOW') throw new ConflictException({ message: 'O responsável já possui compromisso nesse horário', code: 'MEETING_TIME_CONFLICT', conflicts });
@@ -130,15 +132,25 @@ export class MeetingsService {
   }
 
   async list(ctx: CrmContext, input: MeetingListInput) {
-    const a = await this.access(ctx), db = this.database.db;
-    const terms = [this.policy.meetingScope(a), lt(crmMeetings.startsAt, input.to), gt(crmMeetings.endsAt, input.from)];
+    const a = await this.access(ctx);
+    return this.page(this.listConditions([a.companyId], input), input);
+  }
+  overview(companyIds: readonly string[], input: MeetingListInput) {
+    return this.page(this.listConditions(companyIds, input), input);
+  }
+  listConditions(companyIds: readonly string[], input: MeetingListInput) {
+    const terms = [inCompanies(crmMeetings.companyId, companyIds), lt(crmMeetings.startsAt, input.to), gt(crmMeetings.endsAt, input.from)];
     if (input.assignedUserId) terms.push(eq(crmMeetings.assignedUserId, input.assignedUserId));
     if (input.contactId) terms.push(eq(crmMeetings.contactId, input.contactId));
     if (input.opportunityId) terms.push(eq(crmMeetings.opportunityId, input.opportunityId));
     if (input.status) terms.push(eq(crmMeetings.status, input.status));
     if (input.modality) terms.push(eq(crmMeetings.modality, input.modality));
     if (input.search) { const q = escapeLike(input.search); terms.push(or(ilike(crmMeetings.title, q), ilike(crmContacts.name, q), ilike(crmContacts.organizationName, q))!); }
-    const filter = and(...terms), join = and(eq(crmContacts.companyId, crmMeetings.companyId), eq(crmContacts.id, crmMeetings.contactId));
+    return and(...terms);
+  }
+  private async page(filter: SQL | undefined, input: MeetingListInput) {
+    const db = this.database.db;
+    const join = and(eq(crmContacts.companyId, crmMeetings.companyId), eq(crmContacts.id, crmMeetings.contactId));
     const [rows, [summary]] = await Promise.all([
       db.select({ meeting: crmMeetings, lead: { id: crmContacts.id, name: crmContacts.name, organizationName: crmContacts.organizationName }, responsible: { id: users.id, name: users.name } })
         .from(crmMeetings).innerJoin(crmContacts, join).innerJoin(users, eq(users.id, crmMeetings.assignedUserId)).where(filter).orderBy(asc(crmMeetings.startsAt), asc(crmMeetings.id)).limit(input.limit).offset(input.offset),
@@ -159,16 +171,20 @@ export class MeetingsService {
   }
   async conflicts(ctx: CrmContext, input: ConflictInput) {
     const a = await this.access(ctx);
-    await this.policy.assignee(a, input.assignedUserId, this.database.db, input.assignedUserId !== a.userId);
-    if (input.excludeMeetingId) await this.policy.meeting(a, input.excludeMeetingId);
+    await this.policy.assignee(a, input.assignedUserId, this.database.db, input.excludeMeetingId ? await this.policy.meeting(a, input.excludeMeetingId) : undefined);
     const items = await this.conflictsFor(a, input.assignedUserId, input.startsAt, input.endsAt, input.excludeMeetingId, this.database.db);
     return { hasConflict: items.length > 0, items };
   }
   async responsibles(ctx: CrmContext) {
     const a = await this.access(ctx);
-    const items = await this.database.db.select({ id: users.id, name: users.name }).from(companyUsers).innerJoin(users, eq(users.id, companyUsers.userId))
-      .where(and(eq(companyUsers.companyId, a.companyId), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'), a.manager ? sql`true` : eq(users.id, a.userId))).orderBy(asc(users.name), asc(users.id));
-    return { items };
+    return { items: await this.responsibleList([a.companyId]) };
+  }
+  async overviewResponsibles(companyIds: readonly string[]) {
+    return { items: await this.responsibleList(companyIds) };
+  }
+  private responsibleList(companyIds: readonly string[]) {
+    return this.database.db.selectDistinct({ id: users.id, name: users.name }).from(companyUsers).innerJoin(users, eq(users.id, companyUsers.userId))
+      .where(and(inCompanies(companyUsers.companyId, companyIds), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'))).orderBy(asc(users.name), asc(users.id));
   }
 
   private async mutate(ctx: MeetingContext, id: string, version: number, nextResponsible: string | undefined, apply: (tx: CrmTx, a: Access, old: Meeting) => Promise<Meeting>) {
@@ -256,7 +272,8 @@ export class MeetingsService {
   async getSettings(ctx: CrmContext) { const a = await this.access(ctx); return this.settings(a, this.database.db); }
   async updateSettings(ctx: CrmContext, input: { expectedVersion: number; qualifyOpportunityOnMeeting?: boolean; defaultReminderMinutes?: number | null; conflictPolicy?: 'WARN' | 'ALLOW' }) {
     return this.database.db.transaction(async (tx) => {
-      const a = await this.access(ctx, tx); this.policy.requireManager(a);
+      const a = await this.access(ctx, tx);
+      requirePermission(a.actor, 'agenda.settings', 'PATCH /crm/meeting-settings');
       await tx.insert(crmSettings).values({ companyId: a.companyId }).onConflictDoNothing();
       const [old] = await tx.select().from(crmSettings).where(eq(crmSettings.companyId, a.companyId)).for('update').limit(1);
       expectVersion(old.version, input.expectedVersion);

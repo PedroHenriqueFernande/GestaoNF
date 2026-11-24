@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { localWebOrigin } from './origin';
+import { ownerCompany } from './companies';
 
 test('upload sem modal ao lado do total, download e anexos preservados ao salvar/reabrir', async ({ page }) => {
   const companyId = '11111111-1111-4111-8111-111111111111', saleId = '22222222-2222-4222-8222-222222222222';
@@ -34,7 +35,8 @@ test('upload sem modal ao lado do total, download e anexos preservados ao salvar
     const reply = (json: unknown) => route.fulfill({ json, headers: { 'access-control-allow-origin': localWebOrigin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Company-Id, Idempotency-Key', 'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS' } });
     if (request.method() === 'OPTIONS') return reply({});
     if (url.pathname === '/auth/me') return reply({ id: 'user', name: 'Pedro', email: 'pedro@example.test' });
-    if (url.pathname === '/companies') return reply([{ id: companyId, name: 'GestãoNF', role: 'OWNER' }]);
+    if (url.pathname === '/companies') return reply([ownerCompany(companyId, 'GestãoNF', 'acc')]);
+    if (url.pathname === '/fiscal/tax-profiles') return reply([]);
     if (url.pathname === '/files/capabilities') return reply({ enabled: true, mimeTypes: ['image/png', 'image/jpeg', 'application/pdf'], imageMaxBytes: 10485760, pdfMaxBytes: 26214400, maxAttachments: 10, uploadTtlSeconds: 600 });
     if (url.pathname === '/files/uploads') { beginBody = request.postDataJSON(); expect(request.headers()['idempotency-key']).toBeTruthy(); expect(request.headers()['x-company-id']).toBe(companyId); return reply({ file: { ...newFile, status: 'PENDING' }, upload: { url: 'https://uploads.example.test/staging', method: 'PUT', headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store' }, expiresAt: '2026-10-13T13:00:00Z' } }); }
     if (url.pathname === `/files/${newFileId}/complete`) { completionStarted = true; await completeGate; return reply(newFile); }
@@ -70,7 +72,7 @@ test('upload sem modal ao lado do total, download e anexos preservados ao salvar
   await expect(page.getByRole('button', { name: 'Baixar Contrato.pdf' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: 'Anexar arquivo' })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -83,7 +85,8 @@ test('seleção recusa extensão inválida e upload indisponível não bloqueia 
     const reply = (json: unknown) => route.fulfill({ json, headers: { 'access-control-allow-origin': localWebOrigin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Company-Id, Idempotency-Key' } });
     if (route.request().method() === 'OPTIONS') return reply({});
     if (url.pathname === '/auth/me') return reply({ id: 'user', name: 'Pedro', email: 'pedro@example.test' });
-    if (url.pathname === '/companies') return reply([{ id: companyId, name: 'GestãoNF', role: 'OWNER' }]);
+    if (url.pathname === '/companies') return reply([ownerCompany(companyId, 'GestãoNF', 'acc')]);
+    if (url.pathname === '/fiscal/tax-profiles') return reply([]);
     if (url.pathname === '/files/capabilities') return reply({ enabled, mimeTypes: ['image/png', 'image/jpeg', 'application/pdf'], imageMaxBytes: 10485760, pdfMaxBytes: 26214400, maxAttachments: 10, uploadTtlSeconds: 600 });
     if (url.pathname === '/files/uploads') uploadRequests++;
     return reply({ items: [], total: 0 });

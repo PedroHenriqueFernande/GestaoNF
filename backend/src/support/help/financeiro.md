@@ -13,10 +13,10 @@ No alto da tela há o resumo da carteira: **Em aberto**, **Total previsto**, **J
 1. No menu da esquerda, clique em **Financeiro**.
 2. Para achar um recebimento, use **Filtrar recebimentos**: busque por cliente, número do pedido, número do recebimento, OS, datas, **Situação** (**Pendente**, **Parcial** ou **Recebido**), vencimento e forma de pagamento. Clique em **Aplicar filtros**. **Limpar** volta ao início.
 3. Clique no nome do recebimento (por exemplo, "Recebimento 2") ou na seta ao final da linha para abrir os detalhes.
-4. Para registrar um valor recebido, clique em **Registrar recebimento**. Informe o **Valor recebido**, a **Forma de pagamento**, a **Data da baixa** e, se quiser, uma **Referência opcional** (comprovante ou transação).
+4. Para registrar um valor recebido (permissão **Dar baixa**), clique em **Registrar recebimento**. Informe o **Valor recebido**, a **Forma de pagamento**, a **Data da baixa** e, se quiser, uma **Referência opcional** (comprovante ou transação).
 5. Clique em **Confirmar baixa**. Pode ser baixa parcial: o restante continua em aberto.
-6. Para corrigir um engano, no **Histórico de baixas** clique no botão **Estornar baixa**, escreva o **Motivo do estorno** e clique em **Confirmar estorno**. O estorno fica registrado no histórico.
-7. Para mudar datas, altere a **Data de lançamento** ou a **Data de vencimento** e clique em **Salvar datas**. A **Data de lançamento** é a data da venda e vale para todos os recebimentos do pedido: ao mudá-la, ela muda em todos. A **Data de vencimento** é só daquele recebimento.
+6. Para corrigir um engano (permissão **Cancelar baixa**), no **Histórico de baixas** clique no botão **Estornar baixa**, escreva o **Motivo do estorno** e clique em **Confirmar estorno**. O estorno fica registrado no histórico.
+7. Para mudar datas (permissão **Alterar data e vencimento**), altere a **Data de lançamento** ou a **Data de vencimento** e clique em **Salvar datas**. A **Data de lançamento** é a data da venda e vale para todos os recebimentos do pedido: ao mudá-la, ela muda em todos. A **Data de vencimento** é só daquele recebimento.
 
 Também é possível dar baixa pelo pedido: no **Portal de Serviços**, abra o pedido, clique em **Ver detalhes, baixas e histórico** e use o botão **Registrar baixa** do recebimento.
 

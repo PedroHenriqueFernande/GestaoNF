@@ -5,7 +5,7 @@ rota: portal_servicos
 palavras-chave: [cancelar nota, cancelamento, substituir nota, substituição, nfse autorizada, nota errada, corrigir nota]
 ---
 ## O que é
-Depois que uma NFS-e é autorizada, você pode **cancelar** a nota ou **substituí-la** por outra corrigida. Essas ações ficam na janela da nota, dentro do pedido no **Portal de Serviços**. Só proprietário e administrador da empresa veem e usam os botões. Nesta versão, tudo vale apenas para o ambiente de homologação (teste).
+Depois que uma NFS-e é autorizada, você pode **cancelar** a nota ou **substituí-la** por outra corrigida. Essas ações ficam na janela da nota, dentro do pedido no **Portal de Serviços**. Cancelar exige a permissão **Cancelar NFS-e**, e substituir exige **Corrigir NFS-e (substituição)**. Nesta versão, tudo vale apenas para o ambiente de homologação (teste).
 
 - **Cancelar**: a nota é cancelada no ambiente nacional e **não pode ser desfeita**. A venda continua confirmada e o financeiro não muda. Depois você pode emitir outra nota, se precisar.
 - **Substituir**: a venda fica editável para você corrigir o que for preciso e emitir uma nota substituta. A nota atual só passa a "Substituída" quando a nova for autorizada. Para MEI e ME/EPP, a competência, o tomador e o valor do serviço não podem mudar. Se o erro estiver em um deles, cancele a nota e emita outra.
@@ -27,7 +27,7 @@ Para substituir:
 6. Se desistir, clique em **Desistir da substituição**.
 
 ## Problemas comuns
-- Não aparecem os botões **Cancelar NFS-e** e **Substituir NFS-e**: seu usuário precisa ser proprietário ou administrador, e a nota precisa estar autorizada, sem cancelamento em andamento. A substituição só está disponível quando a venda tem exatamente uma nota ativa. Nos outros casos, cancele e emita de novo.
+- Não aparecem os botões **Cancelar NFS-e** e **Substituir NFS-e**: seu usuário precisa da permissão **Cancelar NFS-e** ou **Corrigir NFS-e (substituição)**, e a nota precisa estar autorizada, sem cancelamento em andamento. A substituição só está disponível quando a venda tem exatamente uma nota ativa. Nos outros casos, cancele e emita de novo.
 - "Cancelamento recusado pelo ambiente nacional. A nota continua válida.": leia a mensagem exibida abaixo e, se for o caso, tente novamente com outro motivo ou justificativa.
 - O cancelamento ficou sem resposta: clique em **Consultar resultado do cancelamento** para atualizar a situação.
 - A justificativa não é aceita: ela precisa ter pelo menos 15 caracteres. O contador mostra quantos você já digitou.

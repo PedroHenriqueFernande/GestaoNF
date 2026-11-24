@@ -6,7 +6,7 @@ import { companyAvailable } from '../accounts/account-policy.js';
 import { DatabaseService } from '../database/database.module.js';
 import { COMPANY_LOGO_IMAGE, normalizeImage, type BeginImageUpload } from '../files/image-normalize.js';
 import { InvalidStoredContent, ObjectNotUploaded, R2StorageService } from '../files/r2-storage.service.js';
-import { assertCompanyManager } from './company-access.js';
+import { presentMembership, requireMembershipPermission } from '../permissions/permission-resolver.js';
 
 export type LogoContext = { companyId: string; userId: string };
 type LogoFile = typeof companyLogoFiles.$inferSelect;
@@ -33,7 +33,7 @@ export class CompanyLogoService {
     const row = await this.database.db.transaction(async tx => {
       // Serializa reservas por empresa para os limites valerem sob concorrência.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`company-logo:reserve:${ctx.companyId}`}, 0))`);
-      await assertCompanyManager(tx, ctx.companyId, ctx.userId);
+      await requireMembershipPermission(tx, ctx.userId, ctx.companyId, 'company.edit', 'POST /companies/current/logo/uploads');
       const [existing] = await tx.select().from(companyLogoFiles).where(and(eq(companyLogoFiles.companyId, ctx.companyId), eq(companyLogoFiles.createdByUserId, ctx.userId), eq(companyLogoFiles.requestKey, key))).limit(1);
       if (existing) { if (existing.requestHash !== hash) throw new ConflictException('Chave de upload já utilizada com outro arquivo'); return existing; }
       const [current] = await tx.select({ logoId: companies.logoId }).from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
@@ -63,7 +63,7 @@ export class CompanyLogoService {
     this.storage.requireClient();
     let rejection: string | null = null;
     const result = await this.database.db.transaction(async tx => {
-      await assertCompanyManager(tx, ctx.companyId, ctx.userId);
+      await requireMembershipPermission(tx, ctx.userId, ctx.companyId, 'company.edit', 'POST /companies/current/logo/uploads/:id/complete');
       const [row] = await tx.select().from(companyLogoFiles).where(this.own(ctx, id)).for('update').limit(1);
       if (!row) throw new NotFoundException('Foto não encontrada');
       if (row.status === 'READY' && row.unattachedExpiresAt && row.unattachedExpiresAt <= new Date()) throw new GoneException(EXPIRED_READY);
@@ -108,10 +108,10 @@ export class CompanyLogoService {
     const outcome = await this.database.db.transaction(async tx => {
       // Mesma ordem de travas de CompaniesService.update: empresa primeiro, depois arquivos por ID.
       await tx.execute(sql`select id from companies where id = ${ctx.companyId} for update`);
-      const { role } = await assertCompanyManager(tx, ctx.companyId, ctx.userId);
+      const membership = await requireMembershipPermission(tx, ctx.userId, ctx.companyId, 'company.edit', 'PUT /companies/current/logo');
       const [company] = await tx.select().from(companies).where(and(eq(companies.id, ctx.companyId), eq(companies.status, 'ACTIVE'))).limit(1);
       if (!company) throw new NotFoundException('Empresa não encontrada');
-      if (company.logoId === logoId) return { company, role, previous: undefined as string | null | undefined };
+      if (company.logoId === logoId) return { company, membership, previous: undefined };
       const ids = [...new Set([company.logoId, logoId].filter((value): value is string => !!value))].sort();
       const files = ids.length ? await tx.select().from(companyLogoFiles)
         .where(and(eq(companyLogoFiles.companyId, ctx.companyId), inArray(companyLogoFiles.id, ids))).orderBy(companyLogoFiles.id).for('update') : [];
@@ -130,10 +130,10 @@ export class CompanyLogoService {
       if (company.logoId) await tx.update(companyLogoFiles).set({ status: 'DELETING', deletedAt: now, updatedAt: now }).where(eq(companyLogoFiles.id, company.logoId));
       if (logoId) await tx.update(companyLogoFiles).set({ status: 'ACTIVE', unattachedExpiresAt: null, updatedAt: now }).where(eq(companyLogoFiles.id, logoId));
       const [saved] = await tx.update(companies).set({ logoId, updatedAt: now }).where(eq(companies.id, ctx.companyId)).returning();
-      return { company: saved, role, previous: company.logoId };
+      return { company: saved, membership, previous: company.logoId };
     });
     if (outcome.previous !== undefined) this.logger.log({ event: 'company_logo_changed', ...ctx, previousLogoId: outcome.previous, logoId });
-    return { ...outcome.company, role: outcome.role };
+    return { ...outcome.company, ...presentMembership(outcome.membership) };
   }
 
   async access(userId: string) {
