@@ -223,7 +223,7 @@ export class NiloService {
       const active = choice ? await this.conversations.selectCompany(conversation.id, choice) : null;
       if (active) {
         const hasRequest = (await this.conversations.history(active.id)).some((item) => item.role === 'USER');
-        if (!hasRequest) return this.say(event, link, active, `Certo, ${bold(choice!.name)}. Como posso ajudar?`, `nero:${event.id}`);
+        if (!hasRequest) return this.say(event, link, active, `Certo, ${bold(choice!.tradeName)}. Como posso ajudar?`, `nero:${event.id}`);
         return this.respondAfterSelection(event, link, active, eligible);
       }
       return this.say(event, link, conversation, 'Essa escolha não está mais disponível. Me diga de novo o que precisa.', `nero:${event.id}`);
@@ -250,7 +250,7 @@ export class NiloService {
   /** Escolha de empresa feita em conversa aberta por troca de empresa: o pedido veio da conversa anterior. */
   private async respondAfterSelection(event: Event, link: Link, conversation: Conversation, eligible: CompanyOption[]) {
     if (await this.conversations.openedByCompanySwitch(conversation)) {
-      const name = eligible.find((item) => item.companyLinkId === conversation.companyLinkId)?.name ?? '';
+      const name = eligible.find((item) => item.companyLinkId === conversation.companyLinkId)?.tradeName ?? '';
       return this.respond(event, link, conversation, eligible, `A empresa desta conversa já foi trocada para ${name}. Atenda o pedido do usuário nesta empresa, sem chamar trocar_empresa de novo.`);
     }
     return this.respond(event, link, conversation, eligible);
@@ -279,7 +279,7 @@ export class NiloService {
     if (!company) return null;
     const runId = await this.startRun(event, link, company);
     const ctx = await loadExecutionContext(this.database.db, {
-      channel: 'WHATSAPP', userId: link.userId, companyId: company.companyId, companyLinkId: company.companyLinkId, companyName: company.name,
+      channel: 'WHATSAPP', userId: link.userId, companyId: company.companyId, companyLinkId: company.companyLinkId, companyName: company.tradeName,
       companyCount: eligible.length, linkId: link.id, conversationId: conversation.id, runId,
     });
     return ctx ? { ctx, company } : null;
@@ -298,9 +298,9 @@ export class NiloService {
 
     if (result.outcome.kind === 'SWITCH_COMPANY') {
       const named = result.outcome.companyName;
-      if (named && findCompanyByName([company], named)) return this.say(event, link, conversation, `Já estamos na ${bold(company.name)}.`, key);
+      if (named && findCompanyByName([company], named)) return this.say(event, link, conversation, `Já estamos na ${bold(company.tradeName)}.`, key);
       // Rerun: a troca já foi feita; outro pedido de troca não troca de novo (evita ida e volta entre empresas).
-      if (rerun) return this.say(event, link, conversation, `Estamos na ${bold(company.name)}. Se quiser falar de outra empresa, me diga qual.`, key);
+      if (rerun) return this.say(event, link, conversation, `Estamos na ${bold(company.tradeName)}. Se quiser falar de outra empresa, me diga qual.`, key);
       const others = eligible.filter((item) => item.companyLinkId !== company.companyLinkId);
       // A escolha automática entre duas empresas só vale quando o usuário não citou nenhuma.
       const target = findCompanyByName(others, named) ?? (named === null && eligible.length === 2 ? others[0] ?? null : null);
@@ -309,7 +309,7 @@ export class NiloService {
       const next = await this.conversations.open(link, target);
       await this.conversations.append(next.id, carried.map((item) => ({ role: 'USER' as const, content: item.content, source: item.source as NewMessage['source'], inboxEventId: item.inboxEventId })));
       if (!target) return this.askCompany(event, link, next, eligible);
-      return this.respond(event, link, next, eligible, `A empresa desta conversa já foi trocada para ${target.name}. Atenda o pedido do usuário nesta empresa, sem chamar trocar_empresa de novo.`, true);
+      return this.respond(event, link, next, eligible, `A empresa desta conversa já foi trocada para ${target.tradeName}. Atenda o pedido do usuário nesta empresa, sem chamar trocar_empresa de novo.`, true);
     }
     if (result.outcome.kind === 'PROPOSAL') {
       try {
@@ -320,7 +320,7 @@ export class NiloService {
         throw error;
       }
     } else {
-      await this.say(event, link, conversation, withCompanyHeader(result.outcome.text, company.name, eligible.length), key, { memory: result.outcome.text });
+      await this.say(event, link, conversation, withCompanyHeader(result.outcome.text, company.tradeName, eligible.length), key, { memory: result.outcome.text });
     }
     if (result.closeAfterTurn) await this.conversations.close(conversation.id, 'NEW_TOPIC');
   }
@@ -333,7 +333,7 @@ export class NiloService {
     const key = `nero-action:${actionId}:${event.id}`;
     if (result.status === 'EXECUTED') {
       await this.conversations.append(conversation.id, [{ role: 'TOOL', content: `Proposta confirmada e gravada: ${result.labels.join('; ')}.`, source: 'SYSTEM' }]);
-      return this.say(event, link, conversation, [`✅ Pronto! Gravei na ${bold(resolved.company.name)}:`, ...result.labels.map((label) => `• ${label}`)].join('\n'), key);
+      return this.say(event, link, conversation, [`✅ Pronto! Gravei na ${bold(resolved.company.tradeName)}:`, ...result.labels.map((label) => `• ${label}`)].join('\n'), key);
     }
     if (result.status === 'ALREADY_EXECUTED') return this.say(event, link, conversation, TEXT.already, key);
     if ('current' in result) return this.say(event, link, conversation, result.current === 'EXPIRED' ? TEXT.expired : TEXT.stale, key);

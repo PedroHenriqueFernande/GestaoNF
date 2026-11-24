@@ -30,7 +30,7 @@ export class EmailsService {
   async member(ctx: EmailContext, tx: AccountDb = this.database.db) {
     const [membership] = await resolveMemberships(tx, ctx.userId, [ctx.companyId]);
     if (!membership) throw new ForbiddenException('Sem acesso à empresa');
-    const [company] = await tx.select({ name: companies.name }).from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
+    const [company] = await tx.select({ name: companies.tradeName }).from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
     return { accountOwner: membership.actor.accountOwner, name: company.name };
   }
   async capabilities(ctx: EmailContext) {

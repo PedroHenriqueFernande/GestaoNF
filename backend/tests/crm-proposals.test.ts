@@ -82,7 +82,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 beforeEach(async () => {
   const users = await db.insert(s.users).values(['Gestor', 'Vendedor', 'Outro'].map(name => ({ name, email: `${randomUUID()}@example.test` }))).returning(); [owner, seller, other] = users.map(u => u.id);
   const accountId = await testAccount(db, owner); account = accountId;
-  const companies = await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning(); [company, companyB] = companies.map(c => c.id);
+  const companies = await db.insert(s.companies).values([{ accountId, tradeName: 'Empresa A' }, { accountId, tradeName: 'Empresa B' }]).returning(); [company, companyB] = companies.map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' }, { companyId: company, userId: seller, role: 'COLLABORATOR' }, { companyId: company, userId: other, role: 'COLLABORATOR' }]);
   await grantLegacyMembers(db);
   const actor = await resolveActor(db, owner, company);

@@ -51,7 +51,7 @@ function CompanyChoices({ rows, selected, onChange, existing = [] }: { rows: Use
       return <label className={`users-company-choice${checked ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`} key={row.companyId}>
         <input type="checkbox" checked={checked} disabled={disabled} onChange={() => onChange(checked ? selected.filter((id) => id !== row.companyId) : [...selected, row.companyId])} />
         <span className="users-company-choice__check"><Check size={13} /></span>
-        <span className="users-company-choice__name">{row.name}<small>{row.status !== 'ACTIVE' ? 'Empresa indisponível' : `${row.occupied} ocupadas · ${row.reserved} reservadas`}</small></span>
+        <span className="users-company-choice__name">{row.tradeName}<small>{row.status !== 'ACTIVE' ? 'Empresa indisponível' : `${row.occupied} ocupadas · ${row.reserved} reservadas`}</small></span>
         <strong>{row.available} de {row.limit} livres</strong>
       </label>;
     })}

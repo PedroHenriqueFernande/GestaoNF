@@ -29,7 +29,7 @@ export class ReportsPdfService {
   async create(actor: Actor, type: ReportType, input: ReportInput, entry: string) {
     const maxRows = reportsPdfMaxRows();
     const data = await this.reader.readAll(actor, type, input, maxRows, entry);
-    const [company] = await this.database.db.select({ name: companies.name }).from(companies).where(eq(companies.id, actor.companyId)).limit(1);
+    const [company] = await this.database.db.select({ name: companies.tradeName }).from(companies).where(eq(companies.id, actor.companyId)).limit(1);
     const definition = reportPdfDefinitions[type];
     const buffer = await renderReportPdf({
       title: definition.title,

@@ -22,8 +22,8 @@ test('titular convida usuário para duas empresas e vê reservas por empresa', a
     if (path === '/auth/me') return reply({ id: 'owner', name: 'Titular', email: 'titular@example.test' });
     if (path === '/companies') return reply([ownerCompany(companyId, 'GestãoNF', accountId), ownerCompany(secondCompanyId, 'Filial', accountId)]);
     if (path === '/accounts') return reply([{ id: accountId, name: 'GestãoNF', status: 'ACTIVE', planCode: 'BASE', additionalUsersPerCompany: 5 }]);
-    if (path === `/accounts/${accountId}/users/capacity`) return reply([{ companyId, name: 'GestãoNF', status: 'ACTIVE', limit: 5, occupied: 0, reserved: body ? 1 : 0, available: body ? 4 : 5, overLimit: 0 }, { companyId: secondCompanyId, name: 'Filial', status: 'ACTIVE', limit: 5, occupied: 0, reserved: body ? 1 : 0, available: body ? 4 : 5, overLimit: 0 }]);
-    if (path === `/accounts/${accountId}/users` && request.method() === 'GET') return reply({ items: body ? [{ id: inviteId, type: 'INVITATION', name: body.name, email: body.email, roleLabel: body.roleLabel, permissions: body.permissions, status: 'PENDING', expiresAt: '2026-10-14T18:00:00Z', version: 1, createdAt: '2026-10-13T18:00:00Z', companies: [{ id: companyId, name: 'GestãoNF' }, { id: secondCompanyId, name: 'Filial' }], delivery: { id: 'mail', sendStatus: 'QUEUED' } }] : [{ id: 'owner', type: 'MEMBER', name: 'Titular', email: 'titular@example.test', status: 'OWNER', accountOwner: true, roleLabel: 'OWNER', permissions: [...ALL_PERMISSIONS], companies: [{ companyId, companyName: 'GestãoNF', status: 'ACTIVE', version: 1 }], version: 'a'.repeat(64) }], total: 1 });
+    if (path === `/accounts/${accountId}/users/capacity`) return reply([{ companyId, tradeName: 'GestãoNF', status: 'ACTIVE', limit: 5, occupied: 0, reserved: body ? 1 : 0, available: body ? 4 : 5, overLimit: 0 }, { companyId: secondCompanyId, tradeName: 'Filial', status: 'ACTIVE', limit: 5, occupied: 0, reserved: body ? 1 : 0, available: body ? 4 : 5, overLimit: 0 }]);
+    if (path === `/accounts/${accountId}/users` && request.method() === 'GET') return reply({ items: body ? [{ id: inviteId, type: 'INVITATION', name: body.name, email: body.email, roleLabel: body.roleLabel, permissions: body.permissions, status: 'PENDING', expiresAt: '2026-10-14T18:00:00Z', version: 1, createdAt: '2026-10-13T18:00:00Z', companies: [{ id: companyId, tradeName: 'GestãoNF' }, { id: secondCompanyId, tradeName: 'Filial' }], delivery: { id: 'mail', sendStatus: 'QUEUED' } }] : [{ id: 'owner', type: 'MEMBER', name: 'Titular', email: 'titular@example.test', status: 'OWNER', accountOwner: true, roleLabel: 'OWNER', permissions: [...ALL_PERMISSIONS], companies: [{ companyId, companyName: 'GestãoNF', status: 'ACTIVE', version: 1 }], version: 'a'.repeat(64) }], total: 1 });
     if (path === `/accounts/${accountId}/user-invitations` && request.method() === 'POST') { body = request.postDataJSON(); return reply({ id: inviteId, ...body, status: 'PENDING' }); }
     return reply({});
   });
@@ -62,8 +62,8 @@ for (const [caseName, email] of [['curto', 'ana@example.test'], ['com 254 caract
     if (url.pathname === '/companies') return reply([ownerCompany(companyId, 'GestãoNF', accountId), ownerCompany(secondCompanyId, 'Filial', accountId)]);
     if (url.pathname === '/accounts') return reply([{ id: accountId, name: 'GestãoNF', status: 'ACTIVE', planCode: 'BASE', additionalUsersPerCompany: 5 }]);
     if (url.pathname === `/accounts/${accountId}/users/capacity`) return reply([
-      { companyId, name: 'GestãoNF', status: 'ACTIVE', limit: 5, occupied: 1, reserved: 0, available: 4, overLimit: 0 },
-      { companyId: secondCompanyId, name: 'Filial', status: 'ACTIVE', limit: 5, occupied: 0, reserved: 0, available: 5, overLimit: 0 },
+      { companyId, tradeName: 'GestãoNF', status: 'ACTIVE', limit: 5, occupied: 1, reserved: 0, available: 4, overLimit: 0 },
+      { companyId: secondCompanyId, tradeName: 'Filial', status: 'ACTIVE', limit: 5, occupied: 0, reserved: 0, available: 5, overLimit: 0 },
     ]);
     if (url.pathname === `/accounts/${accountId}/users`) {
       const search = url.searchParams.get('search') ?? '';
@@ -128,7 +128,7 @@ test('link de convite cria senha e abre a sessão', async ({ page }) => {
     const request = route.request(), path = new URL(request.url()).pathname;
     const reply = (json: unknown) => route.fulfill({ json, headers: cors });
     if (request.method() === 'OPTIONS') return reply({});
-    if (path === '/user-invitations/preview') { expect(request.postDataJSON()).toEqual({ token }); return reply({ invitationId: inviteId, name: 'Maria', accountName: 'GestãoNF', email: 'm***@example.test', companies: [{ id: companyId, name: 'GestãoNF' }], expiresAt: '2026-10-14T18:00:00Z', nextStep: 'DEFINE_PASSWORD' }); }
+    if (path === '/user-invitations/preview') { expect(request.postDataJSON()).toEqual({ token }); return reply({ invitationId: inviteId, name: 'Maria', accountName: 'GestãoNF', email: 'm***@example.test', companies: [{ id: companyId, tradeName: 'GestãoNF' }], expiresAt: '2026-10-14T18:00:00Z', nextStep: 'DEFINE_PASSWORD' }); }
     if (path === '/user-invitations/accept-new') { expect(request.postDataJSON()).toEqual({ token, password: 'senha-bem-longa-123', passwordConfirmation: 'senha-bem-longa-123', client: 'web' }); accepted = true; return reply({ user: { id: 'member', name: 'Maria', email: 'maria@example.test' } }); }
     return reply({});
   });
@@ -150,7 +150,7 @@ test('conta existente entra com o e-mail convidado antes de aceitar', async ({ p
     const request = route.request(), path = new URL(request.url()).pathname;
     const reply = (json: unknown) => route.fulfill({ json, headers: cors });
     if (request.method() === 'OPTIONS') return reply({});
-    if (path === '/user-invitations/preview') return reply({ invitationId: inviteId, name: 'Pedro', accountName: 'GestãoNF', email: 'p***@example.test', companies: [{ id: companyId, name: 'GestãoNF' }], expiresAt: '2026-10-14T18:00:00Z', nextStep: 'LOGIN' });
+    if (path === '/user-invitations/preview') return reply({ invitationId: inviteId, name: 'Pedro', accountName: 'GestãoNF', email: 'p***@example.test', companies: [{ id: companyId, tradeName: 'GestãoNF' }], expiresAt: '2026-10-14T18:00:00Z', nextStep: 'LOGIN' });
     if (path === '/auth/login') { calls.push('login'); expect(request.postDataJSON()).toMatchObject({ email: 'pedro@example.test', password: 'senha-existente-123' }); return reply({ user: { id: 'member', name: 'Pedro', email: 'pedro@example.test' } }); }
     if (path === '/user-invitations/accept-existing') { calls.push('accept'); expect(request.postDataJSON()).toEqual({ token }); return reply({ accepted: true, invitationId: inviteId }); }
     return reply({});

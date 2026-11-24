@@ -5,7 +5,7 @@ import { api, type CompanyLogoAccess } from '../api/client';
 import { initials } from '../utils/format';
 
 export const COMPANY_LOGOS_KEY = ['company-logos-access'] as const;
-type LogoOwner = { id: string; name: string; logoId?: string | null };
+type LogoOwner = { id: string; tradeName: string; logoId?: string | null };
 const MARGIN_MS = 5_000;
 const AFTER_ERROR_MS = 60_000;
 type LogosState = { data?: { items: CompanyLogoAccess[] }; dataUpdatedAt: number; errorUpdatedAt: number };
@@ -56,6 +56,6 @@ export function CompanyLogo({ company, className }: { company: LogoOwner | undef
   const logo = useCompanyLogoUrl(company);
   return <span className={logo.url ? `${className} is-image` : className} aria-hidden="true">
     {logo.url ? <img src={logo.url} alt="" width={128} height={128} decoding="async" onError={logo.onError} />
-      : company ? initials(company.name) : <Building2 size={16} strokeWidth={2} />}
+      : company ? initials(company.tradeName) : <Building2 size={16} strokeWidth={2} />}
   </span>;
 }

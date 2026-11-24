@@ -61,7 +61,7 @@ beforeEach(async () => {
   const [u, x, o, y] = users.map(row => row.id); user = u;
   const [accU, accX, accO, accY] = [await testAccount(db, u), await testAccount(db, x), await testAccount(db, o), await testAccount(db, y)];
   [companyA, companyC, companyB, companyD, companyE] = (await db.insert(s.companies).values([
-    { accountId: accU, name: 'Alfa' }, { accountId: accU, name: 'Cinza' }, { accountId: accX, name: 'Beta' }, { accountId: accO, name: 'Delta' }, { accountId: accY, name: 'Épsilon' },
+    { accountId: accU, tradeName: 'Alfa' }, { accountId: accU, tradeName: 'Cinza' }, { accountId: accX, tradeName: 'Beta' }, { accountId: accO, tradeName: 'Delta' }, { accountId: accY, tradeName: 'Épsilon' },
   ]).returning()).map(c => c.id);
   await db.insert(s.companyUsers).values([
     { companyId: companyA, userId: u, role: 'OWNER' }, { companyId: companyC, userId: u, role: 'COLLABORATOR', status: 'INACTIVE' },
@@ -146,7 +146,7 @@ describe('GET /sales/overview: escopo e isolamento', () => {
   it('all acima de 50 empresas dá 400', async () => {
     const [extraOwner] = await db.insert(s.users).values({ name: 'Dono extra', email: `${randomUUID()}@example.test` }).returning();
     const accountId = await testAccount(db, extraOwner.id);
-    const many = await db.insert(s.companies).values(Array.from({ length: 49 }, (_, i) => ({ accountId, name: `Extra ${i}` }))).returning();
+    const many = await db.insert(s.companies).values(Array.from({ length: 49 }, (_, i) => ({ accountId, tradeName: `Extra ${i}` }))).returning();
     await db.insert(s.companyUsers).values(many.map(c => ({ companyId: c.id, userId: user, role: 'OWNER' })));
     await grantLegacyMembers(db);
     expect((await http('GET', '/sales/overview?companies=all')).statusCode).toBe(400);
@@ -165,7 +165,7 @@ describe('GET /sales/overview: escopo e isolamento', () => {
     const accountF = await testAccount(db, ownerF.id);
     await db.update(s.accountSubscriptions).set({ source: 'BILLING', currentPeriodEndsAt: new Date(Date.now() - 60_000) }).where(eq(s.accountSubscriptions.accountId, accountF));
     const [{ accountId: accountU }] = await db.select({ accountId: s.companies.accountId }).from(s.companies).where(eq(s.companies.id, companyA));
-    const [companyF, companyG] = (await db.insert(s.companies).values([{ accountId: accountF, name: 'Fóton' }, { accountId: accountU, name: 'Gama', status: 'INACTIVE' }]).returning()).map(c => c.id);
+    const [companyF, companyG] = (await db.insert(s.companies).values([{ accountId: accountF, tradeName: 'Fóton' }, { accountId: accountU, tradeName: 'Gama', status: 'INACTIVE' }]).returning()).map(c => c.id);
     await db.insert(s.companyUsers).values([
       { companyId: companyF, userId: ownerF.id, role: 'OWNER' }, { companyId: companyF, userId: user, role: 'COLLABORATOR' }, { companyId: companyG, userId: user, role: 'OWNER' },
     ]);

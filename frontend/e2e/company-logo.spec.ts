@@ -11,7 +11,7 @@ type State = { companies: MockCompany[]; logoStatus: number; begins: number; put
 const initialState = (logoId: string | null = logoA, role: Role = 'OWNER'): State => ({
   companies: [{ ...(role === 'OWNER' ? ownerCompany(companyA, 'Alfa Serviços', 'acc') : memberCompany(companyA, 'Alfa Serviços', 'acc', ['company.access'])), logoId }], logoStatus: 200, begins: 0, puts: [], uploads: 0, failApply: false, accessCalls: 0, keys: [], failBegin: 0, expireBegin: 0, accessStatus: 200,
 });
-const profile = (company: MockCompany) => ({ ...company, kind: 'PJ', legalName: null, tradeName: null, taxId: null, email: null, phone: null, street: null, number: null,
+const profile = (company: MockCompany) => ({ ...company, kind: 'PJ', legalName: null, taxId: null, email: null, phone: null, street: null, number: null,
   complement: null, district: null, postalCode: null, cityName: null, cityIbgeCode: null, stateCode: null, countryCode: 'BR', municipalRegistration: null,
   stateRegistration: null, cnaeCode: null, simplesNationalOption: null, simplesTaxationRegime: null, simplesIbsCbsRegime: null, caepfCode: null,
   specialTaxRegime: null, timezone: 'America/Sao_Paulo', locale: 'pt-BR', status: 'ACTIVE', createdAt: '2026-11-01T12:00:00Z', updatedAt: '2026-11-01T12:00:00Z' });
@@ -34,7 +34,7 @@ async function mockApi(page: Page, state: State) {
     if (url.pathname === '/auth/me') return reply({ id: 'user', name: 'Pedro', email: 'pedro@example.test', avatarId: null, profileVersion: 1 });
     if (url.pathname === '/companies' && method === 'GET') return reply(state.companies);
     if (url.pathname === '/companies' && method === 'POST') {
-      const created: MockCompany = ownerCompany(companyB, (request.postDataJSON() as { name: string }).name, 'acc');
+      const created: MockCompany = ownerCompany(companyB, (request.postDataJSON() as { tradeName: string }).tradeName, 'acc');
       state.companies.push(created); return reply(profile(created), 201);
     }
     if (url.pathname === '/companies/logos/access') {
@@ -44,7 +44,7 @@ async function mockApi(page: Page, state: State) {
       return reply({ items: state.companies.filter(c => c.logoId).map(c => ({ companyId: c.id, logoId: c.logoId, url: `https://downloads.example.test/${c.logoId}?v=${state.accessCalls}`, expiresAt: new Date(Date.now() + 120_000).toISOString(), expiresInSeconds: 120 })) });
     }
     if (url.pathname === '/companies/current' && method === 'GET' && current) return reply(profile(current));
-    if (url.pathname === '/companies/current' && method === 'PATCH' && current) { current.name = (request.postDataJSON() as { name: string }).name; return reply(profile(current)); }
+    if (url.pathname === '/companies/current' && method === 'PATCH' && current) { current.tradeName = (request.postDataJSON() as { tradeName: string }).tradeName; return reply(profile(current)); }
     if (url.pathname === '/companies/current/logo/uploads') {
       state.keys.push(request.headers()['idempotency-key']);
       if (state.failBegin > 0) { state.failBegin--; return reply({ message: 'Armazenamento temporariamente indisponível.' }, 503); }
@@ -153,10 +153,10 @@ test('cadastro: foto escolhida sobe logo após criar; falha mantém a empresa e 
   await choosePng(page, () => dialog.getByRole('button', { name: 'Escolher foto' }).click());
   await expect(dialog.getByRole('img', { name: 'Prévia da foto selecionada' })).toBeVisible();
   expect(state.begins).toBe(0);
-  await dialog.getByLabel(/Nome de exibição/).fill('Beta Consultoria');
+  await dialog.getByLabel(/Nome fantasia/).fill('Beta Consultoria');
   await dialog.getByRole('button', { name: 'Cadastrar empresa' }).click();
   await expect(dialog.getByRole('alert')).toContainText('A empresa foi cadastrada, mas a foto não foi enviada');
-  expect(state.companies.map(c => c.name)).toContain('Beta Consultoria');
+  expect(state.companies.map(c => c.tradeName)).toContain('Beta Consultoria');
   await dialog.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(dialog.getByText('Foto atualizada.')).toBeVisible();
   // Em dev o StrictMode repete o efeito: pode haver 2 reservas, sempre com a MESMA chave, e um único envio ao R2.
@@ -229,7 +229,7 @@ test('empresa com foto: salvar o formulário mantém a imagem no header, sem pas
     w.__logoLost = false;
     new MutationObserver(() => { if (!badge.querySelector('img')) w.__logoLost = true; }).observe(badge, { childList: true, subtree: true, attributes: true });
   });
-  await dialog.getByLabel(/Nome de exibição/).fill('Alfa Serviços Renomeada');
+  await dialog.getByLabel(/Nome fantasia/).fill('Alfa Serviços Renomeada');
   await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
   await expect(page.getByText('Dados da empresa atualizados com sucesso.')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -247,7 +247,7 @@ test('salvar a empresa mantém as permissões da lista enquanto recarrega os dad
   await mockApi(page, state);
   await page.route('**:4030/companies/current', route => {
     if (route.request().method() !== 'PATCH') return route.fallback();
-    current.name = stale.name;
+    current.tradeName = stale.tradeName;
     patched = true;
     return route.fulfill({ json: profile(stale), headers: { 'access-control-allow-origin': localWebOrigin, 'access-control-allow-credentials': 'true' } });
   });
@@ -260,7 +260,7 @@ test('salvar a empresa mantém as permissões da lista enquanto recarrega os dad
     await page.goto('/empresa');
     await page.getByRole('button', { name: 'Abrir cadastro de Alfa Serviços' }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByLabel(/Nome de exibição/).fill(stale.name);
+    await dialog.getByLabel(/Nome fantasia/).fill(stale.tradeName);
     await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
     await expect(page.getByRole('button', { name: /Empresa ativa: Alfa Renomeada/ })).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Módulos' }).getByRole('link', { name: 'Portal de Serviços' })).toHaveCount(0);

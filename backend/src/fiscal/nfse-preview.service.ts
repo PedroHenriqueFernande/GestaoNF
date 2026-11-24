@@ -36,7 +36,7 @@ export class NfsePreviewService {
     const issues: NfseIssue[] = [];
     const add = (code: string, message: string, field: string, target: NfseIssue['target'], severity: NfseIssue['severity'] = 'ERROR') => issues.push({ code, message, field, target, severity });
     const party = (p: typeof customer | typeof company, name: string): NfseParty => ({ name, taxId: p.taxId, email: p.email, street: p.street, number: p.number, district: p.district, cityName: p.cityName, cityIbgeCode: p.cityIbgeCode, postalCode: p.postalCode, stateCode: p.stateCode, municipalRegistration: p.municipalRegistration });
-    const issuer = party(company, company.legalName || company.name);
+    const issuer = party(company, company.legalName || company.tradeName);
     const recipient = party(customer, customer.name);
     if (sale.status !== 'CONFIRMED') add('SALE_NOT_CONFIRMED', 'Confirme a venda antes de emitir a nota.', 'status', 'sale');
     if (company.kind !== 'PJ' || company.countryCode !== 'BR' || !company.taxId || !isValidCnpj(company.taxId)) add('ISSUER_CNPJ', 'Preencha um CNPJ válido de empresa brasileira.', 'taxId', 'company');

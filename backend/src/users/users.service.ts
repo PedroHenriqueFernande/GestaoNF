@@ -72,21 +72,21 @@ export class UsersService {
   }
   private async capacityInTx(tx: AccountTx, accountId: string, excludeInvitation?: string) {
     const rows = await tx.execute(sql`
-      select c.id as "companyId", c.name, c.status, s.additional_users_per_company as "limit",
+      select c.id as "companyId", c.trade_name as "tradeName", c.status, s.additional_users_per_company as "limit",
       (select count(*)::int from company_users cu where cu.company_id=c.id and cu.status='ACTIVE' and cu.user_id<>a.owner_user_id) as occupied,
       (select count(distinct i.email_normalized)::int from user_invitations i join user_invitation_companies ic on ic.invitation_id=i.id
        where ic.company_id=c.id and i.status='PENDING' and i.expires_at>now() and (${excludeInvitation ?? null}::uuid is null or i.id<>${excludeInvitation ?? null}::uuid)
        and not exists(select 1 from company_users cu join users u on u.id=cu.user_id where cu.company_id=c.id and cu.status='ACTIVE' and u.email=i.email_normalized)) as reserved
       from companies c join accounts a on a.id=c.account_id join account_subscriptions s on s.account_id=a.id
-      where c.account_id=${accountId} order by c.name,c.id`);
-    return rows.map(r => { const occupied = Number(r.occupied), reserved = Number(r.reserved), limit = Number(r.limit); return { companyId: String(r.companyId), name: String(r.name), status: String(r.status), limit, occupied, reserved, available: Math.max(0, limit - occupied - reserved), overLimit: Math.max(0, occupied + reserved - limit), ownerIncludedSeparately: true }; });
+      where c.account_id=${accountId} order by c.trade_name,c.id`);
+    return rows.map(r => { const occupied = Number(r.occupied), reserved = Number(r.reserved), limit = Number(r.limit); return { companyId: String(r.companyId), tradeName: String(r.tradeName), status: String(r.status), limit, occupied, reserved, available: Math.max(0, limit - occupied - reserved), overLimit: Math.max(0, occupied + reserved - limit), ownerIncludedSeparately: true }; });
   }
   private async checkSpace(tx: AccountTx, accountId: string, companyIds: string[], email: string, excludeInvitation?: string) {
     const rows = await this.capacityInTx(tx, accountId, excludeInvitation);
     const active = await tx.select({ companyId: companyUsers.companyId }).from(companyUsers).innerJoin(users, eq(users.id, companyUsers.userId)).where(and(inArray(companyUsers.companyId, companyIds), eq(users.email, email), eq(companyUsers.status, 'ACTIVE')));
     const already = new Set(active.map(r => r.companyId));
     const full = rows.filter(r => companyIds.includes(r.companyId) && !already.has(r.companyId) && r.available <= 0);
-    if (full.length) throw conflict('COMPANY_USER_LIMIT_REACHED', { companies: full.map(c => ({ id: c.companyId, name: c.name })) });
+    if (full.length) throw conflict('COMPANY_USER_LIMIT_REACHED', { companies: full.map(c => ({ id: c.companyId, tradeName: c.tradeName })) });
   }
   private async activeMemberForEmail(tx: AccountTx, accountId: string, email: string) {
     const [member] = await tx.select({ userId: companyUsers.userId }).from(companyUsers)
@@ -120,7 +120,7 @@ export class UsersService {
     });
   }
   async inviteDetails(tx: AccountTx, invitation: Invitation) {
-    const destinations = await tx.select({ id: companies.id, name: companies.name }).from(userInvitationCompanies).innerJoin(companies, eq(companies.id, userInvitationCompanies.companyId)).where(eq(userInvitationCompanies.invitationId, invitation.id)).orderBy(asc(companies.id));
+    const destinations = await tx.select({ id: companies.id, tradeName: companies.tradeName }).from(userInvitationCompanies).innerJoin(companies, eq(companies.id, userInvitationCompanies.companyId)).where(eq(userInvitationCompanies.invitationId, invitation.id)).orderBy(asc(companies.id));
     const [mail] = await tx.select({ id: emailMessages.id, sendStatus: emailMessages.sendStatus }).from(emailMessages).where(eq(emailMessages.invitationId, invitation.id)).orderBy(desc(emailMessages.createdAt)).limit(1);
     return { ...publicInvitation(invitation), companies: destinations, email: invitation.emailNormalized, delivery: mail ?? null };
   }
@@ -148,8 +148,8 @@ export class UsersService {
       return this.inviteDetails(tx, invite);
     });
   }
-  private send(tx: AccountTx, invite: Invitation, accountName: string, destinations: { id: string; name: string }[], token: string) {
-    return this.emails.enqueueInvitationInTx(tx, { companyId: destinations[0].id, userId: invite.createdByUserId }, { id: invite.id, version: invite.version, email: invite.emailNormalized, name: invite.invitedName, accountName, companies: destinations.map(c => c.name) }, token);
+  private send(tx: AccountTx, invite: Invitation, accountName: string, destinations: { id: string; tradeName: string }[], token: string) {
+    return this.emails.enqueueInvitationInTx(tx, { companyId: destinations[0].id, userId: invite.createdByUserId }, { id: invite.id, version: invite.version, email: invite.emailNormalized, name: invite.invitedName, accountName, companies: destinations.map(c => c.tradeName) }, token);
   }
   private async invitation(tx: AccountTx, accountId: string, id: string, version: number) {
     const [invite] = await tx.select().from(userInvitations).where(and(eq(userInvitations.id, id), eq(userInvitations.accountId, accountId))).for('update');
@@ -239,7 +239,7 @@ export class UsersService {
       const { destinations, account } = await this.requirePendingInvitation(tx, invite);
       const [existing] = await tx.select({ id: users.id }).from(users).where(eq(users.email, invite.emailNormalized));
       const [local, domain] = invite.emailNormalized.split('@');
-      return { invitationId: invite.id, name: invite.invitedName, accountName: account.account.name, email: `${local[0]}***@${domain}`, companies: destinations.map(c => ({ id: c.id, name: c.name })), expiresAt: invite.expiresAt, nextStep: existing ? 'LOGIN' : 'DEFINE_PASSWORD' };
+      return { invitationId: invite.id, name: invite.invitedName, accountName: account.account.name, email: `${local[0]}***@${domain}`, companies: destinations.map(c => ({ id: c.id, tradeName: c.tradeName })), expiresAt: invite.expiresAt, nextStep: existing ? 'LOGIN' : 'DEFINE_PASSWORD' };
     });
   }
   async acceptNew(token: string, password: string) {
@@ -253,7 +253,7 @@ export class UsersService {
       if (!created) throw conflict('LOGIN_REQUIRED');
       await tx.insert(userCredentials).values({ userId: created.id, passwordHash });
       await this.grant(tx, invite, created.id, destinations.map(c => c.id));
-      return { user: { id: created.id, name: created.name, email: created.email, avatarId: created.avatarId, profileVersion: created.profileVersion }, companies: destinations.map(c => ({ id: c.id, name: c.name })), ...(await this.auth.issueTokens(created.id, tx)) };
+      return { user: { id: created.id, name: created.name, email: created.email, avatarId: created.avatarId, profileVersion: created.profileVersion }, companies: destinations.map(c => ({ id: c.id, tradeName: c.tradeName })), ...(await this.auth.issueTokens(created.id, tx)) };
     });
   }
   async acceptExisting(token: string, userId: string) {
@@ -268,7 +268,7 @@ export class UsersService {
       const [credential] = await tx.select().from(userCredentials).where(eq(userCredentials.userId, userId));
       if (!credential) throw conflict('LOGIN_REQUIRED');
       await this.grant(tx, invite, userId, destinations.map(c => c.id));
-      return { accepted: true, invitationId: invite.id, companies: destinations.map(c => ({ id: c.id, name: c.name })) };
+      return { accepted: true, invitationId: invite.id, companies: destinations.map(c => ({ id: c.id, tradeName: c.tradeName })) };
     });
   }
   private async grant(tx: AccountTx, invite: Invitation, userId: string, companyIds: string[]) {
@@ -302,7 +302,7 @@ export class UsersService {
     return row ?? null;
   }
   private async memberRows(tx: AccountTx, accountId: string, userId: string, lock = false) {
-    const query = tx.select({ companyId: companyUsers.companyId, companyName: companies.name, status: companyUsers.status, role: companyUsers.role, version: companyUsers.version }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companies.accountId, accountId), eq(companyUsers.userId, userId))).orderBy(asc(companyUsers.companyId));
+    const query = tx.select({ companyId: companyUsers.companyId, companyName: companies.tradeName, status: companyUsers.status, role: companyUsers.role, version: companyUsers.version }).from(companyUsers).innerJoin(companies, eq(companies.id, companyUsers.companyId)).where(and(eq(companies.accountId, accountId), eq(companyUsers.userId, userId))).orderBy(asc(companyUsers.companyId));
     return lock ? query.for('update', { of: companyUsers }) : query;
   }
   private memberVersion(rows: Awaited<ReturnType<UsersService['memberRows']>>, access: AccessRow | null) {

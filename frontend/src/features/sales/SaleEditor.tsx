@@ -284,7 +284,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     <form onSubmit={submit} className="sale-editor-form">
       <section className="sale-editor-section sale-editor-section--identity"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2>Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div></div>
         <div className="sale-identity-grid">
-          <div className="sale-field"><span><Building2 size={14} /> Empresa</span><SaleDropdown label="Empresa" value={companyId} options={companies.map((company) => ({ value: company.id, label: company.name }))} onChange={changeCompany} disabled={saving || !!draft} /></div>
+          <div className="sale-field"><span><Building2 size={14} /> Empresa</span><SaleDropdown label="Empresa" value={companyId} options={companies.map((company) => ({ value: company.id, label: company.tradeName }))} onChange={changeCompany} disabled={saving || !!draft} /></div>
           <div className="sale-field sale-field--customer"><span><UsersRound size={14} /> Cliente <button type="button" className="sale-customer-new" onClick={() => { setCustomerOpen(false); customerSave.reset(); setCustomerModalOpen(true); }} disabled={saving} aria-label="Novo cliente"><Plus size={13} /> Novo</button></span>
             <div className="sale-lookup-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setCustomerOpen(false); }}>
               <div className="sale-lookup-combobox">

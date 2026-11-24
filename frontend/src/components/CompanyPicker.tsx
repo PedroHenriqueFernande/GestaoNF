@@ -31,7 +31,7 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
   const searchable = (companies?.length ?? 0) > SEARCH_THRESHOLD;
   const visible = useMemo(() => {
     const term = query.trim().toLocaleLowerCase('pt-BR');
-    return term ? companies?.filter((item) => item.name.toLocaleLowerCase('pt-BR').includes(term)) ?? [] : companies ?? [];
+    return term ? companies?.filter((item) => item.tradeName.toLocaleLowerCase('pt-BR').includes(term)) ?? [] : companies ?? [];
   }, [companies, query]);
   const stacked = multiple ? multiple.ids.map((id) => companies?.find((item) => item.id === id)).filter((item): item is Company => !!item).slice(0, STACK_LIMIT) : [];
 
@@ -51,8 +51,8 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
 
   const label = multiple
     ? multiple.mode === 'all' ? `Visão: todas as empresas (${multiple.ids.length}). Trocar empresas` : `Visão: ${multiple.ids.length} empresas selecionadas. Trocar empresas`
-    : `Empresa ativa: ${activeCompany?.name ?? 'nenhuma selecionada'}. Trocar empresa`;
-  const title = multiple ? (multiple.mode === 'all' ? 'Todas as empresas' : `${multiple.ids.length} empresas`) : activeCompany?.name ?? 'Selecionar empresa';
+    : `Empresa ativa: ${activeCompany?.tradeName ?? 'nenhuma selecionada'}. Trocar empresa`;
+  const title = multiple ? (multiple.mode === 'all' ? 'Todas as empresas' : `${multiple.ids.length} empresas`) : activeCompany?.tradeName ?? 'Selecionar empresa';
   let index = 0;
 
   return <div ref={dropdown.rootRef} className="dropdown header-company">
@@ -81,11 +81,11 @@ export function CompanyPicker({ companies, companyId, onCompanyChange, allowMult
           const selected = !multiple && item.id === companyId;
           // O checkbox fica fora de .dropdown-item: Tab o alcança; as setas a partir dele seguem a ordem do painel (useDropdown).
           return <div key={item.id} className="header-company__row">
-            {canCombine && eligible.has(item.id) && <input type="checkbox" className="header-company__check" checked={draftIds.includes(item.id)} onChange={() => toggleDraft(item.id)} aria-label={`Incluir ${item.name} na visão`} />}
+            {canCombine && eligible.has(item.id) && <input type="checkbox" className="header-company__check" checked={draftIds.includes(item.id)} onChange={() => toggleDraft(item.id)} aria-label={`Incluir ${item.tradeName} na visão`} />}
             <button type="button" className={`dropdown-item header-company__option${selected ? ' is-selected' : ''}`} style={stagger(index++)} aria-pressed={selected} onClick={() => choose(item.id)}>
               <CompanyLogo company={item} className="header-company__initials" />
               <span className="header-company__option-text">
-                <strong title={item.name}>{item.name}</strong>
+                <strong title={item.tradeName}>{item.tradeName}</strong>
                 <small>{companyRoleLabel(item.roleLabel)}</small>
               </span>
               {selected && <Check size={17} strokeWidth={2.4} aria-label="Empresa ativa" />}

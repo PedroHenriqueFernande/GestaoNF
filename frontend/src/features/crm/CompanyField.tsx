@@ -7,7 +7,7 @@ export function CompanyField({ choice, value, disabled }: { choice: CompanyChoic
   return <label className="field crm-company-field"><span>Cadastrar na empresa</span>
     <select autoFocus required value={value} disabled={disabled} onChange={event => choice.onChange(event.target.value)}>
       <option value="" disabled>Selecione a empresa</option>
-      {choice.options.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}
+      {choice.options.map(company => <option key={company.id} value={company.id}>{company.tradeName}</option>)}
     </select>
   </label>;
 }

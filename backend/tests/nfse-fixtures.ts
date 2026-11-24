@@ -59,8 +59,8 @@ export async function createWorld(db: TestDb) {
   const issuerTaxId = newCnpj();
   const accountId = await testAccount(db, owner);
   const [company, otherCompany] = (await db.insert(s.companies).values([
-    { accountId, name: 'Empresa Teste', legalName: 'Empresa Teste LTDA', kind: 'PJ', taxId: issuerTaxId, cityIbgeCode: CITY, countryCode: 'BR', simplesNationalOption: '2' },
-    { accountId, name: 'Empresa B', kind: 'PJ' },
+    { accountId, tradeName: 'Empresa Teste', legalName: 'Empresa Teste LTDA', kind: 'PJ', taxId: issuerTaxId, cityIbgeCode: CITY, countryCode: 'BR', simplesNationalOption: '2' },
+    { accountId, tradeName: 'Empresa B', kind: 'PJ' },
   ]).returning()).map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: otherCompany, userId: other, role: 'OWNER' }]);
   await grantLegacyMembers(db);

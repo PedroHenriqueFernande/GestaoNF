@@ -30,7 +30,7 @@ export class SupportChatService {
   ) {}
 
   async send(ctx: SupportContext, text: string) {
-    const [company] = await this.database.db.select({ name: companies.name, timezone: companies.timezone }).from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
+    const [company] = await this.database.db.select({ name: companies.tradeName, timezone: companies.timezone }).from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
     const timezone = company?.timezone ?? 'America/Sao_Paulo';
     const conversation = await this.conversations.activeOrCreate(ctx);
     const history = await this.conversations.history(conversation.id, HISTORY_MESSAGES);

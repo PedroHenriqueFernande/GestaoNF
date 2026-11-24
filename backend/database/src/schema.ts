@@ -230,10 +230,10 @@ export const companies = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'restrict' }),
-    name: varchar('name', { length: 200 }).notNull(),
     kind: varchar('kind', { length: 2 }).default('PJ').notNull(),
     legalName: varchar('legal_name', { length: 200 }),
-    tradeName: varchar('trade_name', { length: 200 }),
+    // Nome fantasia: é também o nome exibido da empresa em todo o sistema.
+    tradeName: varchar('trade_name', { length: 200 }).notNull(),
     taxId: varchar('tax_id', { length: 14 }),
     email: varchar('email', { length: 254 }),
     phone: varchar('phone', { length: 32 }),
@@ -247,6 +247,7 @@ export const companies = pgTable(
     stateCode: varchar('state_code', { length: 2 }),
     countryCode: varchar('country_code', { length: 2 }).default('BR').notNull(),
     municipalRegistration: varchar('municipal_registration', { length: 30 }),
+    // Legado: sem escrita pela API nem uso na NFS-e; mantido para a futura NF-e/NFC-e.
     stateRegistration: varchar('state_registration', { length: 30 }),
     cnaeCode: varchar('cnae_code', { length: 7 }),
     simplesNationalOption: varchar('simples_national_option', { length: 1 }),
@@ -262,9 +263,8 @@ export const companies = pgTable(
   },
   (table) => [
     unique('companies_account_id_id_uq').on(table.accountId, table.id),
-    check('companies_name_nonblank_chk', sql`length(btrim(${table.name})) > 0`),
+    check('companies_trade_name_nonblank_chk', sql`length(btrim(${table.tradeName})) > 0`),
     check('companies_kind_chk', sql`${table.kind} IN ('PF', 'PJ')`),
-    check('companies_trade_name_kind_chk', sql`${table.kind} = 'PJ' OR ${table.tradeName} IS NULL`),
     check('companies_tax_id_chk', sql`${table.taxId} IS NULL OR (${table.kind} = 'PF' AND ${table.taxId} ~ '^[0-9]{11}$') OR (${table.kind} = 'PJ' AND ${table.taxId} ~ '^[A-Z0-9]{12}[0-9]{2}$')`),
     check('companies_postal_code_chk', sql`${table.postalCode} IS NULL OR ${table.postalCode} ~ '^[0-9]{8}$'`),
     check('companies_city_ibge_code_chk', sql`${table.cityIbgeCode} IS NULL OR ${table.cityIbgeCode} ~ '^[0-9]{7}$'`),

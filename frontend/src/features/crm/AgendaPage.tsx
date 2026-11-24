@@ -90,7 +90,7 @@ export function AgendaPage({ user }: { user: User }) {
     setDialog({ kind: 'create' });
   }
   function renderMeeting(item: Meeting) {
-    return <MeetingCard key={item.id} item={item} timezone={timezone} companyName={multiple ? companyById.get(item.companyId)?.name : undefined}
+    return <MeetingCard key={item.id} item={item} timezone={timezone} companyName={multiple ? companyById.get(item.companyId)?.tradeName : undefined}
       onOpen={() => setDialog({ kind: 'open', meetingId: item.id, companyId: item.companyId })} />;
   }
   function apply(event: FormEvent) { event.preventDefault(); setFilters({ ...draft, search: draft.search.trim() }); setPage(0); }
@@ -111,7 +111,7 @@ export function AgendaPage({ user }: { user: User }) {
     </main>
     {dialog && mayOpenDialog && <MeetingDialog key={`${dialog.kind}-${dialogCompanyId}-${dialog.kind === 'open' ? dialog.meetingId : ''}`} companyId={dialogCompanyId} timezone={dialogZone} userId={user.id}
       meetingId={dialog.kind === 'open' ? dialog.meetingId : undefined} preset={dialog.kind === 'create' ? dialog.preset : undefined}
-      fixedCompanyName={dialog.kind === 'create' && dialog.preset ? companyById.get(dialogCompanyId)?.name : undefined}
+      fixedCompanyName={dialog.kind === 'create' && dialog.preset ? companyById.get(dialogCompanyId)?.tradeName : undefined}
       companyChoice={dialog.kind === 'create' && !dialog.preset && meetingOptions ? { options: meetingOptions, onChange: setCreateCompanyId } : undefined}
       onClose={() => setDialog(null)} onSaved={setMessage} />}
     {message && <div className="action-toast" role="status"><div className="action-toast__body"><strong>Agenda</strong><span>{message}</span></div></div>}

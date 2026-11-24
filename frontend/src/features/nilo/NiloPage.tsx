@@ -18,7 +18,7 @@ export function NiloPage({ user }: { user: User }) {
   const [qrCode, setQrCode] = useState('');
   const [message, setMessage] = useState('');
   const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies });
-  const companyName = companies.data?.find((company) => company.id === companyId)?.name ?? 'esta empresa';
+  const companyName = companies.data?.find((company) => company.id === companyId)?.tradeName ?? 'esta empresa';
   const challenge = pairing?.options.companyId === companyId ? pairing.challenge : null;
 
   useEffect(() => {

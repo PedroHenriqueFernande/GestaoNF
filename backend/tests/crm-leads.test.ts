@@ -87,7 +87,7 @@ beforeEach(async () => {
   const users = await db.insert(s.users).values(['Gestor', 'Vendedor', 'Outro vendedor'].map((name) => ({ name, email: `${randomUUID()}@example.test` }))).returning();
   [owner, collaborator, otherCollaborator] = users.map((u) => u.id);
   const accountId = await testAccount(db, owner);
-  const companies = await db.insert(s.companies).values([{ accountId, name: 'Empresa A', timezone: 'America/Sao_Paulo' }, { accountId, name: 'Empresa B' }]).returning();
+  const companies = await db.insert(s.companies).values([{ accountId, tradeName: 'Empresa A', timezone: 'America/Sao_Paulo' }, { accountId, tradeName: 'Empresa B' }]).returning();
   [companyA, companyB] = companies.map((c) => c.id);
   await db.insert(s.companyUsers).values([
     { companyId: companyA, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' },

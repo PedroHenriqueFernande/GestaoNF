@@ -191,7 +191,7 @@ export class ProposalsService {
     const [customer] = await db.select().from(customers).where(and(eq(customers.companyId, a.companyId), eq(customers.id, p.customerId))).limit(1);
     const items = await db.select().from(crmProposalItems).where(and(eq(crmProposalItems.companyId, a.companyId), eq(crmProposalItems.proposalId, p.id))).orderBy(asc(crmProposalItems.position));
     return { templateVersion: 1, proposalId: p.id, proposalCode: proposalCode(p.proposalNumber), title: p.title, currency: 'BRL', issuedAt: now.toISOString(),
-      issuer: { name: company.name, legalName: company.legalName, taxId: company.taxId },
+      issuer: { name: company.tradeName, legalName: company.legalName, taxId: company.taxId },
       recipient: { customerId: p.customerId, name: p.recipientName, kind: customer.kind, organization: p.recipientOrganization, email: p.recipientEmail, taxId: p.recipientTaxId },
       commercialDescription: p.commercialDescription, paymentTerms: p.paymentTerms, notes: p.notes, terms: p.terms, validUntil: p.validUntil,
       subtotalAmount: p.subtotalAmount, discountAmount: p.discountAmount, totalAmount: p.totalAmount,

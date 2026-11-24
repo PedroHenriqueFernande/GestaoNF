@@ -93,7 +93,7 @@ beforeEach(async () => {
   vi.restoreAllMocks();
   [ { id: userId } ] = await db.insert(schema.users).values({ name: 'Operador', email: `${randomUUID()}@example.test` }).returning();
   const accountId = await testAccount(db, userId);
-  const companies = await db.insert(schema.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }, { accountId, name: 'Empresa C' }]).returning();
+  const companies = await db.insert(schema.companies).values([{ accountId, tradeName: 'Empresa A' }, { accountId, tradeName: 'Empresa B' }, { accountId, tradeName: 'Empresa C' }]).returning();
   [companyA, companyB, companyC] = companies.map((company) => company.id);
   await db.insert(schema.companyUsers).values(companies.map((company) => ({ companyId: company.id, userId, role: 'OWNER' })));
 });

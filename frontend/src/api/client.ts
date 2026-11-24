@@ -6,7 +6,7 @@ export type User = { id: string; name: string; email: string; avatarId: string |
 export type AvatarUpload = { file: { id: string; status: string }; upload: { url: string; method: 'PUT'; headers: Record<string, string>; expiresAt: string } | null };
 export type AvatarCompletion = { file: { id: string; status: string; mimeType: string; width: number; height: number; sizeBytes: number }; expiresAt: string | null };
 export type AvatarAccess = { avatarId: string; url: string; expiresAt: string };
-export type Company = { id: string; name: string; accountId: string; logoId: string | null;
+export type Company = { id: string; tradeName: string; accountId: string; logoId: string | null;
   roleLabel: RoleLabel; accountOwner: boolean; permissions: PermissionKey[] };
 export type CompanyLogoMime = 'image/jpeg' | 'image/png' | 'image/webp';
 export type CompanyLogoUpload = { file: { id: string; status: string }; upload: { url: string; method: 'PUT'; headers: Record<string, string>; expiresAt: string } | null };
@@ -15,28 +15,28 @@ export type CompanyLogoAccess = { companyId: string; logoId: string; url: string
 export type FiscalCertificate = { id: string; status: 'ACTIVE' | 'EXPIRED'; subjectTaxId: string; fingerprintSha256: string;
   serialNumber: string; subjectSummary: string; issuerSummary: string; notBefore: string; notAfter: string; createdAt: string };
 export type Account = { id: string; name: string; status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELED'; planCode: string; additionalUsersPerCompany: number };
-export type UserCapacity = { companyId: string; name: string; status: string; limit: number; occupied: number; reserved: number; available: number; overLimit: number; ownerIncludedSeparately: boolean };
+export type UserCapacity = { companyId: string; tradeName: string; status: string; limit: number; occupied: number; reserved: number; available: number; overLimit: number; ownerIncludedSeparately: boolean };
 export type AccessInput = { companyIds: string[]; roleLabel: RoleLabel; permissions: PermissionKey[] };
 export type ManagedMember = { id: string; type: 'MEMBER'; name: string; email: string; status: 'OWNER' | 'ACTIVE' | 'INACTIVE';
   companies: { companyId: string; companyName: string; status: 'ACTIVE' | 'INACTIVE'; version: number }[];
   accountOwner: boolean; roleLabel: RoleLabel; permissions: PermissionKey[]; version: string };
 export type ManagedInvitation = { id: string; type: 'INVITATION'; name: string; email: string; status: 'PENDING' | 'REVOKED' | 'EXPIRED';
-  expiresAt: string; version: number; createdAt: string; companies: { id: string; name: string }[];
+  expiresAt: string; version: number; createdAt: string; companies: { id: string; tradeName: string }[];
   delivery: { id: string; sendStatus: string } | null; roleLabel: RoleLabel; permissions: PermissionKey[] };
 export type ManagedUser = ManagedMember | ManagedInvitation;
 export type ManagedUsersList = { items: ManagedUser[]; total: number };
-export type InvitationPreview = { invitationId: string; name: string; accountName: string; email: string; companies: { id: string; name: string }[]; expiresAt: string; nextStep: 'LOGIN' | 'DEFINE_PASSWORD' };
+export type InvitationPreview = { invitationId: string; name: string; accountName: string; email: string; companies: { id: string; tradeName: string }[]; expiresAt: string; nextStep: 'LOGIN' | 'DEFINE_PASSWORD' };
 export type CompanyProfile = Company & {
-  kind: 'PF' | 'PJ'; legalName: string | null; tradeName: string | null; taxId: string | null; email: string | null; phone: string | null;
+  kind: 'PF' | 'PJ'; legalName: string | null; taxId: string | null; email: string | null; phone: string | null;
   street: string | null; number: string | null; complement: string | null; district: string | null;
   postalCode: string | null; cityName: string | null; cityIbgeCode: string | null; stateCode: string | null;
-  countryCode: string; municipalRegistration: string | null; stateRegistration: string | null; cnaeCode: string | null;
+  countryCode: string; municipalRegistration: string | null; cnaeCode: string | null;
   simplesNationalOption: '1' | '2' | '3' | '4' | null;
   simplesTaxationRegime: '1' | '2' | '3' | null; simplesIbsCbsRegime: '1' | '2' | '3' | null; caepfCode: string | null;
   specialTaxRegime: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '9' | null;
   timezone: string; locale: string; status: 'ACTIVE' | 'INACTIVE'; createdAt: string; updatedAt: string;
 };
-export type CompanyInput = Pick<CompanyProfile, 'name' | 'kind' | 'legalName' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode' | 'municipalRegistration' | 'stateRegistration' | 'cnaeCode' | 'simplesNationalOption' | 'simplesTaxationRegime' | 'specialTaxRegime'> & Partial<Pick<CompanyProfile, 'simplesIbsCbsRegime' | 'caepfCode'>>;
+export type CompanyInput = Pick<CompanyProfile, 'tradeName' | 'kind' | 'legalName' | 'taxId' | 'email' | 'phone' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode' | 'municipalRegistration' | 'cnaeCode' | 'simplesNationalOption' | 'simplesTaxationRegime' | 'specialTaxRegime'> & Partial<Pick<CompanyProfile, 'simplesIbsCbsRegime' | 'caepfCode'>>;
 export type Customer = {
   id: string;
   companyId: string;

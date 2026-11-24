@@ -10,7 +10,7 @@ O cadastro da **Empresa** guarda os dados de quem emite as notas: identificaçã
 ## Passo a passo
 1. No menu da esquerda, abra **Cadastros** e clique em **Empresa**.
 2. Clique em **Novo** para cadastrar uma empresa. Se já tem empresa, clique nela na lista **Empresas cadastradas** para abrir o cadastro.
-3. Em **Identificação**, preencha o **Nome de exibição**, o **Tipo de prestadora** (**Pessoa física** ou **Pessoa jurídica**), a **Razão social** (ou **Nome civil**), o **CNPJ** (ou **CPF**), o **E-mail** e o **Telefone / WhatsApp**.
+3. Em **Identificação**, preencha o **Nome fantasia** (é o nome exibido no sistema; para pessoa física, use o nome profissional), o **Tipo de prestadora** (**Pessoa física** ou **Pessoa jurídica**), a **Razão social** (ou **Nome civil**), o **CNPJ** (ou **CPF**), o **E-mail** e o **Telefone / WhatsApp**.
 4. Em **Endereço**, informe o **CEP**, o **Logradouro**, o **Número**, o **Bairro**, a **Cidade**, a **UF** e o **Código IBGE do município** (7 dígitos). O município é indispensável para a NFS-e.
 5. Em **Dados fiscais**, informe a **Inscrição municipal** (quando houver), o **CNAE principal** e a **Opção pelo Simples Nacional** (**Não optante**, **MEI**, **ME/EPP** ou **Optante pendente**). Para ME/EPP, informe também o **Regime de apuração no Simples**. Confirme o enquadramento com seu contador.
 6. Clique em **Cadastrar empresa**. Para uma empresa já existente, o botão é **Salvar alterações**.

@@ -16,7 +16,7 @@ export class CompaniesService {
   async list(userId: string) {
     const memberships = await resolveMemberships(this.database.db, userId, 'all');
     if (!memberships.length) return [];
-    const rows = await this.database.db.select({ id: companies.id, name: companies.name, accountId: companies.accountId, logoId: companies.logoId })
+    const rows = await this.database.db.select({ id: companies.id, tradeName: companies.tradeName, accountId: companies.accountId, logoId: companies.logoId })
       .from(companies).where(inArray(companies.id, memberships.map(m => m.actor.companyId)));
     const byId = new Map(rows.map(row => [row.id, row]));
     return memberships.flatMap(m => {
@@ -34,11 +34,10 @@ export class CompaniesService {
 
   async create(userId: string, input: z.output<typeof createCompanySchema>) {
     this.validateTaxId(input.kind ?? 'PJ', input.taxId);
-    this.validateTradeName(input.kind ?? 'PJ', input.tradeName);
     this.validateTaxRegime(input.simplesNationalOption, input.simplesTaxationRegime, input.simplesIbsCbsRegime);
     this.validateCaepf(input.kind ?? 'PJ', input.caepfCode);
     const company = await this.database.db.transaction(async (tx) => {
-      const accountId = await this.accounts.companyAccount(tx, userId, input.name, input.accountId);
+      const accountId = await this.accounts.companyAccount(tx, userId, input.tradeName, input.accountId);
       const [created] = await tx.insert(companies).values({ ...input, accountId, kind: input.kind ?? 'PJ' }).returning();
       await tx.insert(companyUsers).values({ companyId: created.id, userId, role: 'OWNER' });
       return created;
@@ -49,7 +48,6 @@ export class CompaniesService {
   async update(companyId: string, userId: string, input: z.output<typeof updateCompanySchema>) {
     const current = await this.get(companyId, userId);
     this.validateTaxId(input.kind ?? current.kind as 'PF' | 'PJ', input.taxId === undefined ? current.taxId : input.taxId);
-    this.validateTradeName(input.kind ?? current.kind as 'PF' | 'PJ', input.tradeName === undefined ? current.tradeName : input.tradeName);
     this.validateTaxRegime(
       input.simplesNationalOption === undefined ? current.simplesNationalOption : input.simplesNationalOption,
       input.simplesTaxationRegime === undefined ? current.simplesTaxationRegime : input.simplesTaxationRegime,
@@ -89,9 +87,5 @@ export class CompaniesService {
 
   private validateCaepf(kind: string, caepf: string | null | undefined) {
     if (caepf && kind !== 'PF') throw new BadRequestException('O registro de atividade da pessoa física só pode ser informado para prestadora pessoa física.');
-  }
-
-  private validateTradeName(kind: 'PF' | 'PJ', tradeName: string | null | undefined) {
-    if (kind === 'PF' && tradeName) throw new BadRequestException('Nome fantasia só é permitido para pessoa jurídica');
   }
 }

@@ -65,7 +65,7 @@ beforeEach(async () => {
   Object.assign(provider.config, { enabled: true, testMode: true, from: 'GestãoNF <onboarding@resend.dev>', dailyLimit: 100 });
   [owner, collaborator] = (await db.insert(s.users).values(['Owner', 'Collaborator'].map(name => ({ name, email: `${randomUUID()}@example.test` }))).returning()).map(u => u.id);
   const accountId = await testAccount(db, owner);
-  [company, otherCompany] = (await db.insert(s.companies).values([{ accountId, name: 'Empresa A' }, { accountId, name: 'Empresa B' }]).returning()).map(c => c.id);
+  [company, otherCompany] = (await db.insert(s.companies).values([{ accountId, tradeName: 'Empresa A' }, { accountId, tradeName: 'Empresa B' }]).returning()).map(c => c.id);
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: otherCompany, userId: owner, role: 'OWNER' }, { companyId: company, userId: collaborator, role: 'COLLABORATOR' }]);
   await grantLegacyMembers(db);
   // All tests replace the actual provider transport, preventing any outbound email.

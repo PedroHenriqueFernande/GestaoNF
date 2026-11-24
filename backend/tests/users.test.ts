@@ -88,8 +88,8 @@ beforeEach(async () => {
   [owner,stranger] = (await db.insert(s.users).values([{ name:'Titular',email:'owner@example.test' },{ name:'Outro titular',email:'stranger@example.test' }]).returning()).map(u=>u.id);
   await db.insert(s.userCredentials).values([{ userId:owner,passwordHash },{ userId:stranger,passwordHash }]);
   account = await testAccount(db,owner); accountB = await testAccount(db,stranger);
-  [companyA,companyB] = (await db.insert(s.companies).values([{ accountId:account,name:'Empresa A' },{ accountId:account,name:'Empresa B' }]).returning()).map(c=>c.id);
-  [otherCompany] = (await db.insert(s.companies).values({ accountId:accountB,name:'Empresa externa' }).returning()).map(c=>c.id);
+  [companyA,companyB] = (await db.insert(s.companies).values([{ accountId:account,tradeName:'Empresa A' },{ accountId:account,tradeName:'Empresa B' }]).returning()).map(c=>c.id);
+  [otherCompany] = (await db.insert(s.companies).values({ accountId:accountB,tradeName:'Empresa externa' }).returning()).map(c=>c.id);
   await db.insert(s.companyUsers).values([{ companyId:companyA,userId:owner,role:'OWNER' },{ companyId:companyB,userId:owner,role:'OWNER' },{ companyId:otherCompany,userId:stranger,role:'OWNER' }]);
   Object.assign(provider.config,{ enabled:true,testMode:false,from:'GestãoNF <mail@example.test>',dailyLimit:100 });
   vi.stubGlobal('fetch',vi.fn().mockImplementation(async()=>new Response(JSON.stringify({ id:randomUUID() }))));
@@ -217,7 +217,7 @@ describe('usuários convidados, PostgreSQL e HTTP',()=>{
   it('titular é protegido; convidado não administra usuários nem cria empresa da contratação',async()=>{
     const created=await invite([companyA],'stranger@example.test');await http('POST','/user-invitations/accept-existing',{token:created.token},stranger);
     expect((await http('GET',`/accounts/${account}/users`,undefined,stranger)).json()).toMatchObject({ statusCode:403, code:'ACCOUNT_OWNER_REQUIRED' }); // Spec 8.2, critério 19
-    expect((await http('POST','/companies',{name:'Invadida',accountId:account},stranger)).statusCode).toBe(404);
+    expect((await http('POST','/companies',{tradeName:'Invadida',accountId:account},stranger)).statusCode).toBe(404);
     const members=await service.list(account,owner,{search:'owner',limit:25,offset:0});const root=members.items.find((i:Record<string,unknown>)=>i.type==='MEMBER')!;
     expect((await http('POST',`/accounts/${account}/users/${owner}/deactivate`,{version:root.version},owner,randomUUID())).statusCode).toBe(409);
   });
@@ -246,7 +246,7 @@ describe('usuários convidados, PostgreSQL e HTTP',()=>{
     const key=randomUUID();const first=await http('POST','/accounts',{name:'Minha contratação'},fresh.user.id,key);expect(first.statusCode).toBe(201);expect(first.json().status).toBe('PENDING');
     expect((await http('POST','/accounts',{name:'Minha contratação'},fresh.user.id,key)).json().id).toBe(first.json().id);
     expect((await http('POST','/accounts',{name:'A',status:'ACTIVE'},fresh.user.id,randomUUID())).statusCode).toBe(400);
-    expect((await http('POST','/companies',{name:'Nova',accountId:first.json().id},fresh.user.id)).statusCode).toBe(403);
+    expect((await http('POST','/companies',{tradeName:'Nova',accountId:first.json().id},fresh.user.id)).statusCode).toBe(403);
   });
   it('ativação interna aplica prazo/cota com versão e evento idempotente',async()=>{
     const accounts=app.get(AccountsService),event=randomUUID();const input={status:'SUSPENDED' as const,source:'MANUAL' as const,additionalUsersPerCompany:5,currentPeriodEndsAt:null};
@@ -458,7 +458,7 @@ describe('aceite grava o acesso do convite (Spec 8.2, critério 13)',()=>{
     });
   });
   it('serializa o aceite e uma nova tentativa de convite ao mesmo e-mail',async()=>{
-    const [thirdCompany] = await db.insert(s.companies).values({ accountId: account, name: 'Empresa C' }).returning();
+    const [thirdCompany] = await db.insert(s.companies).values({ accountId: account, tradeName: 'Empresa C' }).returning();
     const pending = await invite([companyB], 'stranger@example.test');
     await db.insert(s.companyUsers).values({ companyId: companyA, userId: stranger, role: 'COLLABORATOR' });
     await grantMember(db, account, stranger, ['customers.access'], 'MANAGER');
@@ -501,7 +501,7 @@ describe('aceite grava o acesso do convite (Spec 8.2, critério 13)',()=>{
   });
   it('aceita em paralelo o mesmo usuário em contratações diferentes, cada uma com seu acesso',async()=>{
     const anotherAccount = await testAccount(db, owner);
-    const [anotherCompany] = await db.insert(s.companies).values({ accountId: anotherAccount, name: 'Outra contratação' }).returning();
+    const [anotherCompany] = await db.insert(s.companies).values({ accountId: anotherAccount, tradeName: 'Outra contratação' }).returning();
     await db.insert(s.companyUsers).values({ companyId: anotherCompany.id, userId: owner, role: 'OWNER' });
     const pending = await invite([companyB], 'stranger@example.test');
     const another = await http('POST', `/accounts/${anotherAccount}/user-invitations`, {

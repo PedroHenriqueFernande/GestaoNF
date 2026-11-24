@@ -40,13 +40,13 @@ export class WhatsAppLinkService {
 
   /** Empresas vinculadas a este número com vínculo e acesso ativos, antes da permissão do Nero. */
   private linkedCompanies(linkId: string, userId: string) {
-    return this.database.db.select({ companyLinkId: whatsappLinkCompanies.id, companyId: companies.id, name: companies.name })
+    return this.database.db.select({ companyLinkId: whatsappLinkCompanies.id, companyId: companies.id, tradeName: companies.tradeName })
       .from(whatsappLinkCompanies).innerJoin(whatsappLinks, eq(whatsappLinks.id, whatsappLinkCompanies.linkId))
       .innerJoin(companies, eq(companies.id, whatsappLinkCompanies.companyId))
       .innerJoin(companyUsers, and(eq(companyUsers.companyId, companies.id), eq(companyUsers.userId, whatsappLinkCompanies.userId)))
       .innerJoin(users, eq(users.id, companyUsers.userId))
       .where(and(eq(whatsappLinkCompanies.linkId, linkId), eq(whatsappLinkCompanies.userId, userId), eq(whatsappLinkCompanies.status, 'ACTIVE'), eq(whatsappLinks.status, 'ACTIVE'), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE')))
-      .orderBy(asc(companies.name), asc(companies.id));
+      .orderBy(asc(companies.tradeName), asc(companies.id));
   }
 
   /** Único ponto de elegibilidade do Nero: vínculo ativo e `nero.use` na empresa (Spec 9). */
@@ -88,7 +88,7 @@ export class WhatsAppLinkService {
     const mode = input.mode ?? 'NEW_NUMBER';
     return this.database.db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${connection.id + ':' + userId}, 0))`);
-      const [company] = await tx.select({ name: companies.name }).from(companies)
+      const [company] = await tx.select({ tradeName: companies.tradeName }).from(companies)
         .innerJoin(companyUsers, and(eq(companyUsers.companyId, companies.id), eq(companyUsers.userId, userId))).innerJoin(users, eq(users.id, companyUsers.userId))
         .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'), companyAvailable(companies.id), eq(companyUsers.status, 'ACTIVE'), eq(users.status, 'ACTIVE'))).limit(1);
       if (!company) throw new NotFoundException('Empresa não encontrada ou acesso indisponível');
@@ -105,7 +105,7 @@ export class WhatsAppLinkService {
         .where(and(eq(whatsappLinkChallenges.connectionId, connection.id), eq(whatsappLinkChallenges.userId, userId), eq(whatsappLinkChallenges.companyId, companyId), inArray(whatsappLinkChallenges.status, ['PENDING', 'CANDIDATE'])));
       const token = randomBytes(18).toString('base64url'), expiresAt = new Date(Date.now() + 10 * 60_000);
       const [challenge] = await tx.insert(whatsappLinkChallenges).values({ connectionId: connection.id, userId, companyId, tokenHash: hashToken(token), expiresAt, mode, expectedLinkId: mode === 'EXISTING_NUMBER' ? input.linkId : null }).returning({ id: whatsappLinkChallenges.id });
-      const text = `Quero vincular minha empresa ${company.name} ao meu secretário virtual, meu código é ${token}.`;
+      const text = `Quero vincular minha empresa ${company.tradeName} ao meu secretário virtual, meu código é ${token}.`;
       return { challengeId: challenge.id, expiresAt: expiresAt.toISOString(), waLink: `https://wa.me/${connection.displayPhoneNumber}?text=${encodeURIComponent(text)}`, displayPhoneNumber: connection.displayPhoneNumber, instruction: 'Escaneie o QR Code e envie a mensagem pronta no WhatsApp.' };
     });
   }
