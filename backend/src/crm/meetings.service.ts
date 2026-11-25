@@ -49,7 +49,7 @@ export class MeetingsService {
     await lockKeys(tx, ids.map((id) => `crm:agenda:${a.companyId}:${id}`));
   }
   private conflictsFor(a: CrmAccess, responsible: string, start: Date, end: Date, exclude: string | undefined, db: CrmDb) {
-    return db.select({ id: crmMeetings.id, title: crmMeetings.title, startsAt: crmMeetings.startsAt, endsAt: crmMeetings.endsAt }).from(crmMeetings)
+    return db.select({ id: crmMeetings.id, startsAt: crmMeetings.startsAt, endsAt: crmMeetings.endsAt }).from(crmMeetings)
       .where(and(this.policy.meetingScope(a), eq(crmMeetings.assignedUserId, responsible), eq(crmMeetings.status, 'SCHEDULED'),
         lt(crmMeetings.startsAt, end), gt(crmMeetings.endsAt, start), exclude ? ne(crmMeetings.id, exclude) : sql`true`)).orderBy(asc(crmMeetings.startsAt), asc(crmMeetings.id));
   }
@@ -86,7 +86,7 @@ export class MeetingsService {
     const [event] = await tx.insert(crmMeetingEvents).values({ companyId: a.companyId, meetingId: meeting.id, contactId: meeting.contactId, opportunityId: meeting.opportunityId,
       kind, actorType: a.actorType, actorUserId: a.userId, changes }).returning();
     await tx.insert(crmActivities).values({ companyId: a.companyId, contactId: meeting.contactId, opportunityId: meeting.opportunityId, meetingId: meeting.id,
-      kind: activity, actorType: a.actorType, actorUserId: a.userId, changes: { meetingEventId: event.id, title: meeting.title }, causeReference: a.causeReference ?? `meeting:${meeting.id}` });
+      kind: activity, actorType: a.actorType, actorUserId: a.userId, changes: { meetingEventId: event.id }, causeReference: a.causeReference ?? `meeting:${meeting.id}` });
     if (meeting.opportunityId) {
       // O contato é bloqueado antes do card, na mesma ordem das outras escritas CRM.
       await tx.select({ id: crmOpportunities.id }).from(crmOpportunities).where(and(eq(crmOpportunities.companyId, a.companyId), eq(crmOpportunities.id, meeting.opportunityId))).for('update');
@@ -113,8 +113,8 @@ export class MeetingsService {
       const settings = await this.settings(a, tx);
       const qualified = !!(card && settings.qualifyOpportunityOnMeeting && ['NEW', 'CONTACTING'].includes(card.commercialStatus));
       const [meeting] = await tx.insert(crmMeetings).values({ companyId: a.companyId, contactId: input.contactId, opportunityId: input.opportunityId ?? null,
-        title: input.title, assignedUserId: responsible, startsAt: input.startsAt, endsAt: input.endsAt, timezone: input.timezone ?? a.timezone,
-        modality: input.modality, location: input.location ?? null, meetingUrl: input.meetingUrl ?? null, description: input.description ?? null, notes: input.notes ?? null,
+        assignedUserId: responsible, startsAt: input.startsAt, endsAt: input.endsAt, timezone: input.timezone ?? a.timezone,
+        meetingUrl: input.meetingUrl ?? null,
         createdByUserId: a.userId, commandNamespace: namespace, idempotencyKey: key, requestHash: hash }).returning();
       await this.replaceParticipants(tx, a, meeting.id, this.normalizeParticipants(input.participants));
       const minutes = input.reminderMinutes ?? (settings.defaultReminderMinutes === null ? [] : [settings.defaultReminderMinutes]);
@@ -144,8 +144,7 @@ export class MeetingsService {
     if (input.contactId) terms.push(eq(crmMeetings.contactId, input.contactId));
     if (input.opportunityId) terms.push(eq(crmMeetings.opportunityId, input.opportunityId));
     if (input.status) terms.push(eq(crmMeetings.status, input.status));
-    if (input.modality) terms.push(eq(crmMeetings.modality, input.modality));
-    if (input.search) { const q = escapeLike(input.search); terms.push(or(ilike(crmMeetings.title, q), ilike(crmContacts.name, q), ilike(crmContacts.organizationName, q))!); }
+    if (input.search) { const q = escapeLike(input.search); terms.push(or(ilike(crmContacts.name, q), ilike(crmContacts.organizationName, q))!); }
     return and(...terms);
   }
   private async page(filter: SQL | undefined, input: MeetingListInput) {

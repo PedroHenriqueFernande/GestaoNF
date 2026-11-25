@@ -11,16 +11,16 @@ A **Agenda** é o calendário semanal das suas reuniões comerciais. Cada reuni�
 1. No menu da esquerda, abra **CRM** e clique em **Agenda**.
 2. Clique em **Agendar reunião**. Também é possível chegar aqui pelo botão **Agendar reunião** dentro de uma negociação do CRM, que já traz o lead preenchido.
 3. Em "Agendar reunião", busque o **Lead** pelo nome, telefone ou e-mail. Se quiser, escolha a **Negociação vinculada**.
-4. Preencha o **Título**, o **Início** e o **Término**, e escolha o **Responsável** e a **Modalidade** (**Presencial** ou **Online**). Para reunião online, informe o **Link da reunião**; para presencial, o **Endereço ou sala**.
-5. Se quiser, configure os **Lembretes internos**, adicione **Participantes externos** com **Adicionar participante** e escreva as **Notas internas**.
+4. Escolha o **Responsável** e preencha o **Início** e o **Término**. Você pode informar o **Link da reunião**.
+5. Se quiser, escolha os horários em **Notificação de aviso** e adicione **Participantes externos** com **Adicionar participante**.
 6. Clique em **Agendar reunião**. Se o responsável já tiver outro compromisso no horário, aparece "Horário ocupado para este responsável". Clique em **Confirmar sobreposição** e depois em **Agendar reunião** de novo para manter os dois.
 
-Para acompanhar, use as setas de **Semana anterior** e **Próxima semana**, e **Filtrar agenda** por situação, responsável e modalidade. Clique em uma reunião para abrir e use **Concluir** (com resultado e próximos passos), **Não compareceu** ou **Cancelar** (com motivo). Uma reunião encerrada pode ser reaberta com **Reabrir reunião**. O botão de sino, no alto, mostra os **Lembretes**.
+Para acompanhar, use as setas de **Semana anterior** e **Próxima semana**. Em **Filtrar agenda**, busque pelo nome ou organização do lead, pela situação ou pelo responsável. Clique em uma reunião para abrir e use **Concluir** (com resultado e próximos passos), **Não compareceu** ou **Cancelar** (com motivo). Uma reunião encerrada pode ser reaberta com **Reabrir reunião**. O botão de sino, no alto, mostra os **Lembretes**.
 
 Em **Preferências** você define a **Antecedência padrão** dos lembretes, o **Conflito de horários** (**Pedir confirmação** ou **Permitir sobreposição**) e se a negociação é qualificada ao agendar.
 
 ## Problemas comuns
-- "Informe o lead, o título e o responsável.": preencha os três campos.
+- "Informe o lead e o responsável.": selecione o lead e o responsável pela reunião.
 - "O término deve ser posterior ao início.": corrija os horários. Eles seguem o fuso da empresa.
 - "O link precisa começar com https:// ou http://.": cole o endereço completo da reunião online.
 - Não acho a reunião: a agenda mostra uma semana por vez. Navegue pelas setas e confira os filtros.

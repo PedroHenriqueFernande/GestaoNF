@@ -1,4 +1,4 @@
-import { applyDecorators, Body, Controller, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { applyDecorators, Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiProduces, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -6,7 +6,7 @@ import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.g
 import { RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { idSchema, keySchema, pageSchema } from './crm.schemas.js';
-import { createProposalSchema, updateProposalSchema, proposalCommandSchema, declineProposalSchema, duplicateProposalSchema, proposalListSchema, proposalPrefillSchema, proposalSettingsSchema } from './proposal.schemas.js';
+import { createProposalSchema, updateProposalSchema, proposalCommandSchema, declineProposalSchema, proposalListSchema, proposalPrefillSchema, proposalSettingsSchema } from './proposal.schemas.js';
 import { ProposalsService } from './proposals.service.js';
 import { ProposalReadService } from './proposal-read.service.js';
 import { ProposalDocumentService } from './proposal-document.service.js';
@@ -48,8 +48,11 @@ export class ProposalsController {
   accept(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.transition(ctx(r), parseInput(idSchema, id), 'accept', parseInput(proposalCommandSchema, b), parseInput(keySchema, k)); }
   @Post('proposals/:id/decline') @RequirePermission('proposals.manage') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(declineProposalSchema))
   decline(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.transition(ctx(r), parseInput(idSchema, id), 'decline', parseInput(declineProposalSchema, b), parseInput(keySchema, k)); }
-  @Post('proposals/:id/duplicate') @RequirePermission('proposals.manage') @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(duplicateProposalSchema))
-  duplicate(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.duplicate(ctx(r), parseInput(idSchema, id), parseInput(duplicateProposalSchema, b), parseInput(keySchema, k)); }
+  @Delete('proposals/:id') @RequirePermission('proposals.manage') @HttpCode(204)
+  @ApiOperation({ summary: 'Exclui a proposta (exclusão lógica). Bloqueado para proposta convertida em pedido' })
+  remove(@Req() r: RequestContext, @Param('id') id: unknown) { return this.proposals.remove(ctx(r), parseInput(idSchema, id)); }
+  @Post('proposals/:id/duplicate') @RequirePermission('proposals.manage') @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
+  duplicate(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.duplicate(ctx(r), parseInput(idSchema, id), parseInput(proposalCommandSchema, b), parseInput(keySchema, k)); }
   @Post('proposals/:id/convert') @RequirePermission('proposals.convert') @HttpCode(200) @ApiHeader({ name: 'Idempotency-Key', required: true }) @ApiBody(body(proposalCommandSchema))
   convert(@Req() r: RequestContext, @Param('id') id: unknown, @Body() b: unknown, @Headers('idempotency-key') k: unknown) { return this.proposals.convert(ctx(r), parseInput(idSchema, id), parseInput(proposalCommandSchema, b), parseInput(keySchema, k), r.actor!); }
   @Get('proposals/:id/history') @RequirePermission('proposals.access') @query(pageSchema)

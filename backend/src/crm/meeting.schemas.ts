@@ -28,20 +28,16 @@ const validatePeriod = <T extends { startsAt: Date; endsAt: Date }>(value: T) =>
 
 export const createMeetingSchema = z.strictObject({
   contactId: idSchema, opportunityId: idSchema.nullable().optional(),
-  title: z.string().trim().min(1).max(200), assignedUserId: idSchema.optional(),
-  ...period, timezone: timezone.optional(), modality: z.enum(['IN_PERSON', 'ONLINE']),
-  location: nullableText(500).optional(), meetingUrl: meetingUrl.optional(),
-  description: nullableText(10000).optional(), notes: nullableText(10000).optional(),
+  assignedUserId: idSchema.optional(), ...period, timezone: timezone.optional(),
+  meetingUrl: meetingUrl.optional(),
   participants: z.array(participantSchema).max(100).default([]), reminderMinutes: reminderMinutes.optional(),
   allowConflict: z.boolean().default(false),
 }).refine(validatePeriod, { message: 'O término deve ser posterior ao início', path: ['endsAt'] });
 
 export const updateMeetingSchema = z.strictObject({
   expectedVersion: version,
-  title: z.string().trim().min(1).max(200).optional(), assignedUserId: idSchema.optional(),
-  timezone: timezone.optional(), modality: z.enum(['IN_PERSON', 'ONLINE']).optional(),
-  location: nullableText(500).optional(), meetingUrl: meetingUrl.optional(),
-  description: nullableText(10000).optional(), notes: nullableText(10000).optional(),
+  assignedUserId: idSchema.optional(), timezone: timezone.optional(),
+  meetingUrl: meetingUrl.optional(),
   participants: z.array(participantSchema).max(100).optional(), reminderMinutes: reminderMinutes.optional(),
   allowConflict: z.boolean().default(false),
 }).refine((value) => Object.keys(value).some((key) => !['expectedVersion', 'allowConflict'].includes(key)), 'Informe ao menos um campo');
@@ -60,7 +56,7 @@ export const meetingStatusSchema = z.strictObject({
 
 const meetingListFields = {
   ...pageFields, from: instant, to: instant, assignedUserId: idSchema.optional(), contactId: idSchema.optional(),
-  opportunityId: idSchema.optional(), status: z.enum(statuses).optional(), modality: z.enum(['IN_PERSON', 'ONLINE']).optional(),
+  opportunityId: idSchema.optional(), status: z.enum(statuses).optional(),
   search: z.string().trim().min(1).max(200).optional(),
 };
 const orderedPeriod = (value: { from: Date; to: Date }) => value.to > value.from;

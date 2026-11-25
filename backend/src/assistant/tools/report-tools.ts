@@ -50,8 +50,8 @@ const TYPES: Record<string, Definition> = {
   reunioes: {
     type: 'meetings', label: 'Reuniões', catalog: false,
     summary: { total: ['total', 'number'], completed: ['realizadas', 'number'], canceled: ['canceladas', 'number'], noShow: ['não compareceu', 'number'], scheduled: ['agendadas', 'number'] },
-    fields: { startsAt: 'inicio', endsAt: 'fim', title: 'titulo', status: 'situacao', modality: 'modalidade', contactName: 'contato', userName: 'responsavel' },
-    translate: ['status', 'modality'],
+    fields: { startsAt: 'inicio', endsAt: 'fim', status: 'situacao', contactName: 'contato', userName: 'responsavel' },
+    translate: ['status'],
   },
   taxa_de_desqualificacao: {
     type: 'disqualification-rate', label: 'Taxa de desqualificação', catalog: false,

@@ -81,9 +81,9 @@ export const reportPdfDefinitions: Record<ReportType, Definition> = {
   meetings: {
     title: 'Reuniões',
     columns: [
-      { key: 'startsAt', label: 'Início', weight: 1.4, format: 'instant' }, { key: 'title', label: 'Reunião', weight: 2.5 },
+      { key: 'startsAt', label: 'Início', weight: 1.4, format: 'instant' },
       { key: 'contactName', label: 'Lead', weight: 2 }, { key: 'userName', label: 'Responsável', weight: 1.6 },
-      { key: 'modality', label: 'Modalidade', weight: 1.2, format: 'status' }, { key: 'status', label: 'Situação', weight: 1.3, format: 'status' },
+      { key: 'status', label: 'Situação', weight: 1.3, format: 'status' },
     ],
     summary: [
       { key: 'completed', label: 'Reuniões realizadas', format: 'number' },

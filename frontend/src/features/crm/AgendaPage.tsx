@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Bell, CalendarDays, ChevronLeft, ChevronRight, Filter, Plus, RefreshCw, Settings2, Video, MapPin, X } from 'lucide-react';
+import { AlertCircle, Bell, CalendarDays, ChevronLeft, ChevronRight, Filter, Plus, RefreshCw, Settings2, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
 import { api, type Meeting, type MeetingFilters, type MeetingSettings, type MeetingStatus, type User } from '../../api/client';
 import { isOverviewForbidden, useCompanyScope, useOverviewFallback } from '../../components/company-scope';
@@ -14,6 +14,7 @@ import './crm.css';
 import './agenda.css';
 
 const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+const emptyFilters = { search: '', status: '' as MeetingStatus | '', assignedUserId: '' };
 const statuses: { value: MeetingStatus | ''; label: string }[] = [{ value: '', label: 'Todas' }, { value: 'SCHEDULED', label: 'Agendadas' }, { value: 'COMPLETED', label: 'Concluídas' }, { value: 'NO_SHOW', label: 'Não compareceu' }, { value: 'CANCELED', label: 'Canceladas' }];
 const statusName: Record<MeetingStatus, string> = { SCHEDULED: 'Agendada', COMPLETED: 'Concluída', CANCELED: 'Cancelada', NO_SHOW: 'Não compareceu' };
 function dayLabel(day: string) { return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`)); }
@@ -37,7 +38,7 @@ export function AgendaPage({ user }: { user: User }) {
   const profile = useQuery({ queryKey: ['company', companyId], queryFn: () => api.company(companyId), enabled: !!companyId });
   const timezone = profile.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [week, setWeek] = useState(() => weekStart(dateInZone(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone)));
-  const [draft, setDraft] = useState({ search: '', status: '' as MeetingStatus | '', assignedUserId: '', modality: '' as '' | Meeting['modality'] });
+  const [draft, setDraft] = useState(emptyFilters);
   const [filters, setFilters] = useState(draft);
   const [page, setPage] = useState(0);
   const [dialog, setDialog] = useState<AgendaDialog | null>(null);
@@ -56,7 +57,7 @@ export function AgendaPage({ user }: { user: User }) {
     if (!contactId || !opportunityId || !companyId || !companies.data) return;
     const target = url.get('companyId') ?? companyId;
     if (permissionView(companies.data, target).can('agenda.manage')) {
-      setDialog({ kind: 'create', companyId: target, preset: { contactId, opportunityId, name: url.get('name') ?? '', title: url.get('title') ?? '' } });
+      setDialog({ kind: 'create', companyId: target, preset: { contactId, opportunityId, name: url.get('name') ?? '', opportunityTitle: url.get('title') ?? '' } });
     }
     const next = new URLSearchParams(url);
     for (const key of ['contactId', 'opportunityId', 'companyId', 'name', 'title']) next.delete(key);
@@ -70,7 +71,7 @@ export function AgendaPage({ user }: { user: User }) {
   const windowTo = instantInZone(`${shiftDate(first, 7)}T00:00`, timezone);
   const params: MeetingFilters | null = windowFrom && windowTo ? { from: windowFrom, to: windowTo,
     ...(filters.search ? { search: filters.search } : {}), ...(filters.status ? { status: filters.status } : {}),
-    ...(filters.modality ? { modality: filters.modality } : {}), ...(filters.assignedUserId ? { assignedUserId: filters.assignedUserId } : {}) } : null;
+    ...(filters.assignedUserId ? { assignedUserId: filters.assignedUserId } : {}) } : null;
   const canList = !!companyId && access.can('agenda.access');
   const list = useQuery({ queryKey: multiple ? ['crm', 'overview', 'meetings', multiple.scopeKey, first, filters, page, timezone] : ['meetings', companyId, first, filters, page, timezone],
     queryFn: () => multiple ? api.crmOverviewMeetings(multiple.param, params!, page * 100, 100) : api.meetings(companyId, params!, page * 100, 100),
@@ -104,7 +105,24 @@ export function AgendaPage({ user }: { user: User }) {
       {notificationsOpen && <section className="agenda-notifications" aria-label="Lembretes"><header><h2>Lembretes</h2><button type="button" aria-label="Fechar lembretes" onClick={() => setNotificationsOpen(false)}><X size={17} /></button></header>{notifications.isPending ? <p>Carregando lembretes...</p> : notifications.isError ? <p role="alert">Não foi possível carregar os lembretes.</p> : notifications.data?.items.length ? <div>{notifications.data.items.map((item) => <article key={item.id} className={item.readAt ? '' : 'is-unread'}><button type="button" onClick={() => { if (!item.readAt) read.mutate(item.id); setDialog({ kind: 'open', meetingId: item.meetingId, companyId }); setNotificationsOpen(false); }}><strong>{item.title}</strong><span>{item.body}</span><small>{formatMeetingTime(item.createdAt, timezone, { year: 'numeric' })}</small></button></article>)}</div> : <p>Nenhum lembrete por enquanto.</p>}</section>}
       {settingsOpen && !multiple && <section className="agenda-settings" aria-label="Preferências da agenda"><header><div><h2>Preferências da agenda</h2><p>Valem para a empresa selecionada.</p></div><button type="button" aria-label="Fechar preferências" onClick={() => setSettingsOpen(false)}><X size={17} /></button></header>{settings.isPending ? <p>Carregando...</p> : settings.isError ? <p role="alert">Não foi possível carregar as preferências.</p> : settings.data && <SettingsForm key={`${companyId}-${settings.data.version}`} current={settings.data} canEdit={access.can('agenda.settings')} busy={saveSettings.isPending} onSubmit={(input) => saveSettings.mutate(input)} />}</section>}
       <section className="agenda-board" aria-labelledby="agenda-week-heading"><div className="agenda-board__top"><div><span>SEMANA EM FOCO</span><h2 id="agenda-week-heading">{formatWeek(first, last)}</h2><p>Horários em {timezone}</p>{otherZone && <p className="agenda-zone-note" role="note">Algumas empresas usam outro fuso; horários exibidos em {timezone}.</p>}</div><div className="agenda-board__navigation"><button type="button" aria-label="Semana anterior" onClick={() => { setWeek(shiftDate(first, -7)); setPage(0); }}><ChevronLeft size={17} /></button><button type="button" onClick={() => { setWeek(weekStart(currentDay)); setPage(0); }}>Hoje</button><button type="button" aria-label="Próxima semana" onClick={() => { setWeek(shiftDate(first, 7)); setPage(0); }}><ChevronRight size={17} /></button></div></div><div className="agenda-board__stats"><div><strong>{list.data?.summary.scheduled ?? '-'}</strong><span>Agendadas</span></div><div><strong>{list.data?.summary.completed ?? '-'}</strong><span>Concluídas</span></div><div><strong>{list.data?.summary.noShow ?? '-'}</strong><span>Ausências</span></div><div><strong>{list.data?.summary.total ?? '-'}</strong><span>No período</span></div></div></section>
-      <section className="crm-filters agenda-filters" aria-label="Filtrar reuniões"><div className="crm-filters__heading"><div><Filter size={17} /><h2>Filtrar agenda</h2></div><span>Os filtros valem para esta semana</span></div><form onSubmit={apply}><label className="crm-filter-field agenda-filter-search"><span>Lead ou reunião</span><input value={draft.search} onChange={(event) => setDraft({ ...draft, search: event.target.value })} maxLength={200} placeholder="Buscar pelo nome ou título" /></label><label className="crm-filter-field"><span>Situação</span><select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as MeetingStatus | '' })}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label><label className="crm-filter-field"><span>Responsável</span><select value={draft.assignedUserId} onChange={(event) => setDraft({ ...draft, assignedUserId: event.target.value })}><option value="">Todos</option>{responsibles.data?.items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="crm-filter-field"><span>Modalidade</span><select value={draft.modality} onChange={(event) => setDraft({ ...draft, modality: event.target.value as typeof draft.modality })}><option value="">Todas</option><option value="ONLINE">Online</option><option value="IN_PERSON">Presencial</option></select></label><div className="crm-filters__actions"><button type="button" onClick={() => { const blank = { search: '', status: '' as const, assignedUserId: '', modality: '' as const }; setDraft(blank); setFilters(blank); setPage(0); }}>Limpar</button><button type="submit" className="button button--primary">Aplicar filtros</button></div></form></section>
+      <section className="crm-filters agenda-filters" aria-label="Filtrar reuniões">
+        <div className="crm-filters__heading"><div><Filter size={17} /><h2>Filtrar agenda</h2></div><span>Os filtros valem para esta semana</span></div>
+        <form onSubmit={apply}>
+          <label className="crm-filter-field agenda-filter-search">
+            <span>Lead</span><input value={draft.search} onChange={(event) => setDraft({ ...draft, search: event.target.value })} maxLength={200} placeholder="Buscar por nome ou organização" />
+          </label>
+          <label className="crm-filter-field">
+            <span>Situação</span><select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as MeetingStatus | '' })}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select>
+          </label>
+          <label className="crm-filter-field">
+            <span>Responsável</span><select value={draft.assignedUserId} onChange={(event) => setDraft({ ...draft, assignedUserId: event.target.value })}><option value="">Todos</option>{responsibles.data?.items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+          </label>
+          <div className="crm-filters__actions">
+            <button type="button" onClick={() => { setDraft(emptyFilters); setFilters(emptyFilters); setPage(0); }}>Limpar</button>
+            <button type="submit" className="button button--primary">Aplicar filtros</button>
+          </div>
+        </form>
+      </section>
       <section className="agenda-calendar" aria-label="Calendário semanal">{list.isPending ? <div className="agenda-state"><RefreshCw size={22} className="is-spinning" /> Carregando reuniões...</div> : list.isError ? <div className="agenda-state" role="alert"><AlertCircle size={22} /> Não foi possível carregar a agenda.<button type="button" onClick={() => list.refetch()}>Tentar novamente</button></div> : <>{carried.length > 0 && <div className="agenda-carried"><strong>Iniciadas antes desta semana</strong>{carried.map(renderMeeting)}</div>}<div className="agenda-days">{grouped.map(({ day, items }, index) => <div key={day} className={`agenda-day${day === currentDay ? ' is-today' : ''}`}><header><span>{labels[index]}</span><strong>{day.slice(-2)}</strong><small>{dayLabel(day)}</small></header><div className="agenda-day__list">{items.map(renderMeeting)}{items.length === 0 && <span className="agenda-day__empty">Livre</span>}</div></div>)}</div>{(list.data?.total ?? 0) === 0 && <div className="agenda-empty"><CalendarDays size={25} /><strong>Nenhuma reunião nesta semana</strong><span>Agende um compromisso ou ajuste os filtros.</span>{canManage && <button type="button" onClick={openCreate}>Agendar reunião</button>}</div>}</>}</section>
       {list.data && list.data.total > 100 && <div className="agenda-pagination"><span>{page * 100 + 1}–{Math.min((page + 1) * 100, list.data.total)} de {list.data.total}</span><div><button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>Anterior</button><button type="button" disabled={(page + 1) * 100 >= list.data.total} onClick={() => setPage(page + 1)}>Próxima</button></div></div>}
       <p className="agenda-return"><Link to="/crm">Voltar ao banco de leads</Link></p>
@@ -120,7 +138,7 @@ export function AgendaPage({ user }: { user: User }) {
 
 function MeetingCard({ item, timezone, companyName, onOpen }: { item: Meeting; timezone: string; companyName?: string; onOpen: () => void }) {
   const time = new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(item.startsAt));
-  return <button type="button" className={`agenda-card agenda-card--${item.status.toLowerCase()}`} onClick={onOpen} aria-label={`Abrir ${item.title}, ${item.lead.name}, ${formatMeetingTime(item.startsAt, timezone)}${companyName ? `, ${companyName}` : ''}`}><span className="agenda-card__time">{time}<span className="agenda-card__kind">{item.modality === 'ONLINE' ? <Video size={13} /> : <MapPin size={13} />}</span></span>{companyName && <small className="crm-card__company">{companyName}</small>}<strong>{item.title}</strong><span className="agenda-card__lead">{item.lead.name}</span><span className="agenda-card__foot">{item.responsible.name}<em>{statusName[item.status]}</em></span></button>;
+  return <button type="button" className={`agenda-card agenda-card--${item.status.toLowerCase()}`} onClick={onOpen} aria-label={`Abrir reunião com ${item.lead.name}, ${formatMeetingTime(item.startsAt, timezone)}${companyName ? `, ${companyName}` : ''}`}><span className="agenda-card__time">{time}</span>{companyName && <small className="crm-card__company">{companyName}</small>}<strong>{item.lead.name}</strong><span className="agenda-card__foot">{item.responsible.name}<em>{statusName[item.status]}</em></span></button>;
 }
 
 function SettingsForm({ current, canEdit, busy, onSubmit }: { current: MeetingSettings; canEdit: boolean; busy: boolean; onSubmit: (input: Parameters<typeof api.updateMeetingSettings>[1]) => void }) {

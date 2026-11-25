@@ -95,20 +95,9 @@
 
 .crm-modal-backdrop{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;background:#10252fb3;backdrop-filter:blur(2px)}
 .crm-modal{display:flex;width:min(900px,100%);max-height:calc(100dvh - 48px);flex-direction:column;overflow:hidden;border:1px solid #bfcfd6;border-radius:8px;background:#fff;box-shadow:0 28px 85px #071c2660}
-.crm-opportunity-backdrop{width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;overflow:hidden}
+.crm-opportunity-backdrop{width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;overflow:hidden;overscroll-behavior:contain}
 .crm-opportunity-backdrop:not([open]){display:none}
 .crm-opportunity-backdrop::backdrop{background:transparent}
-.crm-lead-backdrop {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  border: 0;
-  overflow: hidden;
-}
-.crm-lead-backdrop:not([open]) { display: none; }
-.crm-lead-backdrop::backdrop { background: transparent; }
 .crm-lead-form__body { padding-top: 24px; overscroll-behavior: contain; }
 .crm-lead-form__notes { resize: none !important; }
 :is(.crm-lead-form,.crm-opportunity-modal) .sale-select { position: relative; min-width: 0; }

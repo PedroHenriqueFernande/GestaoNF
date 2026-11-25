@@ -1,0 +1,6 @@
+ALTER TABLE "crm_activities" DROP CONSTRAINT "crm_activities_kind_chk";--> statement-breakpoint
+ALTER TABLE "crm_proposals" ADD COLUMN "deleted_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "crm_proposals" ADD COLUMN "deleted_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "crm_proposals" ADD CONSTRAINT "crm_proposals_deleter_fk" FOREIGN KEY ("company_id","deleted_by_user_id") REFERENCES "public"."company_users"("company_id","user_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "crm_activities" ADD CONSTRAINT "crm_activities_kind_chk" CHECK ("crm_activities"."kind" IN ('CONTACT_CREATED','ENTRY_RECEIVED','OPPORTUNITY_CREATED','CONTACT_UPDATED','ASSIGNED','STAGE_CHANGED','STATUS_CHANGED','NOTE_ADDED','CUSTOMER_LINKED','ARCHIVED','RESTORED','MEETING_CREATED','MEETING_UPDATED','MEETING_RESCHEDULED','MEETING_STATUS_CHANGED','PROPOSAL_CREATED','PROPOSAL_UPDATED','PROPOSAL_SENT','PROPOSAL_ACCEPTED','PROPOSAL_DECLINED','PROPOSAL_CONVERTED','PROPOSAL_DELETED'));--> statement-breakpoint
+ALTER TABLE "crm_proposals" ADD CONSTRAINT "crm_proposals_deleted_chk" CHECK (("crm_proposals"."deleted_at" IS NULL) = ("crm_proposals"."deleted_by_user_id" IS NULL) AND ("crm_proposals"."deleted_at" IS NULL OR "crm_proposals"."status" <> 'CONVERTED'));

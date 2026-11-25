@@ -51,7 +51,7 @@ export class MeetingReminderService {
         if (status === 'DELIVERED') {
           const when = new Intl.DateTimeFormat('pt-BR', { timeZone: meeting.timezone, dateStyle: 'short', timeStyle: 'short' }).format(meeting.startsAt);
           await tx.insert(userNotifications).values({ companyId: meeting.companyId, recipientUserId: occurrence.recipientUserId, meetingId: meeting.id, occurrenceId: occurrence.id,
-            title: 'Reunião agendada', body: `${meeting.title} começa em ${when}.` }).onConflictDoNothing({ target: userNotifications.occurrenceId });
+            title: 'Reunião agendada', body: `Sua reunião começa em ${when}.` }).onConflictDoNothing({ target: userNotifications.occurrenceId });
         }
         await tx.update(occurrences).set({ status, deliveredAt: status === 'DELIVERED' ? now : null }).where(eq(occurrences.id, occurrence.id));
         return status;

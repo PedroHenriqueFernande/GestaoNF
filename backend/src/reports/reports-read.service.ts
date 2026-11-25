@@ -137,11 +137,11 @@ export class ReportsReadService {
         summary: sql`SELECT count(*)::int AS entries, count(DISTINCT "contactId")::int AS "uniqueLeads" FROM report_rows` };
     }
     if (type === 'meetings') {
-      const terms = [sql`m.company_id=${a.companyId}::uuid`, this.period(sql`m.starts_at`,input,a), textMatch(input,[sql`m.title`,sql`c.name`])];
+      const terms = [sql`m.company_id=${a.companyId}::uuid`, this.period(sql`m.starts_at`,input,a), textMatch(input,[sql`c.name`])];
       if (input.assignedUserId) terms.push(sql`m.assigned_user_id=${input.assignedUserId}::uuid`);
       if (input.status !== 'ALL') terms.push(sql`m.status=${input.status}`);
       return { rows: sql`SELECT m.id, m.starts_at AS "_order", ${iso(sql`m.starts_at`)} AS "_sort", ${iso(sql`m.starts_at`)} AS "startsAt", ${iso(sql`m.ends_at`)} AS "endsAt",
-        m.title, m.status, m.modality, c.name AS "contactName", c.id AS "contactId", u.name AS "userName"
+        m.status, c.name AS "contactName", c.id AS "contactId", u.name AS "userName"
         FROM crm_meetings m JOIN crm_contacts c ON c.company_id=m.company_id AND c.id=m.contact_id
         JOIN users u ON u.id=m.assigned_user_id WHERE ${all(terms)}`,
         summary: sql`SELECT count(*)::int AS total, count(*) FILTER(WHERE status='COMPLETED')::int AS completed, count(*) FILTER(WHERE status='CANCELED')::int AS canceled,

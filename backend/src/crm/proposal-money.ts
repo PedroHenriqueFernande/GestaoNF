@@ -16,9 +16,3 @@ export function proposalTotals(items: { grossAmount: string; discountAmount: str
   return { subtotalAmount: amount(gross), discountAmount: amount(discount), totalAmount: amount(gross - discount) };
 }
 export const proposalCode = (n: number) => `P-${String(n).padStart(6, '0')}`;
-export function proposalToday(timezone: string, now = new Date()) {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-}
-export function effectiveProposalStatus(p: { status: string; validUntil: string | null }, timezone: string, now = new Date()) {
-  return p.status === 'SENT' && p.validUntil && p.validUntil < proposalToday(timezone, now) ? 'EXPIRED' : p.status;
-}

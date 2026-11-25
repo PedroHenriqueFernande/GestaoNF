@@ -87,7 +87,7 @@ const LABELS: Record<string, string> = {
   PF: 'pessoa física', PJ: 'pessoa jurídica',
   PIX: 'Pix', CASH: 'dinheiro', CREDIT_CARD: 'cartão de crédito', DEBIT_CARD: 'cartão de débito', BOLETO: 'boleto', TRANSFER: 'transferência', OTHER: 'outra forma',
   PENDING: 'pendente', PARTIAL: 'parcial', PARTIALLY_PAID: 'parcialmente paga', PAID: 'paga', OVERDUE: 'vencida',
-  SCHEDULED: 'agendada', COMPLETED: 'realizada', NO_SHOW: 'não compareceu', IN_PERSON: 'presencial', ONLINE: 'online',
+  SCHEDULED: 'agendada', COMPLETED: 'realizada', NO_SHOW: 'não compareceu',
   RECEIPT: 'recebimento', REVERSAL: 'estorno',
   NEW: 'novo', CONTACTING: 'em contato', QUALIFIED: 'qualificado', DISQUALIFIED: 'desqualificado', LOST: 'perdido', WON: 'ganho',
   MANUAL: 'manual', FORM: 'formulário', META_ADS: 'Meta Ads', GOOGLE_ADS: 'Google Ads', IMPORT: 'importação', NERO: 'Nero', API: 'integração',

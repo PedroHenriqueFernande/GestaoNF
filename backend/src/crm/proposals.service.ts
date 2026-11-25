@@ -1,7 +1,7 @@
 import { ConflictException, Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { companies, customers, crmContacts, crmOpportunities, crmPipelineStages, crmProposalCommands, crmProposalCounters, crmProposalEvents, crmProposalItems, crmProposals, crmSettings, sales } from '@gestaonf/database/schema';
-import { and, asc, count, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, getTableColumns, isNull, sql } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { createCustomerSchema } from '../customers/customers.schemas.js';
@@ -14,14 +14,22 @@ import { CrmHistoryService } from './crm-history.service.js';
 import { LeadCaptureService } from './lead-capture.service.js';
 import { commandHash, lockKeys, type CrmDb, type CrmTx } from './crm-normalization.js';
 import { createLeadSchema, createEntrySchema, keySchema, type CrmContext } from './crm.schemas.js';
-import { effectiveProposalStatus, proposalAmounts, proposalCode, proposalToday, proposalTotals } from './proposal-money.js';
-import { createProposalSchema, updateProposalSchema, proposalCommandSchema, declineProposalSchema, duplicateProposalSchema, proposalSettingsSchema, type CreateProposal, type UpdateProposal, type ProposalItemInput } from './proposal.schemas.js';
+import { proposalAmounts, proposalCode, proposalTotals } from './proposal-money.js';
+import { createProposalSchema, updateProposalSchema, proposalCommandSchema, declineProposalSchema, proposalSettingsSchema, type CreateProposal, type UpdateProposal, type ProposalItemInput } from './proposal.schemas.js';
 import { parseInput } from '../common/validate.js';
 import type { ProposalSnapshot } from './proposal.types.js';
 
 type Proposal = typeof crmProposals.$inferSelect;
 type Contact = typeof crmContacts.$inferSelect;
 const failure = (code: string, message: string) => new UnprocessableEntityException({ code, message });
+const proposalColumns = new Set(Object.keys(getTableColumns(crmProposals)));
+
+function publicEventData(data: Record<string, unknown> | null) {
+  const proposal = data?.proposal;
+  if (!proposal || typeof proposal !== 'object') return data;
+  const header = Object.fromEntries(Object.entries(proposal).filter(([key]) => proposalColumns.has(key)));
+  return { ...data, proposal: header };
+}
 
 /** Termos de preço do item da proposta no formato da regra única (D6): o desconto é o termo digitado, e o tipo entra na comparação. */
 const pricedTerms = (i: { serviceId: string; quantity: string; unitPrice: string; discountType: string; discountInput: string }): PricedItem =>
@@ -36,7 +44,7 @@ export class ProposalsService {
   async row(a: CrmAccess, id: string, db: CrmDb = this.database.db, lock = false) {
     const query = db.select({ proposal: crmProposals }).from(crmProposals).innerJoin(crmOpportunities,
       and(eq(crmOpportunities.companyId, crmProposals.companyId), eq(crmOpportunities.id, crmProposals.opportunityId)))
-      .where(and(eq(crmProposals.companyId, a.companyId), eq(crmProposals.id, id), this.policy.opportunityScope(a))).limit(1);
+      .where(and(eq(crmProposals.companyId, a.companyId), eq(crmProposals.id, id), isNull(crmProposals.deletedAt), this.policy.opportunityScope(a))).limit(1);
     const [r] = await (lock ? query.for('update', { of: crmProposals }) : query);
     if (!r) throw new NotFoundException('Proposta não encontrada');
     return r.proposal;
@@ -96,8 +104,8 @@ export class ProposalsService {
     }
     requirePermission(a.actor, 'customers.create', 'POST /crm/proposals');
     const data = createCustomerSchema.safeParse({
-      name: contact.taxIdKind === 'PJ' ? contact.organizationName ?? contact.name : contact.name,
-      taxId: contact.taxId, email: contact.email, phone: contact.phone, ...input.newCustomer, status: 'ACTIVE' });
+      taxId: contact.taxId, email: contact.email, phone: contact.phone,
+      ...input.newCustomer, name: contact.name, status: 'ACTIVE' });
     if (!data.success) throw failure('PROPOSAL_CUSTOMER_DETAILS_REQUIRED', 'Informe os dados válidos do cliente antes de salvar a proposta');
     if (data.data.taxId) {
       const [existing] = await tx.select({ id: customers.id }).from(customers).where(and(eq(customers.companyId, a.companyId), eq(customers.taxId, data.data.taxId))).limit(1);
@@ -120,7 +128,7 @@ export class ProposalsService {
     const contacts = await tx.select().from(crmContacts).where(and(this.policy.contactScope(a), eq(crmContacts.customerId, customer.id), isNull(crmContacts.archivedAt), input.contactId ? eq(crmContacts.id, input.contactId) : sql`true`)).limit(2);
     if (input.contactId && !contacts.length) throw new NotFoundException('Contato não encontrado para este cliente');
     if (contacts.length > 1) throw failure('PROPOSAL_CONTACT_REQUIRED', 'Selecione o contato para criar a negociação');
-    const common = { title: input.title, interest: { primaryServiceId: input.items[0].serviceId }, assignedUserId: a.userId };
+    const common = { interest: { primaryServiceId: input.items[0].serviceId }, assignedUserId: a.userId };
     const captureKey = commandHash({ proposalCreationKey: key, actor: a.userId });
     const capture = contacts.length ? await this.capture.captureInTx(a, createEntrySchema.parse(common), captureKey, tx, contacts[0].id)
       : await this.capture.captureInTx(a, createLeadSchema.parse({ ...common, lead: { name: customer.name, organizationName: customer.tradeName, taxId: customer.taxId, taxIdKind: customer.taxId ? customer.kind : null, email: customer.email, phone: customer.phone } }), captureKey, tx);
@@ -140,12 +148,12 @@ export class ProposalsService {
       const [counter] = await tx.insert(crmProposalCounters).values({ companyId: a.companyId, nextNumber: 2 })
         .onConflictDoUpdate({ target: crmProposalCounters.companyId, set: { nextNumber: sql`${crmProposalCounters.nextNumber} + 1` } }).returning();
       const [p] = await tx.insert(crmProposals).values({ companyId: a.companyId, proposalNumber: counter.nextNumber - 1, contactId: contact.id, opportunityId: opportunity.id, customerId: customer.id,
-        title: input.title ?? opportunity.title, recipientName: customer.name, recipientOrganization: contact.organizationName,
-        recipientEmail: customer.email, recipientTaxId: customer.taxId, commercialDescription: input.commercialDescription,
-        paymentTerms: input.paymentTerms, notes: input.notes, terms: input.terms, validUntil: input.validUntil, ...totals, createdByUserId: a.userId }).returning();
+        recipientName: customer.name, recipientOrganization: contact.organizationName, recipientEmail: customer.email, recipientTaxId: customer.taxId,
+        ...totals, createdByUserId: a.userId }).returning();
       await tx.insert(crmProposalItems).values(rows.map(r => ({ ...r, proposalId: p.id })));
       await this.event(a, tx, p, 'CREATED', null, { proposal: p, items: rows });
-      return this.result(p);
+      // Criar já emite: a proposta nasce com o documento congelado e pronta para o PDF.
+      return this.result(await this.issue(a, tx, p, opportunity, customer.id));
     });
   }
   private result(p: Proposal) { return { proposalId: p.id, proposalNumber: p.proposalNumber, proposalCode: proposalCode(p.proposalNumber), customerId: p.customerId, status: p.status, version: p.version, totalAmount: p.totalAmount }; }
@@ -158,13 +166,14 @@ export class ProposalsService {
     const a = await this.policy.access(ctx), p = await this.row(a, id);
     const [items, [sale]] = await Promise.all([this.database.db.select().from(crmProposalItems).where(and(eq(crmProposalItems.companyId, a.companyId), eq(crmProposalItems.proposalId, id))).orderBy(asc(crmProposalItems.position)),
       this.database.db.select({ id: sales.id, orderCode: sales.orderCode, status: sales.status }).from(sales).where(and(eq(sales.companyId, a.companyId), eq(sales.sourceProposalId, id))).limit(1)]);
-    return { ...p, proposalCode: proposalCode(p.proposalNumber), effectiveStatus: effectiveProposalStatus(p, a.timezone), items, sale: sale ?? null };
+    const { issuedSnapshot: _snapshot, issuedHash: _hash, ...proposal } = p;
+    return { ...proposal, proposalCode: proposalCode(p.proposalNumber), items, sale: sale ?? null };
   }
   async events(ctx: CrmContext, id: string, limit: number, offset: number) {
     const a = await this.policy.access(ctx); await this.row(a, id);
     const filter = and(eq(crmProposalEvents.companyId, a.companyId), eq(crmProposalEvents.proposalId, id));
     const [items, [total]] = await Promise.all([this.database.db.select().from(crmProposalEvents).where(filter).orderBy(desc(crmProposalEvents.recordedAt), desc(crmProposalEvents.id)).limit(limit).offset(offset), this.database.db.select({ n: count() }).from(crmProposalEvents).where(filter)]);
-    return { items, total: total.n, limit, offset };
+    return { items: items.map(event => ({ ...event, before: publicEventData(event.before), after: publicEventData(event.after) })), total: total.n, limit, offset };
   }
   async update(ctx: CrmContext, id: string, raw: UpdateProposal) {
     const input = parseInput(updateProposalSchema, raw);
@@ -174,13 +183,10 @@ export class ProposalsService {
       const opportunity = await this.policy.opportunity(a, p.opportunityId, tx, true); if (opportunity.archivedAt) throw failure('PROPOSAL_OPPORTUNITY_ARCHIVED', 'Restaure a negociação');
       const contact = await this.policy.contact(a, p.contactId, tx); this.policy.activeContact(contact);
       const beforeItems = await tx.select().from(crmProposalItems).where(and(eq(crmProposalItems.companyId, a.companyId), eq(crmProposalItems.proposalId, id))).orderBy(asc(crmProposalItems.position));
-      const { expectedVersion: _, items, ...patch } = input;
-      const rows = items ? await this.items(a, items, tx, 'PATCH /crm/proposals/:id', beforeItems.map(pricedTerms)) : beforeItems;
-      const [updated] = await tx.update(crmProposals).set({ ...patch, ...proposalTotals(rows), version: p.version + 1, updatedAt: new Date() }).where(eq(crmProposals.id, id)).returning();
-      if (items) {
-        await tx.delete(crmProposalItems).where(and(eq(crmProposalItems.companyId, a.companyId), eq(crmProposalItems.proposalId, id)));
-        await tx.insert(crmProposalItems).values(rows.map(r => ({ ...r, proposalId: id })));
-      }
+      const rows = await this.items(a, input.items, tx, 'PATCH /crm/proposals/:id', beforeItems.map(pricedTerms));
+      const [updated] = await tx.update(crmProposals).set({ ...proposalTotals(rows), version: p.version + 1, updatedAt: new Date() }).where(eq(crmProposals.id, id)).returning();
+      await tx.delete(crmProposalItems).where(and(eq(crmProposalItems.companyId, a.companyId), eq(crmProposalItems.proposalId, id)));
+      await tx.insert(crmProposalItems).values(rows.map(r => ({ ...r, proposalId: id })));
       await this.event(a, tx, updated, 'UPDATED', { proposal: p, items: beforeItems }, { proposal: updated, items: rows });
       return this.result(updated);
     });
@@ -189,16 +195,17 @@ export class ProposalsService {
     const [company] = await db.select().from(companies).where(eq(companies.id, a.companyId)).limit(1);
     const [customer] = await db.select().from(customers).where(and(eq(customers.companyId, a.companyId), eq(customers.id, p.customerId))).limit(1);
     const items = await db.select().from(crmProposalItems).where(and(eq(crmProposalItems.companyId, a.companyId), eq(crmProposalItems.proposalId, p.id))).orderBy(asc(crmProposalItems.position));
-    return { templateVersion: 1, proposalId: p.id, proposalCode: proposalCode(p.proposalNumber), title: p.title, currency: 'BRL', issuedAt: now.toISOString(),
+    return { templateVersion: 2, proposalId: p.id, proposalCode: proposalCode(p.proposalNumber), currency: 'BRL', issuedAt: now.toISOString(),
       issuer: { name: company.tradeName, legalName: company.legalName, taxId: company.taxId },
       recipient: { customerId: p.customerId, name: p.recipientName, kind: customer.kind, organization: p.recipientOrganization, email: p.recipientEmail, taxId: p.recipientTaxId },
-      commercialDescription: p.commercialDescription, paymentTerms: p.paymentTerms, notes: p.notes, terms: p.terms, validUntil: p.validUntil,
       subtotalAmount: p.subtotalAmount, discountAmount: p.discountAmount, totalAmount: p.totalAmount,
       items: items.map(({ id: _id, proposalId: _p, companyId: _c, position: _n, ...i }) => i) };
   }
   async preview(ctx: CrmContext, id: string) {
     const a = await this.policy.access(ctx), p = await this.row(a, id);
-    return { draft: p.status === 'DRAFT', snapshot: p.issuedSnapshot ? p.issuedSnapshot as unknown as ProposalSnapshot : await this.snapshot(a, p, this.database.db, new Date()) };
+    const { templateVersion, proposalId, proposalCode, currency, issuedAt, issuer, recipient, subtotalAmount, discountAmount, totalAmount, items } =
+      p.issuedSnapshot ? p.issuedSnapshot as unknown as ProposalSnapshot : await this.snapshot(a, p, this.database.db, new Date());
+    return { draft: p.status === 'DRAFT', snapshot: { templateVersion, proposalId, proposalCode, currency, issuedAt, issuer, recipient, subtotalAmount, discountAmount, totalAmount, items } };
   }
   transition(ctx: CrmContext, id: string, action: 'send' | 'accept' | 'decline', raw: { expectedVersion: number; reason?: string | null }, key: string) {
     const input = parseInput(action === 'decline' ? declineProposalSchema : proposalCommandSchema, raw);
@@ -206,35 +213,46 @@ export class ProposalsService {
       const p = await this.row(a, id, tx, true); this.version(p, input.expectedVersion);
       const opportunity = await this.policy.opportunity(a, p.opportunityId, tx, true), contact = await this.policy.contact(a, p.contactId, tx); this.policy.activeContact(contact);
       if (opportunity.archivedAt) throw failure('PROPOSAL_OPPORTUNITY_ARCHIVED', 'Restaure a negociação');
-      if (effectiveProposalStatus(p, a.timezone) === 'EXPIRED') throw new ConflictException({ code: 'PROPOSAL_EXPIRED', message: 'Proposta vencida. Duplique e reenvie.' });
       if (p.status !== (action === 'send' ? 'DRAFT' : 'SENT')) throw new ConflictException('Estado incompatível com esta ação');
-      const now = new Date(); let patch: Partial<typeof crmProposals.$inferInsert>;
-      if (action === 'send') {
-        if (p.totalAmount === '0.00') throw failure('PROPOSAL_TOTAL_REQUIRED', 'Proposta deve ter valor total positivo');
-        if (p.validUntil && p.validUntil < proposalToday(a.timezone)) throw failure('PROPOSAL_EXPIRED', 'Validade anterior ao dia de envio');
-        const [c] = await tx.select().from(customers).where(and(eq(customers.companyId, a.companyId), eq(customers.id, p.customerId))).for('share').limit(1);
-        if (c.status !== 'ACTIVE' || contact.customerId !== p.customerId) throw failure('PROPOSAL_CUSTOMER_INVALID', 'Revise o vínculo com o cliente ativo');
-        const snapshot = await this.snapshot(a, p, tx, now);
-        for (const item of snapshot.items) await this.policy.service(a, item.serviceId, tx);
-        patch = { status: 'SENT', sentAt: now, issuedSnapshot: snapshot as unknown as Record<string, unknown>, issuedHash: commandHash(snapshot) };
-      } else patch = action === 'accept' ? { status: 'ACCEPTED', acceptedAt: now } : { status: 'DECLINED', declinedAt: now, declineReason: 'reason' in input && typeof input.reason === 'string' ? input.reason : null };
+      if (action === 'send') return this.result(await this.issue(a, tx, p, opportunity, contact.customerId));
+      const now = new Date();
+      const patch: Partial<typeof crmProposals.$inferInsert> = action === 'accept' ? { status: 'ACCEPTED', acceptedAt: now } : { status: 'DECLINED', declinedAt: now, declineReason: 'reason' in input && typeof input.reason === 'string' ? input.reason : null };
       const [updated] = await tx.update(crmProposals).set({ ...patch, version: p.version + 1, updatedAt: now }).where(eq(crmProposals.id, id)).returning();
-      if (action === 'send') {
-        const settings = await this.settingsInTx(a, tx);
-        if (settings.proposalSentStageId && !['WON', 'LOST', 'DISQUALIFIED'].includes(opportunity.commercialStatus)) {
-          const [stage] = await tx.select().from(crmPipelineStages).where(and(eq(crmPipelineStages.companyId, a.companyId), eq(crmPipelineStages.id, settings.proposalSentStageId), eq(crmPipelineStages.pipelineId, opportunity.pipelineId), isNull(crmPipelineStages.archivedAt))).limit(1);
-          if (stage && stage.id !== opportunity.stageId) {
-            await tx.update(crmOpportunities).set({ stageId: stage.id, version: opportunity.version + 1, updatedAt: now }).where(eq(crmOpportunities.id, opportunity.id));
-            await this.history.record(tx, a, { contactId: p.contactId, opportunityId: p.opportunityId, kind: 'STAGE_CHANGED', changes: { before: opportunity.stageId, after: stage.id }, causeReference: `proposal:${id}` });
-          }
-        }
-      }
-      await this.event(a, tx, updated, action === 'send' ? 'SENT' : action === 'accept' ? 'ACCEPTED' : 'DECLINED', { status: p.status }, { status: updated.status }, updated.declineReason);
+      await this.event(a, tx, updated, action === 'accept' ? 'ACCEPTED' : 'DECLINED', { status: p.status }, { status: updated.status }, updated.declineReason);
       return this.result(updated);
     });
   }
-  duplicate(ctx: CrmContext, id: string, raw: { expectedVersion: number; validUntil?: string | null }, key: string) {
-    const input = parseInput(duplicateProposalSchema, raw);
+  /** Emite o rascunho: congela o documento (base do PDF e da conversão), marca como enviada e aplica a etapa configurada do funil. */
+  private async issue(a: CrmAccess, tx: CrmTx, p: Proposal, opportunity: { id: string; pipelineId: string; stageId: string; commercialStatus: string; version: number }, contactCustomerId: string | null) {
+    if (p.totalAmount === '0.00') throw failure('PROPOSAL_TOTAL_REQUIRED', 'Proposta deve ter valor total positivo');
+    const [c] = await tx.select().from(customers).where(and(eq(customers.companyId, a.companyId), eq(customers.id, p.customerId))).for('share').limit(1);
+    if (c.status !== 'ACTIVE' || contactCustomerId !== p.customerId) throw failure('PROPOSAL_CUSTOMER_INVALID', 'Revise o vínculo com o cliente ativo');
+    const now = new Date(), snapshot = await this.snapshot(a, p, tx, now);
+    for (const item of snapshot.items) await this.policy.service(a, item.serviceId, tx);
+    const [updated] = await tx.update(crmProposals).set({ status: 'SENT', sentAt: now, issuedSnapshot: snapshot as unknown as Record<string, unknown>, issuedHash: commandHash(snapshot), version: p.version + 1, updatedAt: now }).where(eq(crmProposals.id, p.id)).returning();
+    const settings = await this.settingsInTx(a, tx);
+    if (settings.proposalSentStageId && !['WON', 'LOST', 'DISQUALIFIED'].includes(opportunity.commercialStatus)) {
+      const [stage] = await tx.select().from(crmPipelineStages).where(and(eq(crmPipelineStages.companyId, a.companyId), eq(crmPipelineStages.id, settings.proposalSentStageId), eq(crmPipelineStages.pipelineId, opportunity.pipelineId), isNull(crmPipelineStages.archivedAt))).limit(1);
+      if (stage && stage.id !== opportunity.stageId) {
+        await tx.update(crmOpportunities).set({ stageId: stage.id, version: opportunity.version + 1, updatedAt: now }).where(eq(crmOpportunities.id, opportunity.id));
+        await this.history.record(tx, a, { contactId: p.contactId, opportunityId: p.opportunityId, kind: 'STAGE_CHANGED', changes: { before: opportunity.stageId, after: stage.id }, causeReference: `proposal:${p.id}` });
+      }
+    }
+    await this.event(a, tx, updated, 'SENT', { status: p.status }, { status: updated.status });
+    return updated;
+  }
+  /** Exclusão lógica. Proposta convertida em pedido não pode ser excluída. */
+  async remove(ctx: CrmContext, id: string) {
+    await this.database.db.transaction(async tx => {
+      const a = await this.policy.access(ctx, tx), p = await this.row(a, id, tx, true);
+      if (p.status === 'CONVERTED') throw new ConflictException({ code: 'PROPOSAL_CONVERTED', message: 'Proposta convertida em pedido não pode ser excluída.' });
+      const now = new Date();
+      const [deleted] = await tx.update(crmProposals).set({ deletedAt: now, deletedByUserId: a.userId, version: p.version + 1, updatedAt: now }).where(eq(crmProposals.id, id)).returning();
+      await this.event(a, tx, deleted, 'DELETED', { status: p.status }, { deleted: true });
+    });
+  }
+  duplicate(ctx: CrmContext, id: string, raw: { expectedVersion: number }, key: string) {
+    const input = parseInput(proposalCommandSchema, raw);
     return this.command(ctx, `duplicate:${id}`, key, input, async (a, tx) => {
       const p = await this.row(a, id, tx, true); this.version(p, input.expectedVersion);
       const opportunity = await this.policy.opportunity(a, p.opportunityId, tx, true);
@@ -247,8 +265,7 @@ export class ProposalsService {
       const rows = await this.items(a, sourceItems, tx, 'POST /crm/proposals/:id/duplicate', sourceItems.map(pricedTerms));
       const [counter] = await tx.insert(crmProposalCounters).values({ companyId: a.companyId, nextNumber: 2 }).onConflictDoUpdate({ target: crmProposalCounters.companyId, set: { nextNumber: sql`${crmProposalCounters.nextNumber} + 1` } }).returning();
       const [copy] = await tx.insert(crmProposals).values({ companyId: a.companyId, contactId: p.contactId, opportunityId: p.opportunityId, customerId: p.customerId, proposalNumber: counter.nextNumber - 1,
-        replacesProposalId: p.id, title: p.title, recipientName: p.recipientName, recipientEmail: p.recipientEmail, recipientOrganization: p.recipientOrganization, recipientTaxId: p.recipientTaxId,
-        commercialDescription: source.commercialDescription, paymentTerms: source.paymentTerms, notes: source.notes, terms: source.terms, validUntil: input.validUntil ?? null,
+        replacesProposalId: p.id, recipientName: p.recipientName, recipientEmail: p.recipientEmail, recipientOrganization: p.recipientOrganization, recipientTaxId: p.recipientTaxId,
         ...proposalTotals(rows), createdByUserId: a.userId }).returning();
       await tx.insert(crmProposalItems).values(rows.map(r => ({ ...r, proposalId: copy.id })));
       await this.event(a, tx, copy, 'CREATED', null, { replacesProposalId: id, items: rows });
@@ -269,7 +286,7 @@ export class ProposalsService {
       if (opportunity.archivedAt) throw failure('PROPOSAL_OPPORTUNITY_ARCHIVED', 'Restaure a negociação');
       const snapshot = p.issuedSnapshot as unknown as ProposalSnapshot;
       if (commandHash(snapshot) !== p.issuedHash) throw new ConflictException('Documento da proposta inconsistente');
-      const saleInput = createSaleSchema.parse({ customerId: p.customerId, notes: [`Proposta ${snapshot.proposalCode}`, snapshot.paymentTerms, snapshot.notes].filter(Boolean).join('\n').slice(0, 2000),
+      const saleInput = createSaleSchema.parse({ customerId: p.customerId, notes: `Proposta ${snapshot.proposalCode}`,
         items: snapshot.items.map(i => ({ serviceId: i.serviceId, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, description: i.descriptionSnapshot })), installments: [] });
       const sale = await this.saleService.createDraftInTx(tx, actor, randomUUID(), saleInput, { sourceProposalId: id, requestHash: commandHash({ proposalId: id, issuedHash: p.issuedHash }), frozenItems: snapshot.items }, 'POST /crm/proposals/:id/convert');
       const [updated] = await tx.update(crmProposals).set({ status: 'CONVERTED', convertedAt: new Date(), version: p.version + 1, updatedAt: new Date() }).where(eq(crmProposals.id, id)).returning();

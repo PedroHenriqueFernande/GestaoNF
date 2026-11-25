@@ -11,8 +11,8 @@ const statusLabels: Record<string, string> = {
   ACTIVE: 'Ativo', INACTIVE: 'Inativo', SCHEDULED: 'Agendada', COMPLETED: 'Realizada', CANCELED: 'Cancelada', NO_SHOW: 'Não compareceu',
   RECEIPT: 'Recebimento', REVERSAL: 'Estorno', MANUAL: 'Manual', FORM: 'Formulário', META_ADS: 'Meta Ads', GOOGLE_ADS: 'Google Ads',
   IMPORT: 'Importação', NERO: 'Nero', API: 'Integração', NEW: 'Novo', CONTACTING: 'Em contato', QUALIFIED: 'Qualificado',
-  DISQUALIFIED: 'Desqualificado', LOST: 'Perdido', WON: 'Ganho', PF: 'Pessoa física', PJ: 'Pessoa jurídica', ONLINE: 'Online',
-  IN_PERSON: 'Presencial', PIX: 'Pix', CASH: 'Dinheiro', CREDIT_CARD: 'Cartão de crédito', DEBIT_CARD: 'Cartão de débito',
+  DISQUALIFIED: 'Desqualificado', LOST: 'Perdido', WON: 'Ganho', PF: 'Pessoa física', PJ: 'Pessoa jurídica',
+  PIX: 'Pix', CASH: 'Dinheiro', CREDIT_CARD: 'Cartão de crédito', DEBIT_CARD: 'Cartão de débito',
   BOLETO: 'Boleto', TRANSFER: 'Transferência', OTHER: 'Outro',
 };
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });

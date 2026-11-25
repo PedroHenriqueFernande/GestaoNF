@@ -89,12 +89,17 @@ export function ServiceForm({ companyId, service, canEditPrice, onClose, onSave,
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const lockPageScroll = !nameRef.current?.closest('dialog:modal');
     const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (lockPageScroll) document.body.style.overflow = 'hidden';
     nameRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKeyDown);
-    return () => { document.body.style.overflow = originalOverflow; document.removeEventListener('keydown', onKeyDown); previous?.focus(); };
+    return () => {
+      if (lockPageScroll) document.body.style.overflow = originalOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+      previous?.focus();
+    };
   }, [onClose]);
 
   async function submit(values: Values) {

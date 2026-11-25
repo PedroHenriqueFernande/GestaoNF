@@ -323,6 +323,41 @@
       "when": 1795579136468,
       "tag": "0045_remove_crm_lead_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1795606595771,
+      "tag": "0046_remove_crm_meeting_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795608547352,
+      "tag": "0047_remove_crm_meeting_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795612305117,
+      "tag": "0048_remove_crm_proposal_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1795615729627,
+      "tag": "0049_soft_delete_crm_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795615907705,
+      "tag": "0050_crm_proposal_soft_delete_trigger",
+      "breakpoints": true
     }
   ]
 }

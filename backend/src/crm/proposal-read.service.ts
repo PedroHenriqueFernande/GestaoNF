@@ -1,18 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, customers, services, crmContacts, crmOpportunities, crmProposalItems, crmProposals } from '@gestaonf/database/schema';
-import { and, count, desc, eq, exists, gte, ilike, isNull, lte, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { customers, services, crmContacts, crmOpportunities, crmProposalItems, crmProposals } from '@gestaonf/database/schema';
+import { and, count, desc, eq, exists, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.module.js';
 import { CrmPolicyService } from './crm-policy.service.js';
-import { inCompanies, inCompanyZone, period } from './crm-query.js';
+import { inCompanies, period } from './crm-query.js';
 import { escapeLike } from './crm-normalization.js';
 import { proposalCode } from './proposal-money.js';
 import type { CrmContext } from './crm.schemas.js';
 import type { ProposalList, ProposalPrefill } from './proposal.schemas.js';
-
-const proposalZone = alias(companies, 'proposal_zone');
-/** Situação efetiva: SENT vira EXPIRED após o fim do dia da validade no fuso da empresa da proposta. Recebe a coluna de fuso já presente na consulta. */
-const effectiveStatus = (timezone: AnyColumn) => sql<string>`case when ${crmProposals.status} = 'SENT' and ${crmProposals.validUntil} < (CURRENT_TIMESTAMP AT TIME ZONE ${timezone})::date then 'EXPIRED' else ${crmProposals.status} end`;
 
 @Injectable()
 export class ProposalReadService {
@@ -26,19 +21,17 @@ export class ProposalReadService {
   }
   listConditions(companyIds: readonly string[], input: ProposalList) {
     const db = this.database.db;
-    const filters = [inCompanies(crmProposals.companyId, companyIds)];
-    if (input.status !== 'ALL') filters.push(inCompanyZone(crmProposals.companyId, timezone => sql`${effectiveStatus(timezone)} = ${input.status}`));
+    const filters = [inCompanies(crmProposals.companyId, companyIds), isNull(crmProposals.deletedAt)];
+    if (input.status !== 'ALL') filters.push(eq(crmProposals.status, input.status));
     if (input.opportunityId) filters.push(eq(crmProposals.opportunityId, input.opportunityId));
     if (input.contactId) filters.push(eq(crmProposals.contactId, input.contactId));
     if (input.customerId) filters.push(eq(crmProposals.customerId, input.customerId));
     if (input.assignedUserId) filters.push(eq(crmOpportunities.assignedUserId, input.assignedUserId));
     if (input.serviceId) filters.push(exists(db.select({ id: crmProposalItems.id }).from(crmProposalItems).where(and(eq(crmProposalItems.companyId, crmProposals.companyId), eq(crmProposalItems.proposalId, crmProposals.id), eq(crmProposalItems.serviceId, input.serviceId)))));
     filters.push(...period(crmProposals.createdAt, crmProposals.companyId, input));
-    if (input.validFrom) filters.push(gte(crmProposals.validUntil, input.validFrom));
-    if (input.validTo) filters.push(lte(crmProposals.validUntil, input.validTo));
     if (input.search) {
       const q = escapeLike(input.search);
-      filters.push(or(ilike(crmProposals.title, q), ilike(crmProposals.recipientName, q), ilike(crmContacts.name, q), sql`('P-' || lpad(${crmProposals.proposalNumber}::text, greatest(6, length(${crmProposals.proposalNumber}::text)), '0')) ilike ${q}`)!);
+      filters.push(or(ilike(crmProposals.recipientName, q), ilike(crmContacts.name, q), sql`('P-' || lpad(${crmProposals.proposalNumber}::text, greatest(6, length(${crmProposals.proposalNumber}::text)), '0')) ilike ${q}`)!);
     }
     return and(...filters);
   }
@@ -46,13 +39,13 @@ export class ProposalReadService {
     const db = this.database.db;
     const join = and(eq(crmOpportunities.companyId, crmProposals.companyId), eq(crmOpportunities.id, crmProposals.opportunityId));
     const [items, [summary]] = await Promise.all([
-      db.select({ proposal: crmProposals, effectiveStatus: effectiveStatus(proposalZone.timezone), contactName: crmContacts.name, assignedUserId: crmOpportunities.assignedUserId }).from(crmProposals)
-        .innerJoin(proposalZone, eq(proposalZone.id, crmProposals.companyId)).innerJoin(crmOpportunities, join).innerJoin(crmContacts, and(eq(crmContacts.companyId, crmProposals.companyId), eq(crmContacts.id, crmProposals.contactId)))
+      db.select({ proposal: crmProposals, contactName: crmContacts.name, assignedUserId: crmOpportunities.assignedUserId }).from(crmProposals)
+        .innerJoin(crmOpportunities, join).innerJoin(crmContacts, and(eq(crmContacts.companyId, crmProposals.companyId), eq(crmContacts.id, crmProposals.contactId)))
         .where(filter).orderBy(desc(crmProposals.createdAt), desc(crmProposals.id)).limit(input.limit).offset(input.offset),
       db.select({ total: count(), totalAmount: sql<string>`coalesce(sum(${crmProposals.totalAmount}), 0)::text`,
-        sent: sql<number>`count(*) filter (where ${effectiveStatus(proposalZone.timezone)} = 'SENT')::integer`, expired: sql<number>`count(*) filter (where ${effectiveStatus(proposalZone.timezone)} = 'EXPIRED')::integer`,
-        accepted: sql<number>`count(*) filter (where ${effectiveStatus(proposalZone.timezone)} = 'ACCEPTED')::integer`, converted: sql<number>`count(*) filter (where ${effectiveStatus(proposalZone.timezone)} = 'CONVERTED')::integer` })
-        .from(crmProposals).innerJoin(proposalZone, eq(proposalZone.id, crmProposals.companyId)).innerJoin(crmOpportunities, join).innerJoin(crmContacts, and(eq(crmContacts.companyId, crmProposals.companyId), eq(crmContacts.id, crmProposals.contactId))).where(filter),
+        sent: sql<number>`count(*) filter (where ${crmProposals.status} = 'SENT')::integer`,
+        accepted: sql<number>`count(*) filter (where ${crmProposals.status} = 'ACCEPTED')::integer`, converted: sql<number>`count(*) filter (where ${crmProposals.status} = 'CONVERTED')::integer` })
+        .from(crmProposals).innerJoin(crmOpportunities, join).innerJoin(crmContacts, and(eq(crmContacts.companyId, crmProposals.companyId), eq(crmContacts.id, crmProposals.contactId))).where(filter),
     ]);
     return { items: items.map(({ proposal: { issuedSnapshot: _s, issuedHash: _h, ...p }, ...rest }) => ({ ...p, ...rest, proposalCode: proposalCode(p.proposalNumber) })), total: summary.total, summary, limit: input.limit, offset: input.offset };
   }
@@ -76,8 +69,8 @@ export class ProposalReadService {
     const [service] = opportunity.primaryServiceId ? await db.select().from(services).where(and(eq(services.companyId, a.companyId), eq(services.id, opportunity.primaryServiceId), eq(services.status, 'ACTIVE'))).limit(1) : [];
     const candidates = !customer ? await db.select({ id: customers.id, name: customers.name, kind: customers.kind, taxId: customers.taxId, status: customers.status }).from(customers).where(and(eq(customers.companyId, a.companyId), or(
       eq(customers.name, contact.name), ...(contact.taxId ? [eq(customers.taxId, contact.taxId)] : []), ...(contact.email ? [eq(customers.email, contact.email)] : []), ...(contact.phone ? [eq(customers.phone, contact.phone)] : [])))).limit(20) : [];
-    return { contact, opportunity, customer: customer ?? null, customerCandidates: candidates,
-      customerDraft: { kind: contact.taxIdKind, name: contact.taxIdKind === 'PJ' ? contact.organizationName ?? contact.name : contact.name, taxId: contact.taxId, email: contact.email, phone: contact.phone },
+    return { contact, customer: customer ?? null, customerCandidates: candidates,
+      customerDraft: { kind: contact.taxIdKind, taxId: contact.taxId, email: contact.email, phone: contact.phone },
       service: service ?? null,
       suggestedItems: service ? [{ serviceId: service.id, quantity: '1.0000', unitPrice: service.suggestedUnitPrice, discountType: 'AMOUNT', discountInput: '0.00' }] : [],
       requiresCustomerDetails: !customer && !contact.name.trim(), requiresServiceSelection: !service };

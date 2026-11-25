@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronDown, Megaphone, X } from 'lucide-react';
+import { ChevronDown, Megaphone } from 'lucide-react';
 import { api, ApiError, type CrmCreateResult, type CrmLeadInput, type Service } from '../../api/client';
+import { RegistrationDialog } from '../../components/RegistrationDialog';
 import { SaleDropdown } from '../sales/SaleDropdown';
 import { ServiceCreateModal } from '../services/ServiceCreateModal';
 import { usePermissions } from '../permissions/usePermissions';
@@ -23,7 +24,6 @@ export function CrmLeadModal({ companyId, companyChoice, onClose, onCreated }: {
   const [validation, setValidation] = useState('');
   const [quickServiceOpen, setQuickServiceOpen] = useState(false);
   const [createdServices, setCreatedServices] = useState<Service[]>([]);
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const quickServiceTrigger = useRef<HTMLButtonElement>(null);
   const access = usePermissions(companyId);
   const canReadServices = access.can('services.access');
@@ -36,27 +36,10 @@ export function CrmLeadModal({ companyId, companyChoice, onClose, onCreated }: {
   const create = useMutation({ mutationFn: (input: CrmLeadInput) => api.createCrmLead(companyId, input, crypto.randomUUID()), onSuccess: onCreated });
   const busy = create.isPending;
   useLayoutEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    dialog.showModal();
-    dialog.querySelector<HTMLElement>('.drawer__body :is(input, select):not(:disabled)')?.focus();
-    return () => {
-      dialog.close();
-      document.body.style.overflow = overflow;
-    };
-  }, []);
-
-  useLayoutEffect(() => {
     if (quickServiceOpen) return;
     quickServiceTrigger.current?.focus();
     quickServiceTrigger.current = null;
   }, [quickServiceOpen]);
-
-  function requestClose() {
-    if (!busy && !quickServiceOpen) onClose();
-  }
 
   const set = (key: keyof FormState, value: string) => { setForm((current) => ({ ...current, [key]: value })); setValidation(''); };
   function submit(event: FormEvent) {
@@ -70,18 +53,21 @@ export function CrmLeadModal({ companyId, companyChoice, onClose, onCreated }: {
     };
     create.mutate(input);
   }
-  return <dialog
-    ref={dialogRef}
-    className="drawer-backdrop crm-lead-backdrop"
-    aria-labelledby="crm-create-title"
-    onCancel={(event) => { event.preventDefault(); requestClose(); }}
-    onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}
+  return <RegistrationDialog
+    eyebrow="CADASTRO DE LEADS"
+    title="Adicionar lead"
+    description="O primeiro card será criado automaticamente em Novo lead."
+    panelClassName="crm-lead-form"
+    dismissDisabled={busy}
+    onClose={onClose}
+    overlay={quickServiceOpen ? <ServiceCreateModal companyId={companyId} onClose={() => setQuickServiceOpen(false)} onCreated={(service, municipalCodeSaved) => {
+      setCreatedServices((current) => [...current, service]);
+      set('serviceId', service.id);
+      if (!municipalCodeSaved) setValidation('Serviço cadastrado, mas o código municipal não foi salvo. Ajuste-o no cadastro de Serviços.');
+      setQuickServiceOpen(false);
+    }} /> : undefined}
   >
-    <div className="drawer crm-lead-form" inert={quickServiceOpen}>
-      <header className="drawer__header">
-        <div><p className="eyebrow">CADASTRO DE LEADS</p><h2 id="crm-create-title">Adicionar lead</h2><p>O primeiro card será criado automaticamente em Novo lead.</p></div>
-        <button type="button" className="icon-button" onClick={requestClose} disabled={busy} aria-label="Fechar"><X size={20} /></button>
-      </header>
+    {(requestClose) => (
       <form onSubmit={submit}>
         <div className="drawer__body crm-lead-form__body">
           {companyChoice && <CompanyField choice={companyChoice} value={companyId} disabled={busy} />}
@@ -129,12 +115,6 @@ export function CrmLeadModal({ companyId, companyChoice, onClose, onCreated }: {
           <button type="submit" className="button button--primary" disabled={busy || !companyId}>{busy ? 'Adicionando...' : 'Adicionar lead'}</button>
         </footer>
       </form>
-    </div>
-    {quickServiceOpen && <ServiceCreateModal companyId={companyId} onClose={() => setQuickServiceOpen(false)} onCreated={(service, municipalCodeSaved) => {
-      setCreatedServices((current) => [...current, service]);
-      set('serviceId', service.id);
-      if (!municipalCodeSaved) setValidation('Serviço cadastrado, mas o código municipal não foi salvo. Ajuste-o no cadastro de Serviços.');
-      setQuickServiceOpen(false);
-    }} />}
-  </dialog>;
+    )}
+  </RegistrationDialog>;
 }
