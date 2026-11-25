@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { AlertCircle, ArrowDownLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ArrowDownToLine, RefreshCw, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
 import { api, type FinanceFilters, type FinancePayment, type FinanceSale, type FinanceSettlement, type PaymentMethod, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
@@ -13,6 +13,11 @@ import './finance.css';
 
 const PAGE_SIZE = 20;
 const emptyFilters = (): FinanceFilters => ({ dateBasis: 'SALE', settlement: 'ALL', overdue: 'ALL' });
+/** Filtros de chegada: "Ir para o financeiro" do Portal de Serviços abre com `?pedido=12345`. */
+const linkedFilters = (params: URLSearchParams): FinanceFilters => {
+  const orderCode = params.get('pedido') ?? '';
+  return /^\d{5}$/.test(orderCode) ? { ...emptyFilters(), orderCode } : emptyFilters();
+};
 
 function paymentState(payment: FinancePayment): string {
   if (payment.isOverdue) return 'Vencido';
@@ -53,8 +58,9 @@ function DueCell({ payment }: { payment: FinancePayment }) {
 export function FinancePage({ user }: { user: User }) {
   const queryClient = useQueryClient();
   const [companyId, setCompanyId] = useState(() => sessionStorage.getItem('gestaonf.companyId') ?? '');
-  const [draft, setDraft] = useState<FinanceFilters>(emptyFilters);
-  const [applied, setApplied] = useState<FinanceFilters>(emptyFilters);
+  const [params, setParams] = useSearchParams();
+  const [draft, setDraft] = useState<FinanceFilters>(() => linkedFilters(params));
+  const [applied, setApplied] = useState<FinanceFilters>(() => linkedFilters(params));
   const [filterError, setFilterError] = useState('');
   const [moreFilters, setMoreFilters] = useState(false);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
@@ -65,6 +71,11 @@ export function FinancePage({ user }: { user: User }) {
   const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies });
   useEffect(() => { if (companies.data && !companies.data.some((company) => company.id === companyId)) setCompanyId(companies.data[0]?.id ?? ''); }, [companies.data, companyId]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
+  // O filtro do link já está no estado: tira da URL para "Limpar" e a troca de empresa não ficarem contraditórios.
+  useEffect(() => {
+    if (!params.has('pedido')) return;
+    setParams((previous) => { const next = new URLSearchParams(previous); next.delete('pedido'); return next; }, { replace: true });
+  }, [params, setParams]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 5000); return () => window.clearTimeout(timer); }, [toast]);
   const cursor = cursors[pageIndex] ?? null;
   const list = useQuery({ queryKey: ['finance-receivables', companyId, applied, cursor], queryFn: () => api.financeReceivables(companyId, applied, cursor, PAGE_SIZE), enabled: !!companyId });

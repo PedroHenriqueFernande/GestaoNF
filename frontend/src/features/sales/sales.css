@@ -113,6 +113,7 @@
 .sale-actions__trigger{min-width:40px;min-height:40px;display:grid;place-items:center;border:0;background:transparent;border-radius:6px;cursor:pointer}
 .sale-actions__trigger:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .dropdown-panel.sale-actions__menu{position:fixed;top:0;left:0;min-width:150px;overflow-y:auto}
+.sale-actions__menu .dropdown-item+.dropdown-item{position:relative;margin-top:1px}.sale-actions__menu .dropdown-item+.dropdown-item::before{content:"";position:absolute;top:-1px;left:12px;right:12px;height:1px;background:#e8edf0;pointer-events:none}
 .sale-delete-dialog{width:min(460px,calc(100vw - 20px));border:1px solid var(--border);border-radius:8px;padding:22px}
 .sale-delete-dialog::backdrop{background:#0c233a59}
 .sale-delete-dialog footer{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}

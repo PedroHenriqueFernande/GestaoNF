@@ -5,7 +5,7 @@ import { ArrowDownToLine, CalendarDays, CheckCircle2, CreditCard, FileText, Rota
 import { api, type PaymentMethod, type SaleDetail } from '../../api/client';
 import { SaleActionsMenu } from './SaleActionsMenu';
 import { SaleDeleteDialog } from './SaleDeleteDialog';
-import { saleActions } from './sale-permissions';
+import { noSaleActions, saleActions } from './sale-permissions';
 import { usePermissions } from '../permissions/usePermissions';
 import { SaleDropdown } from './SaleDropdown';
 import { NfseSaleActions } from '../fiscal/NfseSaleActions';
@@ -28,7 +28,7 @@ export function SaleDetailPanel({ companyId, saleId, onClose, onChanged, onEdit 
   const queryClient = useQueryClient();
   const sale = useQuery({ queryKey: ['sale', companyId, saleId], queryFn: () => api.sale(companyId, saleId) });
   const access = usePermissions(companyId);
-  const actions = sale.data ? saleActions(sale.data.status, access) : { edit: false, remove: false };
+  const actions = sale.data ? saleActions(sale.data.status, access) : noSaleActions;
   const [activePayment, setActivePayment] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('PIX');
@@ -71,7 +71,7 @@ export function SaleDetailPanel({ companyId, saleId, onClose, onChanged, onEdit 
     onSuccess: (detail) => updated(detail, 'Recebimento estornado.'), onError: (cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível estornar.') });
 
   return <div className="sale-detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={panelRef} className="sale-detail" role="dialog" aria-modal="true" aria-labelledby="sale-detail-title">
-    <header className="sale-detail__header"><div><span>PEDIDO DE SERVIÇOS</span><h2 id="sale-detail-title">{sale.data ? `#${sale.data.orderCode}` : 'Carregando pedido'}</h2></div>{sale.data && <SaleActionsMenu orderCode={sale.data.orderCode} actions={actions} onEdit={() => onEdit(sale.data!)} onDelete={setDeleteTrigger} />}<button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Fechar detalhes"><X size={20} /></button></header>
+    <header className="sale-detail__header"><div><span>PEDIDO DE SERVIÇOS</span><h2 id="sale-detail-title">{sale.data ? `#${sale.data.orderCode}` : 'Carregando pedido'}</h2></div>{sale.data && <SaleActionsMenu orderCode={sale.data.orderCode} companyId={companyId} actions={actions} onEdit={() => onEdit(sale.data!)} onDelete={setDeleteTrigger} />}<button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Fechar detalhes"><X size={20} /></button></header>
     {sale.isPending ? <div className="sale-detail__loading">Carregando dados do pedido...</div> : sale.isError ? <div className="sale-detail__loading">Não foi possível carregar o pedido. <button onClick={() => sale.refetch()}>Tentar novamente</button></div> : <div className="sale-detail__scroll">
       <div className="sale-detail__intro"><div><span>{sale.data.customerNameSnapshot}</span><strong>{currency(sale.data.totalAmount)}</strong></div><span className={`sale-status sale-status--${sale.data.status.toLowerCase()}`}>{sale.data.status === 'CONFIRMED' ? 'Confirmado' : sale.data.status === 'DRAFT' ? 'Rascunho' : 'Excluída'}</span></div>
       {sale.data.status === 'DRAFT' && actions.edit && <button type="button" className="button button--primary sale-detail__resume" onClick={() => onEdit(sale.data!)}>Continuar lançamento</button>}
