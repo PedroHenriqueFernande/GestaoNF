@@ -1,4 +1,4 @@
-import { companies, crmContacts, crmLeadEntries, crmOpportunities } from '@gestaonf/database/schema';
+import { companies, crmContacts, crmLeadEntries, crmOpportunities, services } from '@gestaonf/database/schema';
 import { and, eq, ilike, inArray, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { ListInput } from './crm.schemas.js';
@@ -55,6 +55,15 @@ export function negotiationFilters(input: ListInput) {
 }
 export const contactJoin = and(eq(crmContacts.companyId, crmOpportunities.companyId), eq(crmContacts.id, crmOpportunities.contactId));
 export const entryJoin = and(eq(crmLeadEntries.companyId, crmOpportunities.companyId), eq(crmLeadEntries.contactId, crmOpportunities.contactId), eq(crmLeadEntries.id, crmOpportunities.originEntryId));
+export const servicePriceJoin = (priceCompanyIds: readonly string[]) => and(
+  eq(services.companyId, crmOpportunities.companyId),
+  eq(services.id, crmOpportunities.primaryServiceId),
+  inCompanies(services.companyId, priceCompanyIds),
+);
+export const servicePriceSummary = {
+  knownAmounts: sql<number>`count(${services.suggestedUnitPrice})::integer`,
+  servicePriceTotal: sql<string>`coalesce(sum(${services.suggestedUnitPrice}), 0.00)::text`,
+};
 export function needsNegotiation(input: ListInput) {
   return !!(input.assignedUserId || input.pipelineId || input.stageId || input.status || input.primaryServiceId || input.captureKind || input.sourceLabel || input.sourceFormReference || input.utmSource || input.utmMedium || input.utmCampaign || input.utmContent || input.utmTerm || input.missingField || (input.periodBy === 'ENTRY_RECEIVED' && (input.from || input.to)));
 }

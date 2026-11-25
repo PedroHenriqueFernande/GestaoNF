@@ -32,7 +32,7 @@ const TYPES: Record<string, Definition> = {
   entradas_de_leads: {
     type: 'lead-entries', label: 'Entradas de leads', catalog: false,
     summary: { entries: ['entradas', 'number'], uniqueLeads: ['leads únicos', 'number'] },
-    fields: { receivedAt: 'recebidoEm', contactName: 'contato', email: 'email', title: 'oportunidade', commercialStatus: 'situacao', userName: 'responsavel', captureKind: 'canal', sourceLabel: 'origem', utmSource: 'utmSource', utmCampaign: 'utmCampaign', serviceName: 'servico', interestDescription: 'interesse' },
+    fields: { receivedAt: 'recebidoEm', contactName: 'contato', email: 'email', title: 'oportunidade', commercialStatus: 'situacao', userName: 'responsavel', captureKind: 'canal', sourceLabel: 'origem', utmSource: 'utmSource', utmCampaign: 'utmCampaign', serviceName: 'servico' },
     translate: ['commercialStatus', 'captureKind'],
   },
   clientes: {

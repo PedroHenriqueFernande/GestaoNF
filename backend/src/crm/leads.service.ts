@@ -1,16 +1,16 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
-import { crmContacts, crmLeadEntries, crmOpportunities, crmActivities, customers } from '@gestaonf/database/schema';
+import { crmContacts, crmLeadEntries, crmOpportunities, crmActivities, customers, services } from '@gestaonf/database/schema';
 import { and, asc, count, desc, eq, exists, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DatabaseService } from '../database/database.module.js';
 import { CrmPolicyService } from './crm-policy.service.js';
 import { CrmHistoryService } from './crm-history.service.js';
 import { changedFields, commandHash, expectVersion, lockKeys, phoneKey, terminal, validateDocument } from './crm-normalization.js';
-import { contactFilters, negotiationFilters, needsNegotiation, entryJoin, inCompanies, publicEntry } from './crm-query.js';
+import { contactFilters, negotiationFilters, needsNegotiation, entryJoin, inCompanies, publicEntry, servicePriceJoin, servicePriceSummary } from './crm-query.js';
 import { candidatesSchema, captureOptionsSchema, customerLinkSchema, keySchema, noteSchema, updateLeadSchema, type CrmContext, type ListInput, type PageInput } from './crm.schemas.js';
 import { escapeLike } from './crm-normalization.js';
 import { parseInput } from '../common/validate.js';
-import { requirePermission } from '../permissions/actor.js';
+import { can, requirePermission } from '../permissions/actor.js';
 
 @Injectable()
 export class LeadsService {
@@ -43,7 +43,8 @@ export class LeadsService {
   async get(ctx: CrmContext, id: string) {
     const db = this.database.db, a = await this.policy.access(ctx), contact = await this.policy.contact(a, id);
     const [[summary], [firstEntry]] = await Promise.all([
-      db.select({ opportunities: count(), knownAmounts: sql<number>`count(${crmOpportunities.estimatedAmount})::integer`, estimatedAmount: sql<string>`coalesce(sum(${crmOpportunities.estimatedAmount}), 0.00)::text` }).from(crmOpportunities)
+      db.select({ opportunities: count(), ...servicePriceSummary }).from(crmOpportunities)
+        .leftJoin(services, servicePriceJoin(can(a.actor, 'services.access') ? [a.companyId] : []))
         .where(and(this.policy.opportunityScope(a), eq(crmOpportunities.contactId, id), isNull(crmOpportunities.archivedAt))),
       db.select().from(crmLeadEntries).where(and(this.policy.entryScope(a), eq(crmLeadEntries.contactId, id))).orderBy(asc(crmLeadEntries.receivedAt), asc(crmLeadEntries.id)).limit(1),
     ]);

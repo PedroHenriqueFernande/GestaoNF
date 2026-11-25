@@ -13,7 +13,7 @@ Exemplo de `POST /crm/leads`:
 ```json
 {
   "lead": { "name": "João Silva", "phone": "(61) 99999-0000" },
-  "interest": { "description": "Consultoria", "estimatedAmount": "5000.00" },
+  "interest": { "primaryServiceId": "11111111-1111-4111-8111-111111111111" },
   "capture": { "utmSource": "instagram", "utmMedium": "paid_social", "utmCampaign": "feira_outubro" }
 }
 ```

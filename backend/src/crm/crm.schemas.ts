@@ -12,7 +12,6 @@ export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => 
   const d = new Date(`${v}T00:00:00Z`);
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }, 'Data inválida');
-const money = z.string().regex(/^(?:0|[1-9]\d{0,12})\.\d{2}$/).nullable();
 const version = z.number().int().min(1);
 const profile = {
   name: z.string().trim().min(1).max(200), organizationName: text(200),
@@ -21,8 +20,7 @@ const profile = {
 };
 export const leadSchema = z.strictObject(profile).partial().required({ name: true });
 const interestSchema = z.strictObject({
-  description: text(2000).optional(), primaryServiceId: idSchema.nullable().optional(),
-  estimatedAmount: money.optional(), expectedCloseOn: dateSchema.nullable().optional(),
+  primaryServiceId: idSchema.nullable().optional(),
 });
 const captureSchema = z.strictObject({
   sourceLabel: text(120).optional(), utmSource: text(200).optional(), utmMedium: text(200).optional(),
@@ -40,8 +38,7 @@ export const updateLeadSchema = z.strictObject({ ...profile, expectedVersion: ve
   .required({ expectedVersion: true }).refine(nonemptyPatch, 'Informe ao menos um campo');
 export const updateOpportunitySchema = z.strictObject({
   expectedVersion: version, title: z.string().trim().min(1).max(200).optional(),
-  primaryServiceId: idSchema.nullable().optional(), estimatedAmount: money.optional(),
-  expectedCloseOn: dateSchema.nullable().optional(), assignedUserId: idSchema.nullable().optional(),
+  primaryServiceId: idSchema.nullable().optional(), assignedUserId: idSchema.nullable().optional(),
 }).refine(nonemptyPatch, 'Informe ao menos um campo');
 export const statusSchema = z.strictObject({
   expectedVersion: version, status: z.enum(statuses), reasonCode: text(40).optional(), reasonText: text(1000).optional(),

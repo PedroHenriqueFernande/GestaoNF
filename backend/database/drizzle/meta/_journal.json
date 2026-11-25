@@ -316,6 +316,13 @@
       "when": 1795551835056,
       "tag": "0044_infer_customer_kind_from_tax_id",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795579136468,
+      "tag": "0045_remove_crm_lead_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { AccessGuard, type RequestContext } from '../auth/access.guard.js';
 import { CompanyScopeGuard, scopeQueryFields } from '../auth/company-scope.guard.js';
 import { parseInput } from '../common/validate.js';
+import { can } from '../permissions/actor.js';
 import { RequireAnyPermission, RequirePermission } from '../permissions/permission.decorators.js';
 import { listOverviewSchema } from './crm.schemas.js';
 import { LeadsService } from './leads.service.js';
@@ -48,7 +49,8 @@ export class CrmOverviewController {
   @ApiOperation({ summary: 'Negociações de várias empresas (somente leitura)' })
   listOpportunities(@Req() request: RequestContext, @Query() query: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const companyIds = request.companyIds!;
-    return consolidated(reply, companyIds, this.opportunities.overview(companyIds, parseInput(listOverviewSchema, query ?? {})));
+    const priceCompanyIds = request.companyActors!.filter(actor => can(actor, 'services.access')).map(actor => actor.companyId);
+    return consolidated(reply, companyIds, this.opportunities.overview(companyIds, parseInput(listOverviewSchema, query ?? {}), priceCompanyIds));
   }
 
   @Get('meetings') @RequirePermission('agenda.access') @scopeDoc()

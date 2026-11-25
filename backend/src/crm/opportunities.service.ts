@@ -1,13 +1,14 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { crmContacts, crmLeadEntries, crmOpportunities, crmPipelines, crmPipelineStages } from '@gestaonf/database/schema';
-import { and, asc, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { crmContacts, crmLeadEntries, crmOpportunities, crmPipelines, crmPipelineStages, services } from '@gestaonf/database/schema';
+import { and, asc, count, desc, eq, isNull, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DatabaseService } from '../database/database.module.js';
 import { CrmPolicyService, type CrmAccess } from './crm-policy.service.js';
 import { CrmHistoryService } from './crm-history.service.js';
 import { changedFields, expectVersion, terminal, type CrmTx } from './crm-normalization.js';
-import { contactFilters, negotiationFilters, contactJoin, entryJoin, inCompanies, publicEntry } from './crm-query.js';
+import { contactFilters, negotiationFilters, contactJoin, entryJoin, inCompanies, publicEntry, servicePriceJoin, servicePriceSummary } from './crm-query.js';
 import { stageSchema, statusSchema, updateOpportunitySchema, type CrmContext, type ListInput } from './crm.schemas.js';
+import { can } from '../permissions/actor.js';
 
 @Injectable()
 export class OpportunitiesService {
@@ -16,28 +17,36 @@ export class OpportunitiesService {
     @Inject(CrmHistoryService) private readonly history: CrmHistoryService) {}
   async list(ctx: CrmContext, input: ListInput) {
     const a = await this.policy.access(ctx);
-    return this.page(this.listConditions([a.companyId], input), input);
+    return this.page(this.listConditions([a.companyId], input), input, can(a.actor, 'services.access') ? [a.companyId] : []);
   }
-  overview(companyIds: readonly string[], input: ListInput) {
-    return this.page(this.listConditions(companyIds, input), input);
+  overview(companyIds: readonly string[], input: ListInput, priceCompanyIds: readonly string[]) {
+    return this.page(this.listConditions(companyIds, input), input, priceCompanyIds);
   }
   listConditions(companyIds: readonly string[], input: ListInput) {
     return and(inCompanies(crmOpportunities.companyId, companyIds), ...contactFilters(input), ...negotiationFilters(input));
   }
-  private async page(filter: SQL | undefined, input: ListInput) {
+  private async page(filter: SQL | undefined, input: ListInput, priceCompanyIds: readonly string[]) {
     const db = this.database.db;
+    const priceJoin = servicePriceJoin(priceCompanyIds);
     const [rows, [summary]] = await Promise.all([
-      db.select({ opportunity: crmOpportunities, lead: { id: crmContacts.id, name: crmContacts.name, organizationName: crmContacts.organizationName }, entry: crmLeadEntries }).from(crmOpportunities).innerJoin(crmContacts, contactJoin).innerJoin(crmLeadEntries, entryJoin)
+      db.select({ opportunity: crmOpportunities, lead: { id: crmContacts.id, name: crmContacts.name, organizationName: crmContacts.organizationName }, entry: crmLeadEntries, servicePrice: services.suggestedUnitPrice })
+        .from(crmOpportunities).innerJoin(crmContacts, contactJoin).innerJoin(crmLeadEntries, entryJoin).leftJoin(services, priceJoin)
         .where(filter).orderBy(desc(crmOpportunities.createdAt), desc(crmOpportunities.id)).limit(input.limit).offset(input.offset),
-      db.select({ total: count(), knownAmounts: sql<number>`count(${crmOpportunities.estimatedAmount})::integer`, estimatedAmount: sql<string>`coalesce(sum(${crmOpportunities.estimatedAmount}), 0.00)::text` }).from(crmOpportunities).innerJoin(crmContacts, contactJoin).innerJoin(crmLeadEntries, entryJoin).where(filter),
+      db.select({ total: count(), ...servicePriceSummary }).from(crmOpportunities).innerJoin(crmContacts, contactJoin).innerJoin(crmLeadEntries, entryJoin).leftJoin(services, priceJoin).where(filter),
     ]);
-    return { items: rows.map((r) => ({ ...r.opportunity, lead: r.lead, origin: publicEntry(r.entry) })), total: summary.total, summary, limit: input.limit, offset: input.offset };
+    return { items: rows.map((r) => ({ ...r.opportunity, lead: r.lead, origin: publicEntry(r.entry), servicePrice: r.servicePrice })), total: summary.total, summary, limit: input.limit, offset: input.offset };
   }
   async get(ctx: CrmContext, id: string) {
-    const a = await this.policy.access(ctx), card = await this.policy.opportunity(a, id);
-    const contact = await this.policy.contact(a, card.contactId);
-    const [entry] = await this.database.db.select().from(crmLeadEntries).where(and(eq(crmLeadEntries.companyId, ctx.companyId), eq(crmLeadEntries.id, card.originEntryId))).limit(1);
-    return { ...card, lead: contact, origin: publicEntry(entry) };
+    const db = this.database.db, a = await this.policy.access(ctx), card = await this.policy.opportunity(a, id);
+    const [contact, [entry], [service], [stage]] = await Promise.all([
+      this.policy.contact(a, card.contactId),
+      db.select().from(crmLeadEntries).where(and(eq(crmLeadEntries.companyId, a.companyId), eq(crmLeadEntries.id, card.originEntryId))).limit(1),
+      card.primaryServiceId && can(a.actor, 'services.access')
+        ? db.select({ name: services.name, price: services.suggestedUnitPrice }).from(services).where(and(eq(services.companyId, a.companyId), eq(services.id, card.primaryServiceId))).limit(1)
+        : [],
+      db.select({ name: crmPipelineStages.name }).from(crmPipelineStages).where(and(eq(crmPipelineStages.companyId, a.companyId), eq(crmPipelineStages.pipelineId, card.pipelineId), eq(crmPipelineStages.id, card.stageId))).limit(1),
+    ]);
+    return { ...card, lead: contact, origin: publicEntry(entry), stageName: stage?.name ?? null, serviceName: service?.name ?? null, servicePrice: service?.price ?? null };
   }
   private async mutate(ctx: CrmContext, id: string, version: number,
     apply: (tx: CrmTx, a: CrmAccess, old: typeof crmOpportunities.$inferSelect) => Promise<{ patch: Partial<typeof crmOpportunities.$inferInsert>; kind: string }>, allowArchived = false) {

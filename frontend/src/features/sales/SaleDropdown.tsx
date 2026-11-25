@@ -33,7 +33,7 @@ export function SaleDropdown<Value extends string>({ label, value, options, onCh
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key === 'Escape') { event.preventDefault(); setOpen(false); return; }
+    if (event.key === 'Escape') { if (open) { event.preventDefault(); setOpen(false); } return; }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       if (!open) { openAtSelection(); return; }

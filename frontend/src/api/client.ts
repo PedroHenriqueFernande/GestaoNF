@@ -191,24 +191,24 @@ export type CrmLead = {
 };
 export type CrmEntry = CrmCapture & {
   id: string; contactId: string; captureKind: 'MANUAL' | 'FORM' | 'META_ADS' | 'GOOGLE_ADS' | 'IMPORT' | 'NERO' | 'API';
-  sourceFormReference: string | null; primaryServiceId: string | null; interestDescription: string | null;
+  sourceFormReference: string | null; primaryServiceId: string | null;
   occurredAt: string; receivedAt: string;
 };
 export type CrmOpportunity = {
   id: string; companyId: string; contactId: string; pipelineId: string; stageId: string; title: string;
-  primaryServiceId: string | null; estimatedAmount: string | null; expectedCloseOn: string | null;
+  primaryServiceId: string | null; servicePrice: string | null;
   commercialStatus: CrmStatus; assignedUserId: string | null; reasonCode: string | null; reasonText: string | null;
   closedAt: string | null; lastActivityAt: string; createdAt: string; updatedAt: string; archivedAt: string | null; version: number;
   lead: Pick<CrmLead, 'id' | 'name' | 'organizationName'>; origin: CrmEntry;
 };
-export type CrmOpportunityRecord = Omit<CrmOpportunity, 'lead' | 'origin'>;
-export type CrmOpportunityDetail = CrmOpportunityRecord & { lead: CrmLead; origin: CrmEntry };
+export type CrmOpportunityRecord = Omit<CrmOpportunity, 'lead' | 'origin' | 'servicePrice'>;
+export type CrmOpportunityDetail = Omit<CrmOpportunity, 'lead'> & { lead: CrmLead; stageName: string | null; serviceName: string | null };
 export type CrmOpportunityList = {
   items: CrmOpportunity[]; total: number; limit: number; offset: number;
-  summary: { total: number; knownAmounts: number; estimatedAmount: string };
+  summary: { total: number; knownAmounts: number; servicePriceTotal: string };
 };
 export type CrmLeadDetail = CrmLead & {
-  summary: { opportunities: number; knownAmounts: number; estimatedAmount: string };
+  summary: { opportunities: number; knownAmounts: number; servicePriceTotal: string };
   firstVisibleEntry: CrmEntry | null; visibility: 'COMPANY' | 'ASSIGNED';
 };
 export type CrmActivity = {
@@ -226,7 +226,7 @@ export type CrmFilters = {
 };
 export type CrmLeadInput = {
   lead: { name: string; organizationName?: string | null; email?: string | null; phone?: string | null; notes?: string | null };
-  interest?: { description?: string | null; primaryServiceId?: string | null; estimatedAmount?: string | null; expectedCloseOn?: string | null };
+  interest?: { primaryServiceId?: string | null };
   capture?: { sourceLabel?: string | null; utmSource?: string | null; utmMedium?: string | null; utmCampaign?: string | null; utmContent?: string | null; utmTerm?: string | null };
   pipelineId?: string; title?: string;
 };
@@ -257,7 +257,7 @@ export type ProposalDetail = Proposal & { items: ProposalItem[]; sale: { id: str
 export type ProposalResult = { proposalId: string; proposalCode: string; customerId: string; status: Proposal['status']; version: number; totalAmount: string; saleId?: string; orderCode?: string; reviewUrl?: string };
 export type ProposalFilters = { search?: string; status?: ProposalStatus | 'ALL'; contactId?: string; customerId?: string; opportunityId?: string; serviceId?: string; from?: string; to?: string; validFrom?: string; validTo?: string };
 export type ProposalList = { items: Proposal[]; total: number; limit: number; offset: number; summary: { total: number; totalAmount: string; sent: number; expired: number; accepted: number; converted: number } };
-export type ProposalPrefill = { contact?: CrmLead; opportunity?: CrmOpportunityRecord; customer?: Customer | null; customerCandidates?: Pick<Customer, 'id' | 'name' | 'kind' | 'taxId' | 'status'>[]; customerDraft?: { kind: 'PF' | 'PJ' | null; name: string; taxId: string | null; email: string | null; phone: string | null }; service?: Service | null; interestDescription?: string | null; suggestedItems?: ProposalItemInput[]; requiresCustomerDetails?: boolean; requiresServiceSelection?: boolean; opportunities?: CrmOpportunityRecord[]; contacts?: { id: string; name: string }[]; requiresOpportunitySelection?: boolean; requiresOpportunityCreation?: boolean };
+export type ProposalPrefill = { contact?: CrmLead; opportunity?: CrmOpportunityRecord; customer?: Customer | null; customerCandidates?: Pick<Customer, 'id' | 'name' | 'kind' | 'taxId' | 'status'>[]; customerDraft?: { kind: 'PF' | 'PJ' | null; name: string; taxId: string | null; email: string | null; phone: string | null }; service?: Service | null; suggestedItems?: ProposalItemInput[]; requiresCustomerDetails?: boolean; requiresServiceSelection?: boolean; opportunities?: CrmOpportunityRecord[]; contacts?: { id: string; name: string }[]; requiresOpportunitySelection?: boolean; requiresOpportunityCreation?: boolean };
 export type ProposalEvent = { id: string; eventType: string; actorType: string; reason: string | null; recordedAt: string };
 export type ProposalSettings = { companyId: string; winOpportunityOnProposalConversion: boolean; proposalSentStageId: string | null; version: number };
 export type ApiIssue = { path: string; message: string };
@@ -515,7 +515,7 @@ export const api = {
     request<CrmCreateResult>('/crm/leads', { method: 'POST', headers: { 'Idempotency-Key': key }, body: json(input) }, { companyId }),
   updateCrmLead: (companyId: string, id: string, input: Partial<Omit<CrmLeadInput['lead'], 'taxId' | 'taxIdKind'>> & { expectedVersion: number }) =>
     request<CrmLead>(`/crm/leads/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
-  updateCrmOpportunity: (companyId: string, id: string, input: { expectedVersion: number; title?: string; primaryServiceId?: string | null; estimatedAmount?: string | null; expectedCloseOn?: string | null }) =>
+  updateCrmOpportunity: (companyId: string, id: string, input: { expectedVersion: number; title?: string; primaryServiceId?: string | null }) =>
     request<CrmOpportunityRecord>(`/crm/opportunities/${id}`, { method: 'PATCH', body: json(input) }, { companyId }),
   updateCrmStatus: (companyId: string, id: string, input: { expectedVersion: number; status: CrmStatus; reasonText?: string | null }) =>
     request<CrmOpportunityRecord>(`/crm/opportunities/${id}/status`, { method: 'PATCH', body: json(input) }, { companyId }),

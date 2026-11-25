@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, customers, services, crmContacts, crmLeadEntries, crmOpportunities, crmProposalItems, crmProposals } from '@gestaonf/database/schema';
+import { companies, customers, services, crmContacts, crmOpportunities, crmProposalItems, crmProposals } from '@gestaonf/database/schema';
 import { and, count, desc, eq, exists, gte, ilike, isNull, lte, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { DatabaseService } from '../database/database.module.js';
@@ -74,12 +74,11 @@ export class ProposalReadService {
     const opportunity = await this.policy.opportunity(a, input.opportunityId), contact = await this.policy.contact(a, opportunity.contactId);
     const [customer] = contact.customerId ? await db.select().from(customers).where(and(eq(customers.companyId, a.companyId), eq(customers.id, contact.customerId))).limit(1) : [];
     const [service] = opportunity.primaryServiceId ? await db.select().from(services).where(and(eq(services.companyId, a.companyId), eq(services.id, opportunity.primaryServiceId), eq(services.status, 'ACTIVE'))).limit(1) : [];
-    const [entry] = await db.select({ description: crmLeadEntries.interestDescription }).from(crmLeadEntries).where(and(eq(crmLeadEntries.companyId, a.companyId), eq(crmLeadEntries.id, opportunity.originEntryId))).limit(1);
     const candidates = !customer ? await db.select({ id: customers.id, name: customers.name, kind: customers.kind, taxId: customers.taxId, status: customers.status }).from(customers).where(and(eq(customers.companyId, a.companyId), or(
       eq(customers.name, contact.name), ...(contact.taxId ? [eq(customers.taxId, contact.taxId)] : []), ...(contact.email ? [eq(customers.email, contact.email)] : []), ...(contact.phone ? [eq(customers.phone, contact.phone)] : [])))).limit(20) : [];
     return { contact, opportunity, customer: customer ?? null, customerCandidates: candidates,
       customerDraft: { kind: contact.taxIdKind, name: contact.taxIdKind === 'PJ' ? contact.organizationName ?? contact.name : contact.name, taxId: contact.taxId, email: contact.email, phone: contact.phone },
-      service: service ?? null, interestDescription: entry?.description ?? null,
+      service: service ?? null,
       suggestedItems: service ? [{ serviceId: service.id, quantity: '1.0000', unitPrice: service.suggestedUnitPrice, discountType: 'AMOUNT', discountInput: '0.00' }] : [],
       requiresCustomerDetails: !customer && !contact.name.trim(), requiresServiceSelection: !service };
   }

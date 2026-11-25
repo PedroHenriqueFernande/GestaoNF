@@ -129,7 +129,7 @@ export class ReportsReadService {
       return { rows: sql`SELECT e.id, e.received_at AS "_order", ${iso(sql`e.received_at`)} AS "_sort", ${iso(sql`e.received_at`)} AS "receivedAt", c.id AS "contactId", c.name AS "contactName", c.email,
         o.id AS "opportunityId", o.title, o.commercial_status AS "commercialStatus", u.name AS "userName", e.capture_kind AS "captureKind",
         e.source_label AS "sourceLabel", e.source_form_reference AS "sourceFormReference", e.utm_source AS "utmSource", e.utm_medium AS "utmMedium",
-        e.utm_campaign AS "utmCampaign", e.utm_content AS "utmContent", e.utm_term AS "utmTerm", v.name AS "serviceName", e.interest_description AS "interestDescription"
+        e.utm_campaign AS "utmCampaign", e.utm_content AS "utmContent", e.utm_term AS "utmTerm", v.name AS "serviceName"
         FROM crm_lead_entries e JOIN crm_opportunities o ON o.company_id=e.company_id AND o.contact_id=e.contact_id AND o.origin_entry_id=e.id
         JOIN crm_contacts c ON c.company_id=e.company_id AND c.id=e.contact_id
         LEFT JOIN users u ON u.id=o.assigned_user_id LEFT JOIN services v ON v.company_id=e.company_id AND v.id=e.primary_service_id

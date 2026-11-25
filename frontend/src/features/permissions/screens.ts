@@ -1,11 +1,11 @@
 import type { LucideIcon } from 'lucide-react';
-import { BriefcaseBusiness, Bot, Building2, Calculator, CalendarDays, ChartColumn, ClipboardList, FileText, FolderOpen, Hash, Landmark, ReceiptText, Target, UserCog, UserRound, UserRoundPlus, UsersRound, Wallet } from 'lucide-react';
+import { BriefcaseBusiness, Bot, Building2, Calculator, CalendarDays, ChartColumn, ClipboardList, FileText, FolderOpen, Hash, Landmark, ReceiptText, UserCog, UserRound, UserRoundPlus, UsersRound, Wallet } from 'lucide-react';
 import { SCREENS, SCREEN_IDS, canOpenScreen, type PermissionKey, type ScreenGroup, type ScreenId, type ScreenViewer } from '@gestaonf/permissions';
 
 export const NO_ACCESS_PATH = '/sem-acesso';
 
 export const SCREEN_ICONS: Record<ScreenId, LucideIcon> = {
-  sales: ReceiptText, finance: Wallet, crm: Target, agenda: CalendarDays, proposals: FileText, reports: ChartColumn,
+  sales: ReceiptText, finance: Wallet, crm: UserRound, agenda: CalendarDays, proposals: FileText, reports: ChartColumn,
   customers: UsersRound, services: ClipboardList, company: Building2, users: UserCog, 'fiscal-series': Hash, 'fiscal-tax': Calculator,
   nero: Bot, profile: UserRound,
 };

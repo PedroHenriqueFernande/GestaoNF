@@ -58,7 +58,8 @@ export class CompanyScopeGuard implements CanActivate {
       this.logger.warn({ event: `${area}_overview_scope_too_large`, userId: request.userId, authorized: allowed.length });
       throw new BadRequestException(`Selecione até ${MAX_SCOPE_COMPANIES} empresas`);
     }
-    request.companyIds = allowed.map(m => m.actor.companyId);
+    request.companyActors = allowed.map(m => m.actor);
+    request.companyIds = request.companyActors.map(actor => actor.companyId);
     return true;
   }
 }

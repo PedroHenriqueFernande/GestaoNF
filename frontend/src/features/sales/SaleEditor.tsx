@@ -6,6 +6,7 @@ import { PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions';
 import { followedDiscountCents } from '../../utils/reference-discount';
 import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service, type StoredFile, type TaxSnapshot } from '../../api/client';
 import { CustomerForm } from '../customers/CustomerForm';
+import { ServiceCreateModal } from '../services/ServiceCreateModal';
 import { SaleDropdown } from './SaleDropdown';
 import { SaleAttachments } from '../files/SaleAttachments';
 import { NfseSaleActions } from '../fiscal/NfseSaleActions';
@@ -77,6 +78,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [serviceTerm, setServiceTerm] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [serviceOpen, setServiceOpen] = useState(false);
+  const [serviceCreateOpen, setServiceCreateOpen] = useState(false);
   const [serviceHighlight, setServiceHighlight] = useState(0);
   const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), id: item.id, serviceId: item.serviceId, name: item.serviceNameSnapshot, taxProfileId: draft.status === 'DRAFT' ? item.taxSnapshot?.profileId ?? null : undefined, taxSnapshot: item.taxSnapshot, description: item.descriptionSnapshot, performedOn: item.performedOn, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT', referencePrice: item.unitPrice, referenceDiscount: { amount: item.discountAmount, quantity: item.quantity } })) ?? []);
   const [selectedTaxProfileId, setSelectedTaxProfileId] = useState<string>(() => {
@@ -203,7 +205,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     setAttachments([]);
     onCompanyChange(id);
     setCustomerId(''); setCustomerTerm(''); setCustomerInput(''); setCustomerOpen(false); setCustomerHighlight(0); setServiceTerm(''); setServiceInput('');
-    setSelectedService(null); setServiceDraft(null); setServiceOpen(false); setServiceHighlight(0); setItems([]); setSelectedTaxProfileId(''); setRuleChanged(false); setPendingDraft(null); createKey.current = crypto.randomUUID();
+    setSelectedService(null); setServiceDraft(null); setServiceOpen(false); setServiceCreateOpen(false); setServiceHighlight(0); setItems([]); setSelectedTaxProfileId(''); setRuleChanged(false); setPendingDraft(null); createKey.current = crypto.randomUUID();
   }
 
   function closeServiceModal() {
@@ -332,6 +334,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
               </> : <div className="sale-lookup-message">Nenhum serviço encontrado.</div>}
             </div>}
           </div>
+          {access.can('services.create') && <button type="button" className="sale-service-new" disabled={saving} onClick={() => { setServiceOpen(false); setServiceCreateOpen(true); }}><Plus size={14} /> Novo</button>}
         </div>
         {!canChangePrice && <p id="sale-price-hint" className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}
         {!items.length ? <div className="sale-empty-lines">Nenhum serviço adicionado. Selecione um serviço acima para começar.</div> : <div className="sale-lines-scroll">
@@ -377,6 +380,12 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
       returnFocus={serviceToggleRef}
     />}
     {customerModalOpen && <CustomerForm onClose={closeCustomerModal} onSave={async (input) => { await customerSave.mutateAsync(input); }} saving={customerSave.isPending} saveError={customerSave.error} />}
+    {serviceCreateOpen && <ServiceCreateModal companyId={companyId} onClose={() => setServiceCreateOpen(false)} onCreated={(service, municipalCodeSaved) => {
+      setServiceCreateOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['sales-services', companyId] });
+      if (!municipalCodeSaved) setError('Serviço cadastrado, mas o código municipal não foi salvo. Ajuste-o no cadastro de Serviços.');
+      chooseService(service);
+    }} />}
   </main>;
 }
 

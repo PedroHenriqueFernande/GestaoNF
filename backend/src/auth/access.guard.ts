@@ -8,7 +8,7 @@ import { assertPolicy, type Actor } from '../permissions/actor.js';
 import { policyOf } from '../permissions/permission.decorators.js';
 import { resolveActor } from '../permissions/permission-resolver.js';
 
-export type RequestContext = FastifyRequest & { userId?: string; companyId?: string; companyIds?: string[]; actor?: Actor };
+export type RequestContext = FastifyRequest & { userId?: string; companyId?: string; companyIds?: string[]; actor?: Actor; companyActors?: Actor[] };
 
 /** Ponto de entrada registrado nos logs de autorização: método e padrão da rota, sem IDs. */
 export const routeEntry = (request: FastifyRequest) => `${request.method} ${request.routeOptions?.url ?? '(rota desconhecida)'}`;

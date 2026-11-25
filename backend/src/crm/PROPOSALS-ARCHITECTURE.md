@@ -45,7 +45,7 @@ O sistema consulta contatos existentes vinculados ao cliente antes de criar outr
 
 ### A partir de lead externo sem serviço cadastrado
 
-Preservar `interestDescription`, origem, formulário e UTMs na entrada. O botão **Novo serviço** no cadastro manual de lead e na proposta usa o mesmo componente e a mesma API. Na proposta, o usuário escolhe ou cadastra pelo menos um serviço antes de salvar. Nenhum nome de produto vindo de formulário passa diretamente a `services` sem confirmação.
+Preservar origem, formulário e UTMs na entrada. As observações do lead são mantidas no CRM. O botão **Novo serviço** no cadastro manual de lead e na proposta usa o mesmo componente e a mesma API. Na proposta, o usuário escolhe ou cadastra pelo menos um serviço antes de salvar. Nenhum nome de produto vindo de formulário passa diretamente a `services` sem confirmação.
 
 ## 4. Modelo de dados PostgreSQL
 

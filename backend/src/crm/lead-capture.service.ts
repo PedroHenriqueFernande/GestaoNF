@@ -82,14 +82,13 @@ export class LeadCaptureService {
         companyId: ctx.companyId, contactId: contact.id, captureKind: source?.kind ?? 'MANUAL',
         ...input.capture, sourceNamespace: source?.namespace ?? null, sourceEventId: source?.eventId ?? null,
         sourceFormReference: source?.formReference ?? null, externalCampaignId: source?.externalCampaignId ?? null, externalAdId: source?.externalAdId ?? null,
-        primaryServiceId: input.interest.primaryServiceId ?? null, interestDescription: input.interest.description ?? null,
+        primaryServiceId: input.interest.primaryServiceId ?? null,
         submittedContact: snapshot, actorUserId: ctx.userId, commandNamespace: namespace, idempotencyKey: key, requestHash: hash,
       }).returning();
       const [card] = await tx.insert(crmOpportunities).values({
         companyId: ctx.companyId, contactId: contact.id, originEntryId: entry.id, ...destination,
-        title: (input.title ?? service?.name ?? input.interest.description ?? `Atendimento de ${contact.name}`).slice(0, 200),
-        primaryServiceId: input.interest.primaryServiceId ?? null, estimatedAmount: input.interest.estimatedAmount ?? null,
-        expectedCloseOn: input.interest.expectedCloseOn ?? null, assignedUserId: cardAssignee, createdByUserId: ctx.userId,
+        title: (input.title ?? service?.name ?? `Atendimento de ${contact.name}`).slice(0, 200),
+        primaryServiceId: input.interest.primaryServiceId ?? null, assignedUserId: cardAssignee, createdByUserId: ctx.userId,
       }).returning();
       await this.history.record(tx, a, { contactId: contact.id, entryId: entry.id, opportunityId: card.id, kind: 'ENTRY_RECEIVED', changes: { captureKind: entry.captureKind } });
       await this.history.record(tx, a, { contactId: contact.id, entryId: entry.id, opportunityId: card.id, kind: 'OPPORTUNITY_CREATED', changes: { status: 'NEW', stageId: card.stageId } });
