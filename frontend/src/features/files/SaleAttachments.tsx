@@ -60,7 +60,6 @@ export function SaleAttachments({ companyId, files, onChange, onBusyChange, disa
       <button type="button" className="sale-attachments__add" onClick={() => input.current?.click()} disabled={disabled || !!uploading || !capabilities.data?.enabled || files.length >= 10}>
         <Paperclip size={14} /> Anexar arquivo
       </button>
-      <small>PNG, JPEG ou PDF</small>
     </div>
     {files.length > 0 && <ul className="sale-attachments__list">{files.map(file => <li key={file.id}>
       {file.mimeType === 'application/pdf' ? <FileText size={14} /> : <Image size={14} />}

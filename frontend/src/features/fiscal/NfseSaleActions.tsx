@@ -11,7 +11,7 @@ import './nfse.css';
 
 /** Chaves de NFS-e (D7), resolvidas uma vez e passadas aos filhos no lugar do antigo papel fixo. */
 export type NfsePermissions = Readonly<{ issue: boolean; cancel: boolean; correct: boolean }>;
-const nfsePermissions = (access: Pick<PermissionView, 'can'>): NfsePermissions =>
+export const nfsePermissions = (access: Pick<PermissionView, 'can'>): NfsePermissions =>
   ({ issue: access.can('sales.nfse_issue'), cancel: access.can('sales.nfse_cancel'), correct: access.can('sales.nfse_edit') });
 
 function download(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
@@ -43,8 +43,8 @@ export function NfseSaleActions({ companyId, saleId, saleVersion, disabled = fal
   </div>;
 }
 
-/** `history` abre só o histórico: sem chave de emissão não se pede a prévia (ela exigiria a permissão). */
-function NfseDialog({ companyId, saleId, saleVersion, mode, nfse, onClose }: { companyId: string; saleId: string; saleVersion: number; mode: 'preview' | 'emit' | 'history'; nfse: NfsePermissions; onClose: () => void }) {
+/** `history` abre só o histórico, sem gerar prévia (sem chave de emissão ela exigiria a permissão; na lista, só se quer ver a nota). */
+export function NfseDialog({ companyId, saleId, saleVersion, mode, nfse, onClose }: { companyId: string; saleId: string; saleVersion: number; mode: 'preview' | 'emit' | 'history'; nfse: NfsePermissions; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
   const [request, setRequest] = useState(() => ({ key: crypto.randomUUID(), input: { expectedSaleVersion: saleVersion } as NfsePreviewInput }));
   const [competence, setCompetence] = useState('');
@@ -54,7 +54,7 @@ function NfseDialog({ companyId, saleId, saleVersion, mode, nfse, onClose }: { c
   const key = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const canPreview = nfse.issue || nfse.correct;
-  const preview = useQuery({ queryKey: ['nfse-preview', companyId, saleId, request.key], queryFn: () => api.previewNfse(companyId, saleId, request.input, request.key), staleTime: Infinity, enabled: canPreview });
+  const preview = useQuery({ queryKey: ['nfse-preview', companyId, saleId, request.key], queryFn: () => api.previewNfse(companyId, saleId, request.input, request.key), staleTime: Infinity, enabled: canPreview && mode !== 'history' });
   const cancelling = (statuses: string[] | undefined) => !!statuses?.some(status => ['PENDING', 'READY', 'SENDING', 'UNKNOWN'].includes(status));
   const emissions = useQuery({ queryKey: ['nfse-emissions', companyId, saleId], queryFn: () => api.nfseEmissions(companyId, saleId),
     refetchInterval: query => query.state.data?.some(e => !['AUTHORIZED', 'REJECTED'].includes(e.status) || cancelling(e.items.map(item => item.document?.cancellation?.status ?? ''))) ? 4000 : false });
@@ -110,7 +110,7 @@ function NfseDialog({ companyId, saleId, saleVersion, mode, nfse, onClose }: { c
     <div className="nfse-dialog" ref={panel} role="dialog" aria-modal="true" aria-labelledby="nfse-title" tabIndex={-1}>
       <header><div><span>FISCAL / NOTA DE SERVIÇO</span><h2 id="nfse-title">{mode === 'emit' ? (substituting ? 'Emitir NFS-e substituta' : retrying ? 'Emitir NFS-e novamente' : 'Emitir NFS-e') : mode === 'history' ? 'NFS-e da venda' : 'Pré-visualizar NFS-e'}{data ? ` · #${data.orderCode}` : ''}</h2></div><button type="button" onClick={onClose} aria-label="Fechar nota" disabled={emit.isPending}><X size={21} /></button></header>
       <div className="nfse-dialog__body">
-        {!canPreview ? null : preview.isPending ? <div className="nfse-loading" role="status"><LoaderCircle size={24} className="is-spinning" />Preparando a prévia da nota...</div> : preview.isError ? <div className="nfse-alert" role="alert"><AlertCircle size={18} /><div>{preview.error instanceof Error ? preview.error.message : 'Não foi possível gerar a prévia.'}<button type="button" onClick={() => void preview.refetch()}>Tentar novamente</button></div></div> : data && <>
+        {!canPreview || mode === 'history' ? null : preview.isPending ? <div className="nfse-loading" role="status"><LoaderCircle size={24} className="is-spinning" />Preparando a prévia da nota...</div> : preview.isError ? <div className="nfse-alert" role="alert"><AlertCircle size={18} /><div>{preview.error instanceof Error ? preview.error.message : 'Não foi possível gerar a prévia.'}<button type="button" onClick={() => void preview.refetch()}>Tentar novamente</button></div></div> : data && <>
           <div className="nfse-info"><ShieldCheck size={19} /><p><strong>{mode === 'emit' ? 'Confira os dados antes de confirmar.' : 'Esta é uma prévia, sem validade fiscal.'}</strong><span>A pré-visualização não envia dados ao governo nem reserva numeração. {data.environment === 'HOMOLOGATION' ? 'A série está configurada para homologação.' : data.environment === 'PRODUCTION' ? 'A série está em produção; o envio neste ambiente ainda não está disponível.' : 'Configure uma série padrão para emitir.'}</span></p></div>
           <form className="nfse-options" onSubmit={refresh}>
             <label>Competência da prestação<input type="date" value={competence} onChange={event => setCompetence(event.target.value)} disabled={emit.isPending} /><small>Vazia: utiliza a data de cada serviço ou da venda.</small></label>

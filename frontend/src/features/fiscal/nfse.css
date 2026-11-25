@@ -1,5 +1,9 @@
 .nfse-sale-actions > div:first-child { display: flex; gap: 8px; flex-wrap: wrap; }
-.sale-editor-fiscal-actions { display: flex; justify-content: flex-end; margin: -4px 0 18px; }
+/* Dentro do cabeçalho "01 Dados do lançamento", à direita do título (ao lado de "Anexar arquivo"). */
+.sale-editor-fiscal-actions { display: flex; justify-content: flex-end; max-width: 100%; }
+.sale-editor-fiscal-actions .nfse-sale-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.sale-editor-fiscal-actions .nfse-sale-actions > div:first-child { justify-content: flex-end; }
+.sale-editor-fiscal-actions .nfse-sale-actions small { margin-top: 0; text-align: right; }
 .nfse-sale-actions small { display: block; max-width: 300px; margin-top: 7px; color: #6b8090; font-size: 11px; }
 .nfse-backdrop { position: fixed; inset: 0; z-index: 1400; display: flex; align-items: center; justify-content: center; padding: 24px; background: #0c253a75; backdrop-filter: blur(2px); }
 .nfse-dialog { display: flex; flex-direction: column; width: min(1040px, 100%); max-height: calc(100dvh - 48px); background: #f4f7f9; border-radius: 12px; box-shadow: 0 22px 80px #102e4140; outline: none; }
@@ -108,3 +112,16 @@
 .nfse-action-form small.is-invalid { color: #9e4d34; }
 .nfse-action-form > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .nfse-action-form button { margin-top: 0; }
+
+/* Botão de NFS-e da linha do Portal de Serviços (Emitir NFS-e → Emitindo… → Ver nota). */
+.nfse-row { display: inline-flex; align-items: center; gap: 6px; }
+.nfse-row-action { min-width: 104px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid #cfdde5; border-radius: 5px; background: #fff; color: var(--primary-dark); font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: background-color .15s ease, border-color .15s ease, color .15s ease; }
+.nfse-row-action:hover { border-color: var(--primary); background: #f1f8fa; }
+.nfse-row-action:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.nfse-row-action--emit { border-color: var(--primary); background: var(--primary); color: #fff; }
+.nfse-row-action--emit:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.nfse-row-action--preview { min-width: 0; }
+.nfse-row-action.is-busy { cursor: progress; border-color: #cfdde5; background: #f1f6f8; color: #52788a; }
+.nfse-row-action__spin { animation: nfse-row-spin .8s linear infinite; }
+@keyframes nfse-row-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .nfse-row-action__spin { animation-duration: 2.4s; } .nfse-row-action { transition: none; } }

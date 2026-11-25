@@ -58,8 +58,8 @@ function validItem(line: ItemLine) {
     Number.isFinite(discountCents(line.discountAmount)) && discountCents(line.discountAmount) <= gross;
 }
 
-export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClose, onDetails, onCreated }: {
-  companyId: string; companies: Company[]; draft?: SaleDetail | null; onCompanyChange: (id: string) => void; onClose: () => void; onDetails?: () => void; onCreated: (sale: SaleDetail) => void;
+export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClose, onCreated }: {
+  companyId: string; companies: Company[]; draft?: SaleDetail | null; onCompanyChange: (id: string) => void; onClose: () => void; onCreated: (sale: SaleDetail) => void;
 }) {
   const confirmedEdit = draft?.status === 'CONFIRMED';
   const mainRef = useRef<HTMLElement>(null);
@@ -279,10 +279,9 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
       (line.description ?? null) !== original.descriptionSnapshot || (line.performedOn ?? null) !== original.performedOn; }));
   return <main ref={mainRef} id="workspace-main" className="sale-editor-page" tabIndex={-1}>
     <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving || uploading}><ArrowLeft size={17} /> Portal de Serviços</button><span>{confirmedEdit ? `EDITAR PEDIDO #${draft.orderCode}` : draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
-    <div className="sale-editor-heading"><div><span className="sale-eyebrow">GESTÃO DE SERVIÇOS</span><h1>{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1>{confirmedEdit && nfseState.data?.lockReason && <p className="sale-field-hint" role="status">{nfseState.data.lockReason}</p>}<p>{confirmedEdit ? 'Atualize cliente, serviços, valores, vencimentos e demais dados do pedido.' : 'Registre o serviço, combine os recebimentos e marque o que já foi recebido.'}</p>{onDetails && <button type="button" className="sale-editor-details" onClick={onDetails} disabled={saving || uploading}>Ver detalhes, baixas e histórico</button>}</div><div className="sale-editor-heading__actions">{canAttach && <SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} />}<div className="sale-editor-heading__total"><span>TOTAL DA VENDA</span><strong>{brl(total)}</strong></div></div></div>
-    {confirmedEdit && <div className="sale-editor-fiscal-actions"><NfseSaleActions companyId={companyId} saleId={draft.id} saleVersion={draft.version} disabled={saving || uploading || fiscalDirty} /></div>}
+    <div className="sale-editor-heading"><div><h1 className="sr-only">{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1>{confirmedEdit && nfseState.data?.lockReason && <p className="sale-field-hint" role="status">{nfseState.data.lockReason}</p>}</div></div>
     <form onSubmit={submit} className="sale-editor-form">
-      <section className="sale-editor-section sale-editor-section--identity"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2>Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div></div>
+      <section className="sale-editor-section sale-editor-section--identity"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2>Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div>{(canAttach || confirmedEdit) && <div className="sale-section-heading__aside">{canAttach && <SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} />}{confirmedEdit && <div className="sale-editor-fiscal-actions"><NfseSaleActions companyId={companyId} saleId={draft.id} saleVersion={draft.version} disabled={saving || uploading || fiscalDirty} /></div>}</div>}</div>
         <div className="sale-identity-grid">
           <div className="sale-field"><span><Building2 size={14} /> Empresa</span><SaleDropdown label="Empresa" value={companyId} options={companies.map((company) => ({ value: company.id, label: company.tradeName }))} onChange={changeCompany} disabled={saving || !!draft} /></div>
           <div className="sale-field sale-field--customer"><span><UsersRound size={14} /> Cliente <button type="button" className="sale-customer-new" onClick={() => { setCustomerOpen(false); customerSave.reset(); setCustomerModalOpen(true); }} disabled={saving} aria-label="Novo cliente"><Plus size={13} /> Novo</button></span>
