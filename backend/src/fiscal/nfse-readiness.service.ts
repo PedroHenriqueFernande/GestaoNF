@@ -60,10 +60,8 @@ export class NfseReadinessService {
     const [company] = await this.database.db.select().from(companies).where(eq(companies.id, companyId)).limit(1);
     const problems: string[] = [];
     if (company.kind !== 'PJ' || company.countryCode !== 'BR' || !company.taxId || !isValidCnpj(company.taxId)) problems.push('Informe um CNPJ válido de empresa brasileira.');
-    if (!company.cityIbgeCode) problems.push('Informe o município da empresa com código IBGE.');
+    if (!company.cityIbgeCode) problems.push('Informe o CEP da empresa no cadastro para identificarmos o município.');
     if (!['2', '3'].includes(company.simplesNationalOption ?? '')) problems.push('Informe o enquadramento no Simples Nacional (MEI ou ME/EPP).');
-    if (company.simplesNationalOption === '3' && company.simplesTaxationRegime !== '1') problems.push('Informe a forma de apuração do Simples Nacional (ISS dentro do DAS).');
-    if (company.specialTaxRegime && company.specialTaxRegime !== '0') problems.push('Regimes municipais especiais ainda não são suportados.');
     problems.length ? add('COMPANY', 'Cadastro da empresa', 'ERROR', problems.join(' ')) : add('COMPANY', 'Cadastro da empresa', 'OK', 'Dados fiscais completos.');
     if (company.simplesNationalOption === '3') {
       company.municipalRegistration ? add('COMPANY_IM', 'Inscrição municipal', 'OK', `Informada (${company.municipalRegistration}).`)

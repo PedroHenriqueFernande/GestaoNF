@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { ALL_PERMISSIONS } from '@gestaonf/permissions';
 import type { AccessInput, ManagedMember } from '../src/api/client';
 import { localWebOrigin } from './origin';
@@ -9,6 +9,20 @@ const secondCompanyId = '22222222-2222-4222-8222-222222222222';
 const accountId = '33333333-3333-4333-8333-333333333333';
 const inviteId = '44444444-4444-4444-8444-444444444444';
 const cors = { 'access-control-allow-origin': localWebOrigin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Company-Id, Idempotency-Key', 'access-control-allow-methods': 'GET, POST, PATCH, PUT, OPTIONS' };
+
+
+async function openCompanies(dialog: Locator) {
+  await dialog.getByRole('button', { name: /Empresas com acesso/ }).click();
+  await expect(dialog.getByRole('menu', { name: 'Empresas com acesso' })).toBeVisible();
+}
+
+/** Abre o dropdown de empresas, alterna a empresa e fecha com Esc (o modal continua aberto). */
+async function toggleCompany(dialog: Locator, name: RegExp) {
+  await openCompanies(dialog);
+  await dialog.getByRole('menuitemcheckbox', { name }).click();
+  await dialog.page().keyboard.press('Escape');
+  await expect(dialog.getByRole('menu', { name: 'Empresas com acesso' })).toBeHidden();
+}
 
 test('titular convida usuário para duas empresas e vê reservas por empresa', async ({ page }) => {
   const errors: string[] = [];
@@ -33,13 +47,40 @@ test('titular convida usuário para duas empresas e vê reservas por empresa', a
   const dialog = page.getByRole('dialog', { name: 'Convidar usuário' });
   await dialog.getByLabel('Nome').fill('Maria Silva');
   await dialog.getByLabel('E-mail').fill('maria@example.test');
-  await dialog.getByLabel(/Filial/).check();
+  await toggleCompany(dialog, /Filial/);
   await dialog.getByRole('button', { name: 'Enviar convite' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('Convite criado. O e-mail está na fila de envio.')).toBeVisible();
   expect(body).toEqual({ name: 'Maria Silva', email: 'maria@example.test', companyIds: [companyId, secondCompanyId], roleLabel: 'COLLABORATOR', permissions: [] });
-  await expect(page.getByText('4 de 5 vagas livres')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Novo usuário' }).click();
+  await openCompanies(page.getByRole('dialog', { name: 'Convidar usuário' }));
+  await expect(page.getByRole('menu', { name: 'Empresas com acesso' }).getByText('4 de 5 livres')).toHaveCount(2);
   expect(errors).toEqual([]);
+});
+
+test('com uma única empresa, o convite já sai com ela selecionada', async ({ page }) => {
+  let body: (AccessInput & { name: string; email: string }) | null = null;
+  await page.route('**:4030/**', async route => {
+    const request = route.request(), path = new URL(request.url()).pathname;
+    const reply = (json: unknown) => route.fulfill({ json, headers: cors });
+    if (request.method() === 'OPTIONS') return reply({});
+    if (path === '/auth/me') return reply({ id: 'owner', name: 'Titular', email: 'titular@example.test' });
+    if (path === '/companies') return reply([ownerCompany(companyId, 'GestãoNF', accountId)]);
+    if (path === '/accounts') return reply([{ id: accountId, name: 'GestãoNF', status: 'ACTIVE', planCode: 'BASE', additionalUsersPerCompany: 5 }]);
+    if (path === `/accounts/${accountId}/users/capacity`) return reply([{ companyId, tradeName: 'GestãoNF', status: 'ACTIVE', limit: 5, occupied: 0, reserved: 0, available: 5, overLimit: 0 }]);
+    if (path === `/accounts/${accountId}/users` && request.method() === 'GET') return reply({ items: [], total: 0 });
+    if (path === `/accounts/${accountId}/user-invitations` && request.method() === 'POST') { body = request.postDataJSON(); return reply({ id: inviteId, ...body, status: 'PENDING' }); }
+    return reply({});
+  });
+  await page.goto('/usuarios');
+  await page.getByRole('button', { name: 'Novo usuário' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Convidar usuário' });
+  await expect(dialog.getByRole('button', { name: /Empresas com acesso/ })).toContainText('GestãoNF');
+  await dialog.getByLabel('Nome').fill('Maria Silva');
+  await dialog.getByLabel('E-mail').fill('maria@example.test');
+  await dialog.getByRole('button', { name: 'Enviar convite' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(body).toMatchObject({ companyIds: [companyId] });
 });
 
 const longEmail = `ana@${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(55)}.br`;
@@ -87,7 +128,7 @@ for (const [caseName, email] of [['curto', 'ana@example.test'], ['com 254 caract
   await invite.getByLabel('Nome').fill('Outra grafia');
   await invite.getByLabel('E-mail').fill(member.email.toUpperCase());
   await invite.getByLabel('Classificação').selectOption('OWNER');
-  await invite.getByLabel(/Filial/).check();
+  await toggleCompany(invite, /Filial/);
   await invite.getByRole('button', { name: 'Permissões de usuário' }).click();
   const editor = page.getByRole('dialog', { name: 'Permissões de usuário' });
   await editor.getByRole('checkbox', { name: 'Acessar Serviços', exact: true }).check();
@@ -99,7 +140,7 @@ for (const [caseName, email] of [['curto', 'ana@example.test'], ['com 254 caract
   await expect(invite.getByLabel('Nome')).toHaveValue('Outra grafia');
   await expect(invite.getByLabel('E-mail')).toHaveValue(member.email.toUpperCase());
   await expect(invite.getByLabel('Classificação')).toHaveValue('OWNER');
-  await expect(invite.getByLabel(/Filial/)).toBeChecked();
+  await expect(invite.getByRole('button', { name: /Empresas com acesso/ })).toContainText('2 empresas selecionadas');
   await expect(invite.getByText('1 permissão em 1 tópico')).toBeVisible();
   await expect(page.getByText('Convite criado. O e-mail está na fila de envio.')).toHaveCount(0);
 
@@ -110,8 +151,10 @@ for (const [caseName, email] of [['curto', 'ana@example.test'], ['com 254 caract
   await page.locator('.users-row').filter({ hasText: member.email }).getByRole('button', { name: 'Editar acesso' }).click();
   const edit = page.getByRole('dialog', { name: 'Acesso de Ana Silva' });
   await expect(edit.getByLabel('Classificação')).toHaveValue('MANAGER');
-  await expect(edit.getByLabel(/Filial/)).not.toBeChecked();
-  await edit.getByLabel(/Filial/).check();
+  await openCompanies(edit);
+  await expect(edit.getByRole('menuitemcheckbox', { name: /Filial/ })).toHaveAttribute('aria-checked', 'false');
+  await page.keyboard.press('Escape');
+  await toggleCompany(edit, /Filial/);
   await edit.getByRole('button', { name: 'Salvar acesso' }).click();
   await expect(page.getByText('Acesso atualizado.')).toBeVisible();
   expect(searches).toContain(member.email);

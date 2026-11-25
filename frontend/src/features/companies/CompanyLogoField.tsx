@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { ImagePlus, RotateCcw, Trash2 } from 'lucide-react';
+import { Camera, ImagePlus, RotateCcw, Trash2 } from 'lucide-react';
 import { api, ApiError, type Company, type CompanyLogoMime, type CompanyProfile } from '../../api/client';
 import { putSignedUpload } from '../../api/signed-upload';
 import { CompanyLogo, COMPANY_LOGOS_KEY } from '../../components/CompanyLogo';
@@ -16,9 +16,10 @@ type Status =
   | { kind: 'processing' }
   | { kind: 'applying' }
   | { kind: 'error'; message: string; retry: Step | null };
-type Props =
+/** `children` é o título exibido ao lado da foto (no modal, o da seção Identificação). */
+type Props = { children?: ReactNode } & (
   | { mode: 'create'; pending: LogoSelection | null; onPendingChange: (selection: LogoSelection | null) => void }
-  | { mode: 'edit'; company: Company | undefined; editable: boolean; initialSelection?: LogoSelection | null };
+  | { mode: 'edit'; company: Company | undefined; editable: boolean; initialSelection?: LogoSelection | null });
 
 /** Pré-checagem local; o servidor continua sendo a autoridade (assinatura, pixels, dimensões). */
 function pickLogo(file: File): LogoSelection | string {
@@ -139,18 +140,27 @@ export function CompanyLogoField(props: Props) {
   const canEdit = props.mode === 'create' || props.editable;
   const chooseLabel = props.mode === 'create' ? (props.pending ? 'Trocar foto' : 'Escolher foto') : company?.logoId ? 'Trocar foto' : 'Enviar foto';
 
+  const empty = !preview && !company?.logoId;
+  const pick = () => { if (canEdit && !busy) inputRef.current?.click(); };
+
   return <div className="company-logo-field">
-    <div className="company-form__mark company-logo-field__image">
-      {preview ? <img src={preview} alt="Prévia da foto selecionada" /> : <CompanyLogo company={company} className="company-logo-field__logo" />}
+    {/* Atalho de mouse para o mesmo envio do botão ao lado; o botão é o controle acessível. */}
+    <div className={`company-logo-field__image${empty ? ' is-empty' : ''}${canEdit ? ' is-editable' : ''}${busy ? ' is-busy' : ''}`} onClick={pick}>
+      {preview ? <img src={preview} alt="Prévia da foto selecionada" />
+        : empty && canEdit ? <span className="company-logo-field__placeholder" aria-hidden="true"><ImagePlus size={22} /></span>
+        : <CompanyLogo company={company} className="company-logo-field__logo" />}
+      {canEdit && !empty && !busy && <span className="company-logo-field__overlay" aria-hidden="true"><Camera size={18} /></span>}
     </div>
-    {canEdit && <div className="company-logo-field__actions">
-      <input ref={inputRef} type="file" accept={LOGO_TYPES.join(',')} hidden onChange={choose} />
-      <button type="button" className="button button--secondary" disabled={busy} onClick={() => inputRef.current?.click()}><ImagePlus size={15} aria-hidden="true" />{chooseLabel}</button>
-      {props.mode === 'create' && props.pending && <button type="button" className="button button--secondary" onClick={() => props.onPendingChange(null)}><Trash2 size={15} aria-hidden="true" />Remover seleção</button>}
-      {props.mode === 'edit' && company?.logoId && <button type="button" className="button button--secondary" disabled={busy} onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Remover foto</button>}
-    </div>}
-    {canEdit && <p className="company-logo-field__hint">JPEG, PNG ou WebP, até 5 MB, mínimo 128 × 128 px. Imagens não quadradas são recortadas no centro.{props.mode === 'create' ? ' A foto é enviada logo após cadastrar a empresa.' : ''}</p>}
-    <p className="company-logo-field__status" role="status" aria-live="polite">{statusText}</p>
+    <div className="company-logo-field__body">
+      {props.children}
+      {canEdit && <div className="company-logo-field__actions">
+        <input ref={inputRef} type="file" accept={LOGO_TYPES.join(',')} hidden onChange={choose} />
+        <button type="button" className="button button--secondary" disabled={busy} onClick={() => inputRef.current?.click()}><ImagePlus size={14} aria-hidden="true" />{chooseLabel}</button>
+        {props.mode === 'create' && props.pending && <button type="button" className="button button--secondary" onClick={() => props.onPendingChange(null)}><Trash2 size={14} aria-hidden="true" />Remover seleção</button>}
+        {props.mode === 'edit' && company?.logoId && <button type="button" className="button button--secondary" disabled={busy} onClick={() => void remove()}><Trash2 size={14} aria-hidden="true" />Remover foto</button>}
+      </div>}
+      <p className="company-logo-field__status" role="status" aria-live="polite">{statusText}</p>
+    </div>
     {status.kind === 'error' && <div className="inline-error" role="alert">{status.message}{status.retry && <button type="button" onClick={retry}><RotateCcw size={14} aria-hidden="true" />Tentar novamente</button>}</div>}
   </div>;
 }

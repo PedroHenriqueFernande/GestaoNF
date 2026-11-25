@@ -95,11 +95,10 @@ export class ProposalsService {
       return c;
     }
     requirePermission(a.actor, 'customers.create', 'POST /crm/proposals');
-    const kind = input.newCustomer?.kind ?? contact.taxIdKind;
-    const data = createCustomerSchema.safeParse({ kind,
-      name: kind === 'PJ' ? contact.organizationName ?? contact.name : contact.name,
+    const data = createCustomerSchema.safeParse({
+      name: contact.taxIdKind === 'PJ' ? contact.organizationName ?? contact.name : contact.name,
       taxId: contact.taxId, email: contact.email, phone: contact.phone, ...input.newCustomer, status: 'ACTIVE' });
-    if (!data.success) throw failure('PROPOSAL_CUSTOMER_DETAILS_REQUIRED', 'Complete o tipo PF/PJ e os dados válidos do cliente antes de salvar a proposta');
+    if (!data.success) throw failure('PROPOSAL_CUSTOMER_DETAILS_REQUIRED', 'Informe os dados válidos do cliente antes de salvar a proposta');
     if (data.data.taxId) {
       const [existing] = await tx.select({ id: customers.id }).from(customers).where(and(eq(customers.companyId, a.companyId), eq(customers.taxId, data.data.taxId))).limit(1);
       if (existing) throw new ConflictException({ code: 'PROPOSAL_CUSTOMER_CONFLICT', message: 'CPF/CNPJ já cadastrado. Confirme e selecione o cliente existente.', customerId: existing.id });

@@ -3,11 +3,20 @@ import { companies, companyFiscalCertificates, companyUsers } from '@gestaonf/da
 import { ALL_PERMISSIONS } from '@gestaonf/permissions';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
-import { isValidCpf, isValidCnpj } from '../customers/tax-id.js';
+import { isValidCnpj } from '../customers/tax-id.js';
 import { DatabaseService } from '../database/database.module.js';
 import type { createCompanySchema, updateCompanySchema } from './companies.schemas.js';
 import { AccountsService } from '../accounts/accounts.service.js';
 import { presentMembership, requireMembershipPermission, resolveMemberships } from '../permissions/permission-resolver.js';
+import { SPECIAL_TAX_REGIME, simplesTaxationRegimeFor } from '../fiscal/simples-regime.js';
+
+/** O GestãoNF só atende pessoa jurídica: toda empresa é gravada como PJ, com CNPJ. */
+const COMPANY_KIND = 'PJ';
+
+/** Regimes que o usuário não escolhe: sempre gravados conforme o enquadramento no Simples. */
+function fixedTaxRegimes(simplesNationalOption: string | null | undefined) {
+  return { simplesTaxationRegime: simplesTaxationRegimeFor(simplesNationalOption), specialTaxRegime: SPECIAL_TAX_REGIME };
+}
 
 @Injectable()
 export class CompaniesService {
@@ -33,12 +42,11 @@ export class CompaniesService {
   }
 
   async create(userId: string, input: z.output<typeof createCompanySchema>) {
-    this.validateTaxId(input.kind ?? 'PJ', input.taxId);
-    this.validateTaxRegime(input.simplesNationalOption, input.simplesTaxationRegime, input.simplesIbsCbsRegime);
-    this.validateCaepf(input.kind ?? 'PJ', input.caepfCode);
+    this.validateTaxId(input.taxId);
+    this.validateTaxRegime(input.simplesNationalOption, input.simplesIbsCbsRegime);
     const company = await this.database.db.transaction(async (tx) => {
       const accountId = await this.accounts.companyAccount(tx, userId, input.tradeName, input.accountId);
-      const [created] = await tx.insert(companies).values({ ...input, accountId, kind: input.kind ?? 'PJ' }).returning();
+      const [created] = await tx.insert(companies).values({ ...input, ...fixedTaxRegimes(input.simplesNationalOption), accountId, kind: COMPANY_KIND }).returning();
       await tx.insert(companyUsers).values({ companyId: created.id, userId, role: 'OWNER' });
       return created;
     });
@@ -47,27 +55,22 @@ export class CompaniesService {
 
   async update(companyId: string, userId: string, input: z.output<typeof updateCompanySchema>) {
     const current = await this.get(companyId, userId);
-    this.validateTaxId(input.kind ?? current.kind as 'PF' | 'PJ', input.taxId === undefined ? current.taxId : input.taxId);
-    this.validateTaxRegime(
-      input.simplesNationalOption === undefined ? current.simplesNationalOption : input.simplesNationalOption,
-      input.simplesTaxationRegime === undefined ? current.simplesTaxationRegime : input.simplesTaxationRegime,
-      input.simplesIbsCbsRegime === undefined ? current.simplesIbsCbsRegime : input.simplesIbsCbsRegime,
-    );
-    this.validateCaepf(input.kind ?? current.kind, input.caepfCode === undefined ? current.caepfCode : input.caepfCode);
+    this.validateTaxId(input.taxId === undefined ? current.taxId : input.taxId);
+    const nextSimplesOption = input.simplesNationalOption === undefined ? current.simplesNationalOption : input.simplesNationalOption;
+    this.validateTaxRegime(nextSimplesOption, input.simplesIbsCbsRegime === undefined ? current.simplesIbsCbsRegime : input.simplesIbsCbsRegime);
     const { updated, membership } = await this.database.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`);
       const membership = await requireMembershipPermission(tx, userId, companyId, 'company.edit', 'PATCH /companies/current');
-      const [locked] = await tx.select({ kind: companies.kind, taxId: companies.taxId, countryCode: companies.countryCode }).from(companies)
+      const [locked] = await tx.select({ taxId: companies.taxId, countryCode: companies.countryCode }).from(companies)
         .where(eq(companies.id, companyId)).limit(1);
-      const nextKind = input.kind ?? locked?.kind;
       const nextTaxId = input.taxId === undefined ? locked?.taxId : input.taxId;
       const nextCountryCode = input.countryCode ?? locked?.countryCode;
-      if (locked && (nextKind !== locked.kind || nextTaxId !== locked.taxId || nextCountryCode !== locked.countryCode)) {
+      if (locked && (nextTaxId !== locked.taxId || nextCountryCode !== locked.countryCode)) {
         const [certificate] = await tx.select({ id: companyFiscalCertificates.id }).from(companyFiscalCertificates)
           .where(and(eq(companyFiscalCertificates.companyId, companyId), eq(companyFiscalCertificates.status, 'ACTIVE'))).limit(1);
-        if (certificate) throw new ConflictException('Desative o certificado antes de alterar o CPF/CNPJ, tipo ou país da empresa.');
+        if (certificate) throw new ConflictException('Desative o certificado antes de alterar o CNPJ ou o país da empresa.');
       }
-      const [updated] = await tx.update(companies).set({ ...input, updatedAt: new Date() })
+      const [updated] = await tx.update(companies).set({ ...input, ...fixedTaxRegimes(nextSimplesOption), kind: COMPANY_KIND, caepfCode: null, updatedAt: new Date() })
         .where(and(eq(companies.id, companyId), eq(companies.status, 'ACTIVE'))).returning();
       return { updated, membership };
     });
@@ -75,17 +78,11 @@ export class CompaniesService {
     return { ...updated, ...presentMembership(membership) };
   }
 
-  private validateTaxId(kind: 'PF' | 'PJ', taxId: string | null | undefined) {
-    if (taxId && (kind === 'PF' ? !isValidCpf(taxId) : !isValidCnpj(taxId))) {
-      throw new BadRequestException(kind === 'PF' ? 'CPF inválido' : 'CNPJ inválido');
-    }
+  private validateTaxId(taxId: string | null | undefined) {
+    if (taxId && !isValidCnpj(taxId)) throw new BadRequestException('CNPJ inválido');
   }
 
-  private validateTaxRegime(option: string | null | undefined, regime: string | null | undefined, ibsCbsRegime: string | null | undefined) {
-    if ((regime || ibsCbsRegime) && option !== '3' && option !== '4') throw new BadRequestException('A apuração pelo Simples exige enquadramento de microempresa/empresa de pequeno porte ou opção pendente.');
-  }
-
-  private validateCaepf(kind: string, caepf: string | null | undefined) {
-    if (caepf && kind !== 'PF') throw new BadRequestException('O registro de atividade da pessoa física só pode ser informado para prestadora pessoa física.');
+  private validateTaxRegime(option: string | null | undefined, ibsCbsRegime: string | null | undefined) {
+    if (ibsCbsRegime && option !== '3' && option !== '4') throw new BadRequestException('A apuração pelo Simples exige enquadramento de microempresa/empresa de pequeno porte ou opção pendente.');
   }
 }

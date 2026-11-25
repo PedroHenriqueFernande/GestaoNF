@@ -101,6 +101,32 @@ const choosePng = async (page: Page, trigger: () => Promise<void>) => {
 };
 const headerBadge = (page: Page) => page.getByRole('button', { name: /Empresa ativa/ }).locator('.header-company__badge');
 
+test('cadastro da empresa completa o endereço e código do município pelo CEP', async ({ page }) => {
+  const state = initialState(null);
+  const updates: Record<string, unknown>[] = [];
+  await mockApi(page, state);
+  await page.route('https://viacep.com.br/ws/01001000/json/', route => route.fulfill({ json: {
+    cep: '01001-000', logradouro: 'Praça da Sé', bairro: 'Sé', localidade: 'São Paulo', uf: 'SP', ibge: '3550308',
+  } }));
+  page.on('request', request => {
+    if (request.method() === 'PATCH' && new URL(request.url()).pathname === '/companies/current') updates.push(request.postDataJSON());
+  });
+
+  await page.goto('/empresa');
+  await page.getByRole('button', { name: 'Abrir cadastro de Alfa Serviços' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('CEP', { exact: true }).fill('01001000');
+  await dialog.getByLabel('CEP', { exact: true }).press('Tab');
+  await expect(dialog.getByLabel('Logradouro')).toHaveValue('Praça da Sé');
+  await expect(dialog.getByLabel('Bairro')).toHaveValue('Sé');
+  await expect(dialog.getByLabel('Cidade', { exact: true })).toHaveValue('São Paulo');
+  await expect(dialog.getByLabel('UF', { exact: true })).toHaveValue('SP');
+  await expect(dialog.getByLabel('Código IBGE do município')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(updates.at(-1)).toMatchObject({ postalCode: '01001000', street: 'Praça da Sé', district: 'Sé', cityName: 'São Paulo', stateCode: 'SP', cityIbgeCode: '3550308' });
+});
+
 test('modal: envia por teclado, troca e remove; reflete no header e na lista', async ({ page }) => {
   const state = initialState(null);
   await mockApi(page, state);

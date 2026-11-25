@@ -9,6 +9,7 @@ import type { NfsePreviewInput } from './nfse.schemas.js';
 import type { NfseGroup, NfseIssue, NfseParty, NfsePreview, NfseSnapshot } from './nfse.types.js';
 import { CertificateService } from './certificate.service.js';
 import { saleFiscalState } from './sale-fiscal-state.js';
+import { SPECIAL_TAX_REGIME, simplesTaxationRegimeFor } from './simples-regime.js';
 
 type Db = DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
 export function snapshotHash(snapshot: NfseSnapshot) {
@@ -35,15 +36,13 @@ export class NfsePreviewService {
     if (!company || !customer) throw new NotFoundException('Empresa ou cliente não encontrado.');
     const issues: NfseIssue[] = [];
     const add = (code: string, message: string, field: string, target: NfseIssue['target'], severity: NfseIssue['severity'] = 'ERROR') => issues.push({ code, message, field, target, severity });
-    const party = (p: typeof customer | typeof company, name: string): NfseParty => ({ name, taxId: p.taxId, email: p.email, street: p.street, number: p.number, district: p.district, cityName: p.cityName, cityIbgeCode: p.cityIbgeCode, postalCode: p.postalCode, stateCode: p.stateCode, municipalRegistration: p.municipalRegistration });
-    const issuer = party(company, company.legalName || company.tradeName);
+    const party = (p: typeof customer | typeof company, name: string): NfseParty => ({ name, taxId: p.taxId, email: p.email, street: p.street, number: p.number, district: p.district, cityName: p.cityName, cityIbgeCode: p.cityIbgeCode, postalCode: p.postalCode, stateCode: p.stateCode });
+    const issuer = { ...party(company, company.legalName || company.tradeName), municipalRegistration: company.municipalRegistration };
     const recipient = party(customer, customer.name);
     if (sale.status !== 'CONFIRMED') add('SALE_NOT_CONFIRMED', 'Confirme a venda antes de emitir a nota.', 'status', 'sale');
     if (company.kind !== 'PJ' || company.countryCode !== 'BR' || !company.taxId || !isValidCnpj(company.taxId)) add('ISSUER_CNPJ', 'Preencha um CNPJ válido de empresa brasileira.', 'taxId', 'company');
-    if (!company.cityIbgeCode) add('ISSUER_CITY', 'Informe o município da empresa com código IBGE.', 'cityIbgeCode', 'company');
+    if (!company.cityIbgeCode) add('ISSUER_CITY', 'Informe o CEP da empresa no cadastro para identificarmos o município.', 'cityIbgeCode', 'company');
     if (!['2', '3'].includes(company.simplesNationalOption ?? '')) add('SIMPLES_REQUIRED', 'A emissão atende MEI ou ME/EPP optantes pelo Simples Nacional. Revise o enquadramento.', 'simplesNationalOption', 'company');
-    if (company.simplesNationalOption === '3' && company.simplesTaxationRegime !== '1') add('APURATION_UNSUPPORTED', 'Configure a apuração do Simples Nacional. ISS fora do DAS ainda não está disponível nesta versão.', 'simplesTaxationRegime', 'company');
-    if (company.specialTaxRegime && company.specialTaxRegime !== '0') add('SPECIAL_REGIME_UNSUPPORTED', 'Este regime municipal precisa de um tratamento fiscal específico, ainda não disponível.', 'specialTaxRegime', 'company');
     if (customer.countryCode !== 'BR' || !customer.taxId || !(customer.kind === 'PF' ? isValidCpf(customer.taxId) : isValidCnpj(customer.taxId))) add('CUSTOMER_TAX_ID', 'Informe CPF/CNPJ válido de um cliente brasileiro.', 'taxId', 'customer');
     for (const [target, p] of [['company', issuer], ['customer', recipient]] as const) {
       if (p.name.length > 150) add('NAME_LENGTH', 'O nome para a nota deve ter até 150 caracteres.', 'name', target);
@@ -125,7 +124,7 @@ export class NfsePreviewService {
     if (!cert) add('CERTIFICATE_MISSING', 'Cadastre o certificado A1 da empresa para poder emitir. A prévia pode ser consultada.', 'certificate', 'company', 'WARNING');
     const snapshot: NfseSnapshot = { schemaVersion: 1, saleId, saleVersion: sale.version, orderCode: sale.orderCode, generatedAt: new Date().toISOString(), contractVersion: NFSE_CONTRACT,
       environment: selected?.environment as NfseSnapshot['environment'] ?? null, series: selected ? { id: selected.id, number: selected.seriesNumber, nextNumber: selected.nextNumber.toString(), version: selected.version } : null,
-      issuer, customer: recipient, customerId: customer.id, simplesOption: company.simplesNationalOption, simplesTaxationRegime: company.simplesTaxationRegime, specialTaxRegime: company.specialTaxRegime ?? '0', groups: [...groups.values()], totalAmount: wholeSale ? sale.totalAmount : amount(includedTotal), issues,
+      issuer, customer: recipient, customerId: customer.id, simplesOption: company.simplesNationalOption, simplesTaxationRegime: simplesTaxationRegimeFor(company.simplesNationalOption), specialTaxRegime: SPECIAL_TAX_REGIME, groups: [...groups.values()], totalAmount: wholeSale ? sale.totalAmount : amount(includedTotal), issues,
       ...(substitution ? { substitution: { documentId: substitution.documentId, accessKey: substitution.accessKey, reasonCode: substitution.reasonCode, reasonText: substitution.reasonText } } : {}),
       input: { ...(input.competence ? { competence: input.competence } : {}), ...(input.municipalityIbgeCode ? { municipalityIbgeCode: input.municipalityIbgeCode } : {}), ...(input.simplesTotalTaxPercent ? { simplesTotalTaxPercent: input.simplesTotalTaxPercent } : {}) }, certificate: cert ? { id: cert.id, expiresAt: cert.notAfter.toISOString(), status: cert.notAfter > new Date() ? 'ACTIVE' : 'EXPIRED', trusted: false } : null };
     if (!issues.some(i => i.severity === 'ERROR') && selected?.environment === 'HOMOLOGATION') {

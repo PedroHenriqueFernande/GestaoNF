@@ -3,18 +3,18 @@ import './danfse-preview.css';
 
 const money = (value: string) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value));
 const date = (value: string) => value.split('-').reverse().join('/');
-const missing = '—';
+const missing = '-';
 
 function Field({ label, value }: { label: string; value?: string | null }) {
   return <div className="danfse-field"><span>{label}</span><strong>{value || missing}</strong></div>;
 }
 
-function Party({ title, party, simples }: { title: string; party: NfseParty; simples?: string | null }) {
+function Party({ title, party, simples, issuer = false }: { title: string; party: NfseParty; simples?: string | null; issuer?: boolean }) {
   const address = [party.street, party.number, party.district].filter(Boolean).join(', ');
   return <section className="danfse-section"><h4>{title}</h4><div className="danfse-grid danfse-grid--party">
     <Field label="Nome / nome empresarial" value={party.name} />
     <Field label="CPF / CNPJ" value={party.taxId} />
-    <Field label="Inscrição municipal" value={party.municipalRegistration} />
+    {issuer && <Field label="Inscrição municipal" value={party.municipalRegistration} />}
     <Field label="Endereço" value={address} />
     <Field label="Município / UF" value={[party.cityName, party.stateCode].filter(Boolean).join(' / ')} />
     <Field label="Código IBGE / CEP" value={[party.cityIbgeCode, party.postalCode].filter(Boolean).join(' / ')} />
@@ -27,7 +27,7 @@ function Document({ preview, group, index }: { preview: NfsePreview; group: Nfse
   const environment = preview.environment === 'HOMOLOGATION' ? 'Homologação' : preview.environment === 'PRODUCTION' ? 'Produção' : 'Não configurado';
   const regime = preview.simplesOption === '2' ? 'MEI / SIMEI' : preview.simplesOption === '3' ? 'ME/EPP no Simples Nacional' : null;
   return <article className="danfse-sheet" aria-label={`Prévia da NFS-e ${index + 1}`}>
-    <div className="danfse-banner"><strong>PRÉ-VISUALIZAÇÃO — DOCUMENTO NÃO EMITIDO</strong><span>Sem validade fiscal ou jurídica · Sem chave de acesso e QR Code</span></div>
+    <div className="danfse-banner"><strong>PRÉ-VISUALIZAÇÃO - DOCUMENTO NÃO EMITIDO</strong><span>Sem validade fiscal ou jurídica · Sem chave de acesso e QR Code</span></div>
     <header className="danfse-header"><div className="danfse-wordmark">NFS<span>-e</span></div><div><strong>DANFSe v2.0</strong><span>Documento Auxiliar da NFS-e · modelo de prévia</span></div><div><small>Município: {preview.issuer.cityName || missing}</small><small>Ambiente da série: {environment}</small></div></header>
     <section className="danfse-section"><h4>Identificação da NFS-e</h4><div className="danfse-grid danfse-grid--identification">
       <Field label="Chave de acesso da NFS-e" value="Atribuída somente após autorização" />
@@ -40,7 +40,7 @@ function Document({ preview, group, index }: { preview: NfsePreview; group: Nfse
       <Field label="Situação" value="Prévia, sem autorização" />
       <Field label="Finalidade" value="Emissão normal prevista" />
     </div></section>
-    <Party title="Prestador / fornecedor" party={preview.issuer} simples={regime} />
+    <Party title="Prestador / fornecedor" party={preview.issuer} simples={regime} issuer />
     <Party title="Tomador / adquirente" party={preview.customer} />
     <section className="danfse-section"><h4>Serviço prestado</h4><div className="danfse-grid danfse-grid--service">
       <Field label="Código de tributação nacional / municipal" value={[group.nationalTaxCode, group.municipalTaxCode].filter(Boolean).join(' / ')} />

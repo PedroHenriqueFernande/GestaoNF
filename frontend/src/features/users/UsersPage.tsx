@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Check, Clock3, MailPlus, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundX, UsersRound, X } from 'lucide-react';
+import { AlertCircle, Check, Clock3, MailPlus, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundX, X } from 'lucide-react';
 import { api, type ManagedInvitation, type ManagedUser, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { companyRoleLabel } from '../../utils/format';
@@ -49,7 +49,6 @@ export function UsersPage({ user }: { user: User }) {
   }, [editor]);
   useEffect(() => { setEditor(null); }, [accountId]);
   const rows = capacity.data ?? [];
-  const totalFree = rows.reduce((sum, row) => sum + row.available, 0);
   const pending = list.data?.items.filter((item) => item.type === 'INVITATION' && item.status === 'PENDING').length ?? 0;
   function searchUsers(event: FormEvent) { event.preventDefault(); setSearch(searchInput.trim()); setPage(0); }
   function edit(item: ManagedUser) {
@@ -81,9 +80,6 @@ export function UsersPage({ user }: { user: User }) {
       {notice && <div className="notice notice--success" role="status"><Check size={16} /><span>{notice}</span><button type="button" onClick={() => setNotice('')} aria-label="Fechar aviso"><X size={15} /></button></div>}
       {error && !editor && <div className="notice notice--error" role="alert"><AlertCircle size={16} /><span>{error}</span><button type="button" onClick={() => setError('')} aria-label="Fechar erro"><X size={15} /></button></div>}
       {!accountId ? <section className="users-empty"><ShieldCheck size={32} /><h2>Selecione uma empresa sua</h2><p>A gestão de usuários está disponível para o titular da empresa. Troque a empresa no seletor acima para administrar seus convites.</p></section> : <>
-        <section className="users-overview" aria-label="Vagas por empresa"><div className="users-overview__intro"><span className="users-overview__icon"><UsersRound size={22} /></span><div><span>CONTRATAÇÃO</span><h2>{account?.name ?? current?.tradeName}</h2><p>5 usuários adicionais por empresa. Convites pendentes reservam vagas por 24 horas.</p></div><strong>{totalFree}<small>vagas livres</small></strong></div>
-          <div className="users-capacity-grid">{capacity.isPending && <p>Carregando vagas...</p>}{capacity.isError && <p role="alert">Não foi possível consultar as vagas. <button type="button" onClick={() => capacity.refetch()}>Tentar novamente</button></p>}{rows.map((row) => <div className="users-capacity" key={row.companyId}><div><strong>{row.tradeName}</strong><span>{row.available} de {row.limit} vagas livres</span></div><div className="users-capacity__track"><span style={{ width: `${Math.min(100, ((row.occupied + row.reserved) / Math.max(row.limit, 1)) * 100)}%` }} /></div><small>{row.occupied} ocupadas · {row.reserved} reservadas{row.overLimit > 0 ? ` · ${row.overLimit} acima do limite` : ''}</small></div>)}</div>
-        </section>
         <section className="users-list"><div className="users-list__top"><div><h2>Pessoas e convites <span>{list.data?.total ?? 0}</span></h2><p>{pending} {pending === 1 ? 'convite aguardando aceite' : 'convites aguardando aceite'}</p></div><button type="button" className="button button--secondary" onClick={() => { refresh(); list.refetch(); }} aria-label="Atualizar lista"><RefreshCw size={15} /> Atualizar</button></div>
           <form className="users-search" onSubmit={searchUsers}><Search size={16} /><input ref={searchRef} value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Buscar por nome ou e-mail" aria-label="Buscar usuários" /><button type="submit">Buscar</button></form>
           <div className="users-list__head"><span>PESSOA</span><span>EMPRESAS</span><span>SITUAÇÃO</span><span>AÇÕES</span></div>

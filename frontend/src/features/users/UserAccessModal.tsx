@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ROLE_LABELS, selectionSummary, sortByCatalog, type RoleLabel, type Selection } from '@gestaonf/permissions';
-import { Check, X } from 'lucide-react';
+import { Check, ChevronDown, X } from 'lucide-react';
 import { api, ApiError, type ManagedInvitation, type ManagedMember, type UserCapacity } from '../../api/client';
+import { useDropdown } from '../../components/useDropdown';
 import { companyRoleLabel } from '../../utils/format';
 import { PermissionsDialog } from './PermissionsDialog';
 
@@ -14,9 +15,11 @@ export type AccessTarget =
 type Draft = { name: string; email: string; companyIds: string[]; roleLabel: RoleLabel; permissions: Selection };
 type SaveError = { message: string; code?: string; status?: number };
 
-function initialDraft(target: AccessTarget): Draft {
+function initialDraft(target: AccessTarget, rows: UserCapacity[]): Draft {
   if (target.kind === 'invite') {
-    return { name: '', email: '', companyIds: target.defaultCompanyIds, roleLabel: 'COLLABORATOR', permissions: new Set() };
+    // Com uma única empresa na contratação, o convite já sai com ela marcada.
+    const companyIds = rows.length === 1 && selectable(rows[0]) ? [rows[0].companyId] : target.defaultCompanyIds;
+    return { name: '', email: '', companyIds, roleLabel: 'COLLABORATOR', permissions: new Set() };
   }
   const companyIds = target.kind === 'member'
     ? target.item.companies.filter(company => company.status === 'ACTIVE').map(company => company.companyId)
@@ -43,19 +46,62 @@ function saveError(cause: unknown): SaveError {
   return { message: cause instanceof Error ? cause.message : 'Não foi possível salvar.' };
 }
 
-function CompanyChoices({ rows, selected, onChange, existing = [] }: { rows: UserCapacity[]; selected: string[]; onChange: (next: string[]) => void; existing?: string[] }) {
-  return <fieldset className="users-company-choices"><legend>Empresas com acesso <span>*</span></legend>
-    {rows.map((row) => {
-      const checked = selected.includes(row.companyId);
-      const disabled = !checked && (row.status !== 'ACTIVE' || (!existing.includes(row.companyId) && row.available === 0));
-      return <label className={`users-company-choice${checked ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`} key={row.companyId}>
-        <input type="checkbox" checked={checked} disabled={disabled} onChange={() => onChange(checked ? selected.filter((id) => id !== row.companyId) : [...selected, row.companyId])} />
-        <span className="users-company-choice__check"><Check size={13} /></span>
-        <span className="users-company-choice__name">{row.tradeName}<small>{row.status !== 'ACTIVE' ? 'Empresa indisponível' : `${row.occupied} ocupadas · ${row.reserved} reservadas`}</small></span>
-        <strong>{row.available} de {row.limit} livres</strong>
-      </label>;
-    })}
-  </fieldset>;
+const selectable = (row: UserCapacity) => row.status === 'ACTIVE' && row.available > 0;
+
+function CompanySelect({ rows, selected, onChange, existing = [] }: { rows: UserCapacity[]; selected: string[]; onChange: (next: string[]) => void; existing?: string[] }) {
+  const dropdown = useDropdown();
+  const [position, setPosition] = useState<CSSProperties>();
+  const chosen = rows.filter((row) => selected.includes(row.companyId));
+  const summary = chosen.length === 0 ? 'Selecione as empresas' : chosen.length === 1 ? chosen[0].tradeName : `${chosen.length} empresas selecionadas`;
+  const { open, close, triggerRef, panelRef } = dropdown;
+
+  // O corpo do modal rola e cortaria um painel absoluto: o painel é fixo, alinhado ao gatilho, abre para cima
+  // quando falta espaço embaixo e fecha só quando rola algo que move o gatilho (não o próprio painel ou um campo).
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const below = window.innerHeight - rect.bottom - 16;
+      const above = rect.top - 16;
+      setPosition(below < 200 && above > below
+        ? { top: 'auto', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, maxHeight: above }
+        : { top: rect.bottom + 6, left: rect.left, width: rect.width, maxHeight: below });
+    };
+    const closeOnScroll = (event: Event) => {
+      const scrolled = event.target instanceof Document ? event.target.documentElement : event.target;
+      if (scrolled instanceof Node && scrolled.contains(triggerRef.current)) close();
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', closeOnScroll, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', closeOnScroll, true);
+    };
+  }, [open, close, triggerRef, panelRef]);
+
+  return <div ref={dropdown.rootRef} className="field dropdown users-company-select">
+    <span id="companies-label">Empresas com acesso <b>*</b></span>
+    <button ref={triggerRef} type="button" className={`users-company-select__trigger${chosen.length ? '' : ' is-empty'}`} aria-haspopup="menu" aria-expanded={open} aria-controls="companies-menu" aria-labelledby="companies-label companies-summary" aria-describedby="companies-hint" onClick={dropdown.toggle} onKeyDown={dropdown.onTriggerKeyDown}>
+      <span id="companies-summary">{summary}</span>
+      <ChevronDown className="dropdown-chevron" size={16} aria-hidden="true" />
+    </button>
+    <small id="companies-hint" className="field-hint">Convites pendentes reservam vagas por 24 horas.</small>
+    <div id="companies-menu" ref={panelRef} role="menu" aria-labelledby="companies-label" className={`dropdown-panel users-company-select__panel${open ? ' is-open' : ''}`} style={position} inert={!open}>
+      {rows.map((row) => {
+        const checked = selected.includes(row.companyId);
+        const disabled = !checked && (row.status !== 'ACTIVE' || (!existing.includes(row.companyId) && row.available === 0));
+        return <button type="button" role="menuitemcheckbox" aria-checked={checked} disabled={disabled} key={row.companyId}
+          className={`dropdown-item users-company-option${checked ? ' is-checked' : ''}`}
+          onClick={() => onChange(checked ? selected.filter((id) => id !== row.companyId) : [...selected, row.companyId])}>
+          <span className="users-company-option__check" aria-hidden="true"><Check size={13} /></span>
+          <span className="users-company-option__name">{row.tradeName}<small>{row.status !== 'ACTIVE' ? 'Empresa indisponível' : `${row.occupied} ocupadas · ${row.reserved} reservadas`}</small></span>
+          <strong>{row.available} de {row.limit} livres</strong>
+        </button>;
+      })}
+    </div>
+  </div>;
 }
 
 export function UserAccessModal({ target, accountId, rows, onClose, onSaved, onStale, onLocate }: {
@@ -67,7 +113,7 @@ export function UserAccessModal({ target, accountId, rows, onClose, onSaved, onS
   onStale: () => void;
   onLocate: (email: string) => void;
 }) {
-  const [initial] = useState(() => initialDraft(target));
+  const [initial] = useState(() => initialDraft(target, rows));
   const [draft, setDraft] = useState(initial);
   const [key, setKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<SaveError | null>(null);
@@ -185,17 +231,19 @@ export function UserAccessModal({ target, accountId, rows, onClose, onSaved, onS
                 <input type="email" maxLength={254} value={draft.email} onChange={event => update({ email: event.target.value })} placeholder="pessoa@exemplo.com" autoComplete="email" />
               </label>
             </div> : <p className="users-modal__email">{draft.email}</p>}
-            <label className="field users-modal__classification">
-              <span id="role-label">Classificação</span>
-              <select value={draft.roleLabel} aria-labelledby="role-label" aria-describedby="role-hint" onChange={event => {
-                const roleLabel = ROLE_LABELS.find(label => label === event.target.value);
-                if (roleLabel) update({ roleLabel });
-              }}>
-                {ROLE_LABELS.map(label => <option key={label} value={label}>{companyRoleLabel(label)}</option>)}
-              </select>
-              <small id="role-hint" className="field-hint">Só identificação. Não concede acesso.</small>
-            </label>
-            <CompanyChoices rows={rows} selected={draft.companyIds} existing={target.kind === 'invite' ? [] : initial.companyIds} onChange={companyIds => update({ companyIds })} />
+            <div className="users-fields users-access-fields">
+              <CompanySelect rows={rows} selected={draft.companyIds} existing={target.kind === 'invite' ? [] : initial.companyIds} onChange={companyIds => update({ companyIds })} />
+              <label className="field">
+                <span id="role-label">Classificação</span>
+                <select value={draft.roleLabel} aria-labelledby="role-label" aria-describedby="role-hint" onChange={event => {
+                  const roleLabel = ROLE_LABELS.find(label => label === event.target.value);
+                  if (roleLabel) update({ roleLabel });
+                }}>
+                  {ROLE_LABELS.map(label => <option key={label} value={label}>{companyRoleLabel(label)}</option>)}
+                </select>
+                <small id="role-hint" className="field-hint">Só identificação. Não concede acesso.</small>
+              </label>
+            </div>
             {target.kind === 'member' && draft.companyIds.length === 0 && <p className="users-modal__hint">Salvar sem empresas desativa o acesso nesta contratação.</p>}
           </fieldset>
           {error && <div ref={errorRef} tabIndex={-1} className="inline-error users-modal__error" role="alert">
@@ -216,7 +264,7 @@ export function UserAccessModal({ target, accountId, rows, onClose, onSaved, onS
           </button>
         </footer>
       </form>
-      {permissionsOpen && <PermissionsDialog subject={draft.name.trim() || email || 'Novo usuário'} initial={draft.permissions}
+      {permissionsOpen && <PermissionsDialog subject={draft.name.trim() || email} initial={draft.permissions}
         onApply={closePermissions} onCancel={closePermissions} />}
     </section>
   </div>;

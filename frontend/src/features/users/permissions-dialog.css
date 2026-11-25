@@ -10,8 +10,11 @@
   box-shadow: 0 18px 50px #0c233a3c;
 }
 
-.permissions-dialog[open] { display: flex; flex-direction: column; }
+/* Só o corpo rola: o <dialog> modal vem com overflow:auto do navegador e geraria uma segunda barra. */
+.permissions-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
 .permissions-dialog::backdrop { background: #0c233a59; }
+/* O <dialog> recebe foco ao clicar numa área sem controle; o contorno do navegador virava uma borda preta. */
+.permissions-dialog:focus, .permissions-dialog:focus-visible { outline: none; }
 
 .permissions-dialog__header,
 .permissions-dialog > .permissions-dialog__footer {
@@ -26,43 +29,106 @@
   justify-content: flex-end;
   gap: 10px;
 }
+/* `relative` prende o aviso para leitor de tela (absoluto) dentro da área que rola; sem isso ele
+   ficaria posicionado pelo diálogo, no fim da lista, e faria o diálogo inteiro transbordar. */
 .permissions-dialog__body {
+  position: relative;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 16px clamp(12px, 4vw, 24px);
+  padding: 18px clamp(12px, 4vw, 24px) 22px;
+  /* Fundo neutro só como plano de apoio: os cartões brancos ganham profundidade pela sombra, não por cor. */
+  background: #f5f7f8;
 }
-.permissions-dialog__topics {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  align-items: start;
-  gap: 14px;
-  margin-top: 10px;
+/* Cartões brancos com contorno fino sobre o fundo neutro do corpo. */
+.permissions-all, .permissions-topic {
+  border: 1px solid #e2e8eb;
+  border-radius: 8px;
+  background: #fff;
 }
-.permissions-topic {
-  min-width: 0;
-  margin: 0;
-  padding: 8px 14px 12px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-}
-.permissions-topic legend { padding: 0 4px; }
-.permissions-key, .permissions-all, .permissions-topic__toggle {
+
+/* "Todas as permissões": resumo acima dos grupos. */
+.permissions-all { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; }
+.permissions-all__toggle strong { display: block; font-size: 13px; }
+.permissions-all__toggle small { display: block; margin-top: 1px; color: var(--muted); font-size: 11px; font-weight: 450; }
+.permissions-count { flex: none; margin: 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.permissions-count b { color: var(--text); font: 700 17px var(--display-font); margin-right: 2px; }
+.permissions-all.has-selection .permissions-count b { color: var(--primary); }
+
+/* Um grupo por vez, empilhados: cada um é um cartão com cabeçalho próprio. */
+.permissions-dialog__topics { display: grid; gap: 12px; margin-top: 12px; }
+.permissions-topic { min-width: 0; margin: 0; padding: 0 0 6px; overflow: hidden; }
+/* A legenda flutua para virar uma faixa de largura total dentro da borda do fieldset. */
+.permissions-topic__header {
+  float: left;
+  width: 100%;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 5px 0;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1.45;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #edf1f3;
 }
-.permissions-all, .permissions-topic__toggle { font-weight: 700; }
-.permissions-dialog input[type='checkbox'] { flex: none; margin: 2px 0 0; accent-color: var(--primary); }
-.permissions-dialog input[type='checkbox']:focus-visible { outline: 2px solid var(--primary-dark); outline-offset: 2px; }
-.permissions-key small { display: block; color: var(--muted); font-size: 11px; }
-.permissions-area h3 { margin: 10px 0 4px; color: var(--muted); font-size: 11px; }
-.permissions-dialog__count, .permissions-dialog__hint { color: var(--muted); font-size: 12px; margin: 4px 0; }
-.permissions-dialog__hint { min-height: 1.5em; }
+.permissions-topic__toggle { font-size: 13px; font-weight: 700; align-items: center; }
+.permissions-topic__count { flex: none; color: #8a979f; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; transition: color .2s; }
+.permissions-topic.is-mixed .permissions-topic__count, .permissions-topic.is-all .permissions-topic__count { color: var(--primary); }
+
+.permissions-area { clear: both; padding: 6px 10px 2px; }
+.permissions-area + .permissions-area { margin-top: 4px; padding-top: 10px; border-top: 1px solid #f0f3f5; }
+.permissions-area h3 {
+  margin: 2px 6px 6px;
+  color: #8a979f;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.permissions-area__keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  gap: 2px 8px;
+}
+
+/* Linhas clicáveis sem preenchimento: o estado fica na caixa e no tom do texto. */
+.permissions-check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 12px; line-height: 1.45; }
+.permissions-key { padding: 7px 6px; color: #4a5964; transition: color .16s; }
+.permissions-key:hover { color: var(--text); }
+.permissions-key:has(input:checked) { color: var(--text); }
+.permissions-key small { display: block; margin-top: 2px; color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+
+/* Caixa de seleção própria: o input nativo continua (teclado, leitor de tela, indeterminado). */
+.permissions-dialog input[type='checkbox'] {
+  appearance: none;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid #b4c4cb;
+  border-radius: 4px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E") center / 0 no-repeat;
+  cursor: pointer;
+  transition: background-color .16s, border-color .16s, box-shadow .16s, background-size .2s cubic-bezier(.22, .8, .24, 1);
+}
+.permissions-key input[type='checkbox'] { margin-top: 1px; }
+.permissions-check:hover input[type='checkbox']:not(:checked):not(:indeterminate) { border-color: var(--primary); }
+.permissions-dialog input[type='checkbox']:checked { border-color: var(--primary); background-color: var(--primary); background-size: 12px; box-shadow: 0 1px 2px rgba(16, 78, 100, .3); }
+.permissions-dialog input[type='checkbox']:indeterminate {
+  border-color: var(--primary);
+  background-color: var(--primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
+  background-size: 12px;
+}
+.permissions-dialog input[type='checkbox']:focus-visible { outline: 2px solid var(--primary-dark); outline-offset: 2px; box-shadow: 0 0 0 4px #e7f3f7; }
+
+@media (max-width: 560px) {
+  .permissions-all { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .permissions-all .permissions-count { padding-left: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .permissions-dialog input[type='checkbox'], .permissions-key, .permissions-topic__count { transition: none; }
+}
+
 .permissions-dialog__announcement {
   position: absolute;
   width: 1px;

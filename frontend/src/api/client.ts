@@ -36,11 +36,11 @@ export type CompanyProfile = Company & {
   specialTaxRegime: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '9' | null;
   timezone: string; locale: string; status: 'ACTIVE' | 'INACTIVE'; createdAt: string; updatedAt: string;
 };
-export type CompanyInput = Pick<CompanyProfile, 'tradeName' | 'kind' | 'legalName' | 'taxId' | 'email' | 'phone' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode' | 'municipalRegistration' | 'cnaeCode' | 'simplesNationalOption' | 'simplesTaxationRegime' | 'specialTaxRegime'> & Partial<Pick<CompanyProfile, 'simplesIbsCbsRegime' | 'caepfCode'>>;
+export type CompanyInput = Pick<CompanyProfile, 'tradeName' | 'legalName' | 'taxId' | 'email' | 'phone' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode' | 'municipalRegistration' | 'simplesNationalOption'> & Partial<Pick<CompanyProfile, 'simplesIbsCbsRegime'>>;
 export type Customer = {
   id: string;
   companyId: string;
-  kind: 'PF' | 'PJ';
+  kind: 'PF' | 'PJ' | null;
   name: string;
   tradeName: string | null;
   taxId: string | null;
@@ -57,8 +57,6 @@ export type Customer = {
   cityIbgeCode: string | null;
   stateCode: string | null;
   countryCode: string;
-  municipalRegistration: string | null;
-  caepfCode: string | null;
   foreignTaxId: string | null;
   noForeignTaxIdReason: '1' | '2' | null;
   foreignPostalCode: string | null;
@@ -66,7 +64,7 @@ export type Customer = {
   createdAt: string;
   updatedAt: string;
 };
-export type CustomerInput = Pick<Customer, 'kind' | 'name' | 'tradeName' | 'taxId' | 'email' | 'phone' | 'notes' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode'> & Partial<Pick<Customer, 'municipalRegistration' | 'caepfCode' | 'foreignTaxId' | 'noForeignTaxIdReason' | 'foreignPostalCode' | 'foreignStateProvince'>>;
+export type CustomerInput = Pick<Customer, 'name' | 'taxId' | 'email' | 'phone' | 'notes' | 'street' | 'number' | 'complement' | 'district' | 'postalCode' | 'cityName' | 'cityIbgeCode' | 'stateCode' | 'countryCode'> & Partial<Pick<Customer, 'foreignTaxId' | 'noForeignTaxIdReason' | 'foreignPostalCode' | 'foreignStateProvince'>>;
 export type CustomerList = { items: Customer[]; total: number; limit: number; offset: number };
 export type Service = {
   id: string;
@@ -84,7 +82,8 @@ export type Service = {
   createdAt: string;
   updatedAt: string;
 };
-export type ServiceInput = Pick<Service, 'name' | 'internalCode' | 'description' | 'unitLabel' | 'suggestedUnitPrice' | 'nationalTaxCode' | 'nbsCode'> & Partial<Pick<Service, 'simplesActivityCode'>>;
+// unitLabel (unidade comercial) é legado: fora da tela de serviços, a NFS-e não usa; fica para a futura nota de produto.
+export type ServiceInput = Pick<Service, 'name' | 'internalCode' | 'description' | 'suggestedUnitPrice' | 'nationalTaxCode' | 'nbsCode'> & Partial<Pick<Service, 'simplesActivityCode' | 'unitLabel'>>;
 export type ServiceList = { items: Service[]; total: number; limit: number; offset: number };
 export type MunicipalTaxCode = {
   companyId: string;
@@ -123,7 +122,7 @@ export type SaleInput = { customerId: string; soldOn: string; fiscalSeriesId?: s
 export type ConfirmedSaleInput = Omit<SaleInput, 'items' | 'installments'> & { items: (SaleItemInput & { id?: string })[]; installments: (SaleInstallmentInput & { id?: string })[] };
 export type Sale = {
   id: string; companyId: string; orderCode: string; workOrderNumber: string | null; customerId: string;
-  customerNameSnapshot: string; customerKindSnapshot: 'PF' | 'PJ'; customerTaxIdSnapshot: string | null;
+  customerNameSnapshot: string; customerKindSnapshot: 'PF' | 'PJ' | null; customerTaxIdSnapshot: string | null;
   status: SaleStatus; soldOn: string | null; subtotalAmount: string; discountAmount: string; totalAmount: string;
   notes: string | null; fiscalSeriesId: string | null; version: number; createdAt: string; confirmedAt: string | null;
 };

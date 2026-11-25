@@ -7,7 +7,8 @@ const price = z.string().regex(/^(?:0|[1-9]\d{0,12})(?:\.\d{1,2})?$/).nullable()
 const fields = {
   internalCode: nullableText(20),
   name: z.string().trim().min(1).max(200),
-  description: nullableText(2000),
+  // Até 300 caracteres: vai na NFS-e (xDescServ) e precisa caber quando a nota agrupa vários serviços.
+  description: nullableText(300),
   unitLabel: z.string().trim().min(1).max(16),
   suggestedUnitPrice: price,
   nationalTaxCode: nullableCode(6),

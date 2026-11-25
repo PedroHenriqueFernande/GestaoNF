@@ -231,9 +231,9 @@ describe('núcleo CRM em PostgreSQL e HTTP', () => {
   });
   it('cliente só é vinculado explicitamente e somente na mesma empresa', async () => {
     const a = await capture.create(context(), leadInput(), randomUUID());
-    const [b] = await db.insert(s.customers).values({ companyId: companyB, kind: 'PF', name: 'Outra empresa' }).returning();
+    const [b] = await db.insert(s.customers).values({ companyId: companyB, name: 'Outra empresa' }).returning();
     await expect(leads.linkCustomer(context(), a.leadId, { expectedVersion: 1, customerId: b.id })).rejects.toMatchObject({ status: 400 });
-    const [customer] = await db.insert(s.customers).values({ companyId: companyA, kind: 'PF', name: 'Cliente explícito' }).returning();
+    const [customer] = await db.insert(s.customers).values({ companyId: companyA, name: 'Cliente explícito' }).returning();
     expect((await leads.linkCustomer(context(), a.leadId, { expectedVersion: 1, customerId: customer.id })).customerId).toBe(customer.id);
     await expect(db.update(s.crmContacts).set({ customerId: b.id }).where(eq(s.crmContacts.id, a.leadId))).rejects.toThrow();
   });

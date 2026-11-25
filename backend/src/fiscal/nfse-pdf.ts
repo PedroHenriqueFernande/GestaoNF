@@ -40,10 +40,14 @@ export function nfsePreviewPdf(preview: NfsePreview): Promise<Buffer> {
         pdf.y = y + height;
       }
     };
-    const party = (title: string, value: NfseParty, extra?: string | null) => {
+    const party = (title: string, value: NfseParty, extra?: string | null, issuer = false) => {
       section(title);
+      const identity: Array<[string, string | null | undefined]> = [
+        ['Nome / nome empresarial', value.name], ['CPF / CNPJ', value.taxId],
+      ];
+      if (issuer) identity.push(['Inscrição municipal', value.municipalRegistration]);
       fields([
-        ['Nome / nome empresarial', value.name], ['CPF / CNPJ', value.taxId], ['Inscrição municipal', value.municipalRegistration],
+        ...identity,
         ['Endereço', [value.street, value.number, value.district].filter(Boolean).join(', ')],
         ['Município / UF', [value.cityName, value.stateCode].filter(Boolean).join(' / ')],
         ['Código IBGE / CEP', [value.cityIbgeCode, value.postalCode].filter(Boolean).join(' / ')],
@@ -81,7 +85,7 @@ export function nfsePreviewPdf(preview: NfsePreview): Promise<Buffer> {
         ['Data/hora de emissão da NFS-e', null], ['Número da DPS', 'Não reservado'], ['Série da DPS', preview.series?.number.toString()],
         ['Emitente', 'Prestador'], ['Situação', 'Prévia, sem autorização'], ['Finalidade', 'Emissão normal prevista'],
       ]);
-      party('Prestador / fornecedor', preview.issuer, preview.simplesOption === '2' ? 'MEI / SIMEI' : preview.simplesOption === '3' ? 'ME/EPP no Simples Nacional' : null);
+      party('Prestador / fornecedor', preview.issuer, preview.simplesOption === '2' ? 'MEI / SIMEI' : preview.simplesOption === '3' ? 'ME/EPP no Simples Nacional' : null, true);
       party('Tomador / adquirente', preview.customer);
       section('Serviço prestado');
       fields([['Código de tributação nacional / municipal', [group.nationalTaxCode, group.municipalTaxCode].filter(Boolean).join(' / ')], ['Código NBS', group.nbsCode], ['Local da prestação · IBGE', group.municipalityIbgeCode]]);

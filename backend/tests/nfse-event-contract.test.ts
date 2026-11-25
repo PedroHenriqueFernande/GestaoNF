@@ -26,7 +26,7 @@ const snapshot = {
   schemaVersion: 1, saleId: 's', saleVersion: 1, orderCode: 'A0001', generatedAt: '2026-11-06T12:00:00.000Z', contractVersion: 'x', environment: 'HOMOLOGATION',
   series: { id: 'series', number: 1, nextNumber: '2', version: 1 },
   issuer: { name: 'Empresa Teste', taxId: '11222333000181', email: null, street: null, number: null, district: null, cityName: 'Rio de Janeiro', cityIbgeCode: '3304557', postalCode: null, stateCode: 'RJ', municipalRegistration: null },
-  customer: { name: 'Cliente Teste', taxId: '52998224725', email: null, street: null, number: null, district: null, cityName: null, cityIbgeCode: null, postalCode: null, stateCode: null, municipalRegistration: null },
+  customer: { name: 'Cliente Teste', taxId: '52998224725', email: null, street: null, number: null, district: null, cityName: null, cityIbgeCode: null, postalCode: null, stateCode: null },
   customerId: 'c', simplesOption: '2', simplesTaxationRegime: null, specialTaxRegime: '0',
   groups: [{ key: 'g', competence: '2026-11-05', municipalityIbgeCode: '3304557', nationalTaxCode: '010101', nbsCode: null, municipalTaxCode: null, description: 'Consultoria', grossAmount: '100.00', discountAmount: '0.00', totalAmount: '100.00', ruleName: null, issWithholding: false, issRatePercent: null, items: [] }],
   totalAmount: '100.00', issues: [], input: {}, certificate: null,

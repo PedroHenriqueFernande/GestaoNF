@@ -24,9 +24,8 @@ export function isValidCnpj(value: string): boolean {
   return digit(12) === Number(value[12]) && digit(13) === Number(value[13]);
 }
 
-export function validateCustomerTaxId(kind: 'PF' | 'PJ', taxId: string | null | undefined, tradeName: string | null | undefined) {
-  if (kind === 'PF' && tradeName) throw new BadRequestException('Nome fantasia só é permitido para pessoa jurídica');
-  if (taxId && (kind === 'PF' ? !isValidCpf(taxId) : !isValidCnpj(taxId))) {
-    throw new BadRequestException(kind === 'PF' ? 'CPF inválido' : 'CNPJ inválido');
-  }
+export function customerKindFromTaxId(taxId: string): 'PF' | 'PJ' {
+  if (isValidCpf(taxId)) return 'PF';
+  if (isValidCnpj(taxId)) return 'PJ';
+  throw new BadRequestException('Informe um CPF ou CNPJ válido');
 }

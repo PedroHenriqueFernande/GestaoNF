@@ -154,7 +154,7 @@ export function FinancePaymentModal({ companyId, saleId, installmentId, onClose,
               <label>Data de vencimento<input type="date" value={dueOn} onChange={(event) => { setDueOn(event.target.value); setError(''); }} disabled={!!payment.initialReceivedOn} required={!payment.initialReceivedOn} /><small>{payment.initialReceivedOn ? `Recebido na venda em ${shortDate(payment.initialReceivedOn)}; sem vencimento.` : 'Vencimento deste recebimento.'}</small></label>
             </div>
             <div className="finance-detail__date-actions">{dateChanged && <button type="button" className="button button--secondary" disabled={datesMutation.isPending} onClick={() => { setSoldOn(sale.soldOn); setDueOn(payment.dueOn ?? ''); setError(''); }}>Desfazer</button>}<button type="submit" className="button button--primary" disabled={!dateChanged || datesMutation.isPending}><Save size={14} /> {datesMutation.isPending ? 'Salvando...' : 'Salvar datas'}</button></div>
-          </form> : <dl className="finance-detail__date-fields"><div><dt>Data de lançamento</dt><dd>{shortDate(sale.soldOn)}</dd></div><div><dt>Data de vencimento</dt><dd>{payment.dueOn ? shortDate(payment.dueOn) : '—'}</dd></div></dl>}
+          </form> : <dl className="finance-detail__date-fields"><div><dt>Data de lançamento</dt><dd>{shortDate(sale.soldOn)}</dd></div><div><dt>Data de vencimento</dt><dd>{payment.dueOn ? shortDate(payment.dueOn) : '-'}</dd></div></dl>}
         </section>
 
         {access.can('finance.receive') && moneyCents(payment.remainingAmount) > 0n && <section className="finance-detail__section" aria-labelledby="finance-receipt-title">

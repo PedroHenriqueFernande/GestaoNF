@@ -1,20 +1,79 @@
-.company-logo-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 14px; }
-.company-logo-field__image { width: 56px; height: 56px; overflow: hidden; }
+/* Cadastro da empresa num bloco só, como o cadastro de clientes: foto e atalho do certificado no topo, campos em sequência. */
+.company-form__logo-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px 18px; margin: 0 0 21px; }
+.company-form__logo-row > .company-logo-field { flex: 1 1 320px; min-width: 0; }
+.company-form__logo-label { font-size: 12px; font-weight: 600; color: var(--text); }
+/* Grade de 3 colunas do cadastro: .field--wide ocupa 2. Em telas menores vira 2 e depois 1 coluna. */
+.company-form__grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.company-form__grid--three > .field--wide { grid-column: span 2; }
+@media (max-width: 740px) {
+  .company-form__grid--three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .company-form__grid--three > .field--wide { grid-column: 1 / -1; }
+}
+@media (max-width: 540px) { .company-form__grid--three { grid-template-columns: minmax(0, 1fr); } }
+/* Certificado A1 no topo do cadastro: status, botão de adicionar (esmaecido com o X quando já há certificado) e senha. */
+.company-certificate-control { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: 0 1 auto; max-width: 100%; }
+.company-certificate-control__status { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--primary); font-size: 11.5px; font-weight: 600; }
+.company-certificate-control__status[data-expired] { color: #b4540c; }
+.company-certificate-control__main { display: flex; align-items: center; gap: 6px; }
+.company-certificate-control .company-certificate-shortcut.button:disabled { opacity: .5; cursor: default; }
+.company-certificate-shortcut span { overflow: hidden; max-width: 220px; text-overflow: ellipsis; white-space: nowrap; }
+/* Largura mínima do botão = a de "Adicionar certificado": um nome de arquivo curto não espreme a senha abaixo. */
+.company-certificate-control .company-certificate-shortcut.button { min-width: 186px; }
+.company-certificate-control__icon { display: grid; place-items: center; flex: none; width: 30px; height: 30px; padding: 0; border: 1px solid #cfd8dd; border-radius: 4px; background: #fff; color: var(--muted); cursor: pointer; transition: color .18s ease, border-color .18s ease, background-color .18s ease; }
+.company-certificate-control__icon:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.company-certificate-control__icon:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.company-certificate-control__icon:disabled { opacity: .45; cursor: default; }
+.company-certificate-control__icon--confirm { border-color: var(--primary); background: #fff; color: var(--primary); }
+.company-certificate-control__icon--confirm:hover:not(:disabled) { background: var(--primary); color: #fff; }
+/* X (cancelar e remover): borda e ícone em vermelho. */
+.company-certificate-control__icon--remove { border-color: var(--danger); color: var(--danger); }
+.company-certificate-control__icon--remove:hover:not(:disabled) { border-color: var(--danger); background: var(--danger); color: #fff; }
+/* Senha: mesmo visual dos campos do formulário, na altura dos botões "Trocar foto" e "Remover foto". */
+/* Regra: a linha da senha nunca passa da largura do botão do certificado acima dela.
+   width: 0 + min-width: 100% faz a linha ocupar a largura do bloco sem aumentá-la; o campo encolhe e corta com reticências. */
+.company-certificate-control__password { display: flex; align-items: center; gap: 6px; width: 0; min-width: 100%; }
+.company-form .company-certificate-control__password input { flex: 1; width: auto; min-width: 0; height: 30px; min-height: 30px; padding: 0 10px; text-overflow: ellipsis; border: 1px solid #cfd8dd; border-radius: 4px; background: #fff; color: #23333e; font-size: 12px; font-weight: 450; outline: none; box-shadow: none; transition: border-color .18s ease, box-shadow .18s ease; }
+.company-form .company-certificate-control__password input::placeholder { color: #acb7bd; }
+.company-form .company-certificate-control__password input:focus { border-color: #5f9caf; box-shadow: 0 0 0 3px #e7f3f7; }
+.company-certificate-control__error { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 8px; width: 0; min-width: 100%; margin: 0; color: var(--danger); font-size: 11px; text-align: right; }
+.company-certificate-control__error button { padding: 0; border: 0; background: none; color: var(--primary); font-size: 11px; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.company-certificate-control__hint { margin: 0; color: var(--muted); font-size: 10.5px; }
+@media (max-width: 540px) { .company-certificate-control { align-items: flex-start; } .company-certificate-control__error { justify-content: flex-start; text-align: left; } }
+/* Botão do certificado: branco, com borda e texto na cor primária. */
+.company-certificate-shortcut.button { flex: none; height: 36px; min-height: 36px; margin-top: 0; padding: 0 14px; border-color: var(--primary); color: var(--primary); font-size: 12.5px; transition: background-color .18s ease; }
+.company-certificate-shortcut.button:hover:not(:disabled) { background: var(--primary-light); }
+.company-certificate-shortcut.button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.company-certificate-shortcut svg { margin-top: 0; }
+.company-logo-field { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px 18px; }
+.company-logo-field__image { position: relative; display: grid; place-items: center; width: 96px; aspect-ratio: 1; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--primary); }
+.company-logo-field__image.is-editable { cursor: pointer; }
+.company-logo-field__image.is-empty.is-editable { border-style: dashed; border-color: #b9c4cb; transition: border-color .18s ease; }
+.company-logo-field__image.is-empty.is-editable:hover { border-color: var(--primary); }
+.company-logo-field__image.is-busy { cursor: progress; opacity: .72; }
 .company-logo-field__image > img,
 .company-logo-field__logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.company-logo-field__logo { display: grid; place-items: center; width: 100%; height: 100%; font-size: 15px; font-weight: 700; }
+.company-logo-field__logo { display: grid; place-items: center; width: 100%; height: 100%; font-size: 24px; font-weight: 700; color: var(--primary); }
 .company-logo-field__logo.is-image { background: #fff; }
+.company-logo-field__placeholder { display: grid; place-items: center; }
+.company-logo-field__overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(16, 78, 100, .46); color: #fff; opacity: 0; transition: opacity .18s ease; }
+.company-logo-field__image:hover .company-logo-field__overlay { opacity: 1; }
+.company-logo-field__body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .company-logo-field__actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.company-logo-field__actions .button { min-height: 32px; padding: 0 11px; font-size: 12px; }
-.company-logo-field__hint,
-.company-logo-field__status { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10.5px; }
+.company-logo-field__actions .button { min-height: 30px; padding: 0 10px; font-size: 12px; }
+.company-logo-field__actions svg { margin-top: 0; }
+.company-logo-field__status { margin: 0; color: var(--muted); font-size: 10.5px; }
+.company-logo-field__status:empty { display: none; }
 .company-logo-field > .inline-error { grid-column: 1 / -1; }
+@media (max-width: 540px) {
+  .company-logo-field { grid-template-columns: 76px minmax(0, 1fr); gap: 10px 14px; }
+  .company-logo-field__image { width: 76px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .company-logo-field__image, .company-logo-field__overlay { transition: none; }
+}
 .company-list__identity-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .company-list__logo { display: grid; place-items: center; flex: none; width: 32px; height: 32px; overflow: hidden; border-radius: 6px; background: #eef2f4; color: #4a5761; font-size: 11.5px; font-weight: 700; }
 .company-list__logo.is-image { background: #fff; box-shadow: inset 0 0 0 1px rgba(16, 78, 100, .14); }
 .company-list__logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-/* No cabeçalho do modal o campo ocupa a primeira linha; título e status descem para a linha seguinte. */
-.company-form__intro { flex-wrap: wrap; row-gap: 14px; }
-.company-form__intro > .company-logo-field { flex: 1 1 100%; }
-/* A regra genérica de spans do cabeçalho (.company-form__intro span) reduz a fonte; o fallback de iniciais mantém a sua. */
-.company-form__intro .company-logo-field__logo:not(.is-image) { font-size: 15px; color: var(--primary); }
+/* Marcação "Opcional" ao lado do rótulo do campo. */
+.field-optional { margin-left: 6px; color: var(--muted); font-size: 10.5px; font-weight: 450; }

@@ -36,7 +36,7 @@ export const PERMISSIONS: Readonly<Record<PermissionKey, PermissionDefinition>> 
   'finance.access': { label: 'Acessar Financeiro', requires: [] },
   'finance.receive': { label: 'Dar baixa', requires: ['finance.access'] },
   'finance.reverse': { label: 'Cancelar baixa', requires: ['finance.access'] },
-  'finance.edit_dates': { label: 'Alterar data e vencimento', requires: ['finance.access'], description: "Vale só na tela do Financeiro. No Portal, alterar a venda exige 'Editar venda'." },
+  'finance.edit_dates': { label: 'Alterar data e vencimento', requires: ['finance.access'], description: 'Vale só na tela do Financeiro.' },
   'crm.access': { label: 'Acessar Leads e oportunidades', requires: [] },
   'crm.create': { label: 'Cadastrar leads', requires: ['crm.access'] },
   'crm.edit': { label: 'Alterar leads e negociações', requires: ['crm.access'] },
@@ -71,7 +71,7 @@ export const PERMISSIONS: Readonly<Record<PermissionKey, PermissionDefinition>> 
   'support.assistant': { label: 'Usar o assistente com IA', requires: [] },
 };
 
-export type PermissionTopicId = 'sales' | 'finance' | 'crm' | 'reports' | 'customers' | 'services' | 'company' | 'fiscal' | 'nero' | 'support';
+export type PermissionTopicId = 'sales' | 'finance' | 'crm' | 'reports' | 'customers' | 'services' | 'company' | 'fiscal' | 'assistants';
 export type PermissionAreaId = PermissionTopicId | 'agenda' | 'proposals';
 export type PermissionArea = Readonly<{ id: PermissionAreaId; label: string; keys: readonly PermissionKey[] }>;
 export type PermissionTopic = Readonly<{ id: PermissionTopicId; label: string; areas: readonly PermissionArea[] }>;
@@ -79,7 +79,7 @@ export type PermissionTopic = Readonly<{ id: PermissionTopicId; label: string; a
 const byPrefix = (prefix: string) => PERMISSION_KEYS.filter(key => key.startsWith(`${prefix}.`));
 const single = (id: PermissionTopicId, label: string): PermissionTopic => ({ id, label, areas: [{ id, label, keys: byPrefix(id) }] });
 
-/** Ordem do editor (Spec 4). Só o CRM tem várias áreas. */
+/** Ordem do editor (Spec 4). Só o CRM tem várias áreas; Nero e assistente de suporte dividem um grupo. */
 export const PERMISSION_TOPICS: readonly PermissionTopic[] = [
   single('sales', 'Vendas'),
   single('finance', 'Financeiro'),
@@ -93,8 +93,9 @@ export const PERMISSION_TOPICS: readonly PermissionTopic[] = [
   single('services', 'Serviços'),
   single('company', 'Empresa'),
   single('fiscal', 'Fiscal'),
-  single('nero', 'Nero'),
-  single('support', 'Assistente de suporte'),
+  { id: 'assistants', label: 'Secretário e Suporte', areas: [
+    { id: 'assistants', label: 'Secretário e Suporte', keys: [...byPrefix('nero'), ...byPrefix('support')] },
+  ] },
 ];
 
 const KEY_SET: ReadonlySet<string> = new Set(PERMISSION_KEYS);

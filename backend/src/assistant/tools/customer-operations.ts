@@ -6,7 +6,7 @@ import { createCustomerSchema, updateCustomerSchema } from '../../customers/cust
 import type { WriteOperation } from './types.js';
 import { assertExpectedVersion, describeChanges, describeFields, providedFields } from './write-support.js';
 
-const CUSTOMER_FIELDS = 'kind ("PF" ou "PJ", obrigatório na criação), name (obrigatório na criação), tradeName (só PJ), taxId (CPF ou CNPJ, só dígitos), email, phone, notes, status ("ACTIVE"/"INACTIVE"), street, number, complement, district, postalCode, cityName, cityIbgeCode, stateCode, countryCode (país com 2 letras ISO, ex.: "BR" ou "US"), municipalRegistration (inscrição municipal), caepfCode (14 dígitos, somente PF), foreignTaxId (documento fiscal estrangeiro), noForeignTaxIdReason ("1" = Dispensado desse documento; "2" = O país não exige esse documento; nunca junto com foreignTaxId), foreignPostalCode (CEP estrangeiro), foreignStateProvince (estado/província estrangeiro)';
+const CUSTOMER_FIELDS = 'name (obrigatório na criação), tradeName (só PJ), taxId (CPF ou CNPJ, opcional, identifica automaticamente o tipo), email, phone, notes, status ("ACTIVE"/"INACTIVE"), street, number, complement, district, postalCode, cityName, cityIbgeCode, stateCode, countryCode (país com 2 letras ISO, ex.: "BR" ou "US"), foreignTaxId (documento fiscal estrangeiro), noForeignTaxIdReason ("1" = Dispensado desse documento; "2" = O país não exige esse documento; nunca junto com foreignTaxId), foreignPostalCode (CEP estrangeiro), foreignStateProvince (estado/província estrangeiro)';
 
 export function createCustomerOperation(customers: CustomersService): WriteOperation<z.output<typeof createCustomerSchema>> {
   return {

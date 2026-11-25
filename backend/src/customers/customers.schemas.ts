@@ -5,7 +5,6 @@ const taxId = z.string().trim().transform((value) => value.replace(/[.\-/\s]/g, 
   .pipe(z.string().regex(/^(?:\d{11}|[A-Z0-9]{12}\d{2})$/)).nullable();
 
 const fields = {
-  kind: z.enum(['PF', 'PJ']),
   name: z.string().trim().min(1).max(200),
   tradeName: nullableText(200),
   taxId,
@@ -22,16 +21,14 @@ const fields = {
   cityIbgeCode: z.string().regex(/^\d{7}$/).nullable(),
   stateCode: z.string().toUpperCase().regex(/^[A-Z]{2}$/).nullable(),
   countryCode: z.string().toUpperCase().regex(/^[A-Z]{2}$/),
-  municipalRegistration: nullableText(15),
-  caepfCode: z.string().trim().regex(/^\d{14}$/, 'Informe os 14 dígitos do registro de atividade da pessoa física.').nullable(),
   foreignTaxId: nullableText(40),
   noForeignTaxIdReason: z.enum(['1', '2']).nullable(),
   foreignPostalCode: nullableText(11),
   foreignStateProvince: nullableText(60),
 };
 
-export const createCustomerSchema = z.strictObject({ ...fields, kind: fields.kind, name: fields.name }).partial()
-  .required({ kind: true, name: true });
+export const createCustomerSchema = z.strictObject(fields).partial()
+  .required({ name: true });
 export const updateCustomerSchema = z.strictObject(fields).partial().refine((value) => Object.keys(value).length > 0, 'Informe ao menos um campo');
 export const listCustomersSchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).default(20),

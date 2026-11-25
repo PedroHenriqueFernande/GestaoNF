@@ -20,7 +20,7 @@ export function NfseReadinessCard({ companyId }: { companyId: string }) {
       <p className={`nfse-readiness__summary ${readiness.data.ready ? 'is-ready' : 'is-blocked'}`} role="status">
         {readiness.data.ready ? 'Tudo configurado para emitir em homologação.' : `${pending} ${pending === 1 ? 'pendência impede' : 'pendências impedem'} a emissão.`}</p>
       <ul className="nfse-readiness__list">{checks.map(check => { const Icon = ICON[check.status]; return <li key={check.code} className={`is-${check.status.toLowerCase()}`}>
-        <Icon size={17} aria-hidden="true" /><div><strong>{check.label}<span className="sr-only"> — {STATUS_NAME[check.status]}</span></strong><p>{check.message}</p></div></li>; })}</ul>
+        <Icon size={17} aria-hidden="true" /><div><strong>{check.label}<span className="sr-only"> - {STATUS_NAME[check.status]}</span></strong><p>{check.message}</p></div></li>; })}</ul>
     </>}
     <div className="nfse-readiness__probe">
       <button type="button" className="button button--secondary" onClick={() => connection.mutate()} disabled={connection.isPending || !readiness.data}>

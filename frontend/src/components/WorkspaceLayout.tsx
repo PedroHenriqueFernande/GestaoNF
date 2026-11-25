@@ -200,7 +200,7 @@ export function WorkspaceLayout({ user, companies, companyId, onCompanyChange, a
         </div>}
 
         <div className="workspace-sidebar__footer">
-          <Link to="/meu-perfil" className="workspace-profile" aria-current={section === 'profile' ? 'page' : undefined} aria-label={`Meu perfil — ${user.name}`} title={isCollapsed ? 'Meu perfil' : undefined} onClick={closeNavigation}>
+          <Link to="/meu-perfil" className="workspace-profile" aria-current={section === 'profile' ? 'page' : undefined} aria-label={`Meu perfil - ${user.name}`} title={isCollapsed ? 'Meu perfil' : undefined} onClick={closeNavigation}>
             <UserAvatar user={user} className="header-avatar workspace-profile__avatar" />
             <span className="workspace-profile__text"><strong title={user.name}>{user.name}</strong><small>Meu perfil</small></span>
           </Link>

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+﻿import { expect, test } from '@playwright/test';
 import { localWebOrigin } from './origin';
 import { ownerCompany } from './companies';
 
@@ -40,11 +40,11 @@ test('lead cria serviço, cliente e proposta; registra envio sem criar pedido', 
   await page.getByRole('button', { name: 'Cadastrar serviço' }).click();
   await expect(page.getByRole('dialog', { name: 'Novo serviço' })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Construir proposta' }).getByRole('combobox', { name: 'Serviço', exact: true })).toHaveValue(serviceId);
-  await page.getByRole('combobox', { name: 'Tipo de pessoa' }).selectOption('PF');
+  await expect(page.getByRole('combobox', { name: 'Tipo de pessoa' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
   await expect(page.getByRole('dialog', { name: 'Construir proposta' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Abrir P-000001' })).toBeVisible();
-  expect(createBody).toMatchObject({ opportunityId, newCustomer: { kind: 'PF', name: 'Maria Silva' }, items: [{ serviceId, quantity: '1.0000', unitPrice: '5000.00' }] });
+  expect(createBody).toMatchObject({ opportunityId, newCustomer: { name: 'Maria Silva' }, items: [{ serviceId, quantity: '1.0000', unitPrice: '5000.00' }] });
   await page.getByRole('button', { name: 'Abrir P-000001' }).click();
   await expect(page.getByRole('heading', { name: 'Implantação de CRM' })).toBeVisible();
   await page.getByRole('button', { name: 'Registrar envio' }).click();

@@ -70,7 +70,7 @@ beforeEach(async () => {
   ]);
   await grantLegacyMembers(db);
   await db.update(s.accounts).set({ status: 'SUSPENDED' }).where(eq(s.accounts.id, accY));
-  [customerA, customerB] = (await db.insert(s.customers).values([{ companyId: companyA, kind: 'PF', name: 'Cliente A' }, { companyId: companyB, kind: 'PF', name: 'Cliente B' }]).returning()).map(c => c.id);
+  [customerA, customerB] = (await db.insert(s.customers).values([{ companyId: companyA, name: 'Cliente A' }, { companyId: companyB, name: 'Cliente B' }]).returning()).map(c => c.id);
 });
 afterEach(() => vi.restoreAllMocks());
 afterAll(async () => {

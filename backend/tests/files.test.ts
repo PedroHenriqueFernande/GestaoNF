@@ -83,7 +83,7 @@ beforeEach(async () => {
   await db.insert(s.companyUsers).values([{ companyId: company, userId: owner, role: 'OWNER' }, { companyId: companyB, userId: owner, role: 'OWNER' }, { companyId: company, userId: seller, role: 'COLLABORATOR' }, { companyId: company, userId: other, role: 'COLLABORATOR' }]);
   await grantLegacyMembers(db);
   [serviceId] = (await db.insert(s.services).values({ companyId: company, name: 'CRM' }).returning()).map(s => s.id);
-  [customerId] = (await db.insert(s.customers).values({ companyId: company, kind: 'PF', name: 'Cliente' }).returning()).map(s => s.id);
+  [customerId] = (await db.insert(s.customers).values({ companyId: company, name: 'Cliente' }).returning()).map(s => s.id);
 });
 afterEach(() => vi.restoreAllMocks());
 afterAll(async () => {
@@ -173,7 +173,7 @@ describe('arquivos: HTTP, PostgreSQL e armazenamento simulado', () => {
     expect((await http('POST', '/sales', saleInput([file.id]), owner, company, randomUUID())).statusCode).toBe(400);
     expect((await db.select({ n: count() }).from(s.sales))[0].n).toBe(before);
     const available = await ready();
-    const [otherCustomer] = await db.insert(s.customers).values({ companyId: companyB, kind: 'PF', name: 'Outro' }).returning();
+    const [otherCustomer] = await db.insert(s.customers).values({ companyId: companyB, name: 'Outro' }).returning();
     expect((await http('POST', '/sales', { customerId: otherCustomer.id, attachmentIds: [available.id] }, owner, companyB, randomUUID())).statusCode).toBe(400);
   });
   it('sem sales.attachments_view: detalhe sem anexos, salvar sem attachmentIds preserva, enviar attachmentIds devolve 403 (critério 34)', async () => {

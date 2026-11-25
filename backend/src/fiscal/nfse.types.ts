@@ -1,5 +1,5 @@
 export type NfseIssue = { code: string; message: string; field: string; target: 'company' | 'customer' | 'service' | 'sale' | 'series' | 'integration'; severity: 'ERROR' | 'WARNING' };
-export type NfseParty = { name: string; taxId: string | null; email: string | null; street: string | null; number: string | null; district: string | null; cityName: string | null; cityIbgeCode: string | null; postalCode: string | null; stateCode: string | null; municipalRegistration: string | null };
+export type NfseParty = { name: string; taxId: string | null; email: string | null; street: string | null; number: string | null; district: string | null; cityName: string | null; cityIbgeCode: string | null; postalCode: string | null; stateCode: string | null; municipalRegistration?: string | null };
 export type NfseGroup = {
   key: string; competence: string; municipalityIbgeCode: string | null; nationalTaxCode: string | null; nbsCode: string | null; municipalTaxCode: string | null;
   description: string; grossAmount: string; discountAmount: string; totalAmount: string;

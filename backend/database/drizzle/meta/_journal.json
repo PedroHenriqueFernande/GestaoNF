@@ -302,6 +302,20 @@
       "when": 1795548354849,
       "tag": "0042_company_trade_name_display",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795551338472,
+      "tag": "0043_remove_customer_fiscal_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795551835056,
+      "tag": "0044_infer_customer_kind_from_tax_id",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import 'reflect-metadata';
+﻿import 'reflect-metadata';
 import { testAccount } from './account-fixture.js';
 import { grantLegacyMembers, grantMember } from './permission-fixtures.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -48,7 +48,7 @@ async function lead(extra: Record<string, unknown> = {}) {
 }
 async function create(extra: Record<string, unknown> = {}, leadExtra: Record<string, unknown> = {}) {
   const l = await lead(leadExtra);
-  const input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: { kind: 'PF' }, items: [item()], ...extra });
+  const input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: {}, items: [item()], ...extra });
   const p = await proposals.create(ctx(), input, randomUUID());
   return { ...l, id: String(p.proposalId), customerId: String(p.customerId), input };
 }
@@ -92,38 +92,55 @@ beforeEach(async () => {
 });
 
 describe('propostas comerciais: HTTP e PostgreSQL', () => {
+  it('identifica o cliente pelo documento e aceita cadastro apenas com nome', async () => {
+    const created = await http('POST', '/customers', { name: 'Cliente sem documento' });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ name: 'Cliente sem documento', kind: null, taxId: null });
+
+    const id = created.json().id;
+    const withCpf = await http('PATCH', `/customers/${id}`, { taxId: '529.982.247-25' });
+    expect(withCpf.statusCode).toBe(200);
+    expect(withCpf.json()).toMatchObject({ kind: 'PF', taxId: '52998224725' });
+
+    const withCnpj = await http('PATCH', `/customers/${id}`, { taxId: '11.222.333/0001-81' });
+    expect(withCnpj.statusCode).toBe(200);
+    expect(withCnpj.json()).toMatchObject({ kind: 'PJ', taxId: '11222333000181' });
+
+    const withoutDocument = await http('PATCH', `/customers/${id}`, { taxId: null });
+    expect(withoutDocument.statusCode).toBe(200);
+    expect(withoutDocument.json()).toMatchObject({ kind: null, taxId: null });
+  });
+
   it('capta sem cliente e cria cadastro/vínculo automaticamente apenas ao salvar proposta', async () => {
     const l = await lead(); expect(await customerCount()).toBe(0);
     const prefill = await read.prefill(ctx(), { opportunityId: l.opportunityId });
-    expect('requiresCustomerDetails' in prefill && prefill.requiresCustomerDetails).toBe(true); expect(await customerCount()).toBe(0);
-    const r = await http('POST', '/crm/proposals', { opportunityId: l.opportunityId, items: [item()], newCustomer: { kind: 'PF' } }, owner, company, randomUUID());
+    expect('requiresCustomerDetails' in prefill && prefill.requiresCustomerDetails).toBe(false); expect(await customerCount()).toBe(0);
+    const r = await http('POST', '/crm/proposals', { opportunityId: l.opportunityId, items: [item()], newCustomer: {} }, owner, company, randomUUID());
     expect(r.statusCode).toBe(201); expect(r.json().proposalCode).toBe('P-000001'); expect(await customerCount()).toBe(1);
     const [contact] = await db.select().from(s.crmContacts).where(eq(s.crmContacts.id, l.leadId)); expect(contact.customerId).toBe(r.json().customerId);
     const detail = await proposals.get(ctx(), r.json().proposalId); expect(detail.totalAmount).toBe('4500.00'); expect(detail.items[0].discountAmount).toBe('500.00');
     expect((await db.select().from(s.services).where(eq(s.services.id, service)))[0].suggestedUnitPrice).toBe('2500.00');
   });
-  it('exige tipo quando desconhecido, impede proposta vazia e permite serviço novo pela API existente', async () => {
+  it('permite cliente sem documento, impede proposta vazia e permite serviço novo pela API existente', async () => {
     const l = await capture.create(ctx(), createLeadSchema.parse({ lead: { name: 'Lead externo' }, interest: { description: 'Produto do formulário' } }), randomUUID());
     expect(await read.prefill(ctx(), { opportunityId: l.opportunityId })).toMatchObject({ requiresServiceSelection: true, interestDescription: 'Produto do formulário' });
-    const missing = await http('POST', '/crm/proposals', { opportunityId: l.opportunityId, items: [item()] }, owner, company, randomUUID());
-    expect(missing.statusCode).toBe(422); expect(missing.json().code).toBe('PROPOSAL_CUSTOMER_DETAILS_REQUIRED');
-    const empty = await http('POST', '/crm/proposals', { opportunityId: l.opportunityId, items: [], newCustomer: { kind: 'PF' } }, owner, company, randomUUID()); expect(empty.statusCode).toBe(400);
+    const empty = await http('POST', '/crm/proposals', { opportunityId: l.opportunityId, items: [], newCustomer: {} }, owner, company, randomUUID()); expect(empty.statusCode).toBe(400);
     const created = await http('POST', '/services', { name: 'Consultoria rápida' }); expect(created.statusCode).toBe(201);
-    const p = await http('POST', '/crm/proposals', { opportunityId: l.opportunityId, items: [{ ...item(), serviceId: created.json().id }], newCustomer: { kind: 'PF' } }, owner, company, randomUUID()); expect(p.statusCode).toBe(201);
+    const p = await http('POST', '/crm/proposals', { opportunityId: l.opportunityId, items: [{ ...item(), serviceId: created.json().id }], newCustomer: {} }, owner, company, randomUUID()); expect(p.statusCode).toBe(201);
   });
   it('desfaz cliente e vínculo se qualquer serviço ou desconto falhar', async () => {
     const l = await lead();
-    const bad = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: { kind: 'PF' }, items: [{ ...item(), discountType: 'AMOUNT', discountInput: '999999.00' }] });
+    const bad = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: {}, items: [{ ...item(), discountType: 'AMOUNT', discountInput: '999999.00' }] });
     await expect(proposals.create(ctx(), bad, randomUUID())).rejects.toMatchObject({ status: 422 }); expect(await customerCount()).toBe(0);
     expect((await db.select().from(s.crmContacts).where(eq(s.crmContacts.id, l.leadId)))[0].customerId).toBeNull();
   });
   it('duas propostas simultâneas do mesmo lead criam um só cliente', async () => {
-    const l = await lead(), input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: { kind: 'PF' }, items: [item()] });
+    const l = await lead(), input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: {}, items: [item()] });
     const results = await Promise.all([proposals.create(ctx(), input, randomUUID()), proposals.create(ctx(), input, randomUUID())]);
     expect(results[0].customerId).toBe(results[1].customerId); expect(results[0].proposalId).not.toBe(results[1].proposalId); expect(await customerCount()).toBe(1);
   });
   it('replay da criação não duplica e reutilização de chave com novos dados é conflito', async () => {
-    const l = await lead(), key = randomUUID(), input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: { kind: 'PF' }, items: [item()] });
+    const l = await lead(), key = randomUUID(), input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: {}, items: [item()] });
     const results = await Promise.all(Array.from({ length: 4 }, () => proposals.create(ctx(), input, key)));
     for (const r of results) expect(r).toEqual(results[0]);
     await expect(proposals.create(ctx(), { ...input, title: 'Outro título' }, key)).rejects.toMatchObject({ status: 409 }); expect(await customerCount()).toBe(1);
@@ -135,7 +152,7 @@ describe('propostas comerciais: HTTP e PostgreSQL', () => {
     const p = await proposals.create(ctx(), { ...input, customerId: c.id }, randomUUID()); expect(p.customerId).toBe(c.id); expect(await customerCount()).toBe(1);
   });
   it('origem em cliente cria entrada/card e reusa contato nas próximas propostas', async () => {
-    const [c] = await db.insert(s.customers).values({ companyId: company, kind: 'PJ', name: 'Empresa Cliente' }).returning();
+    const [c] = await db.insert(s.customers).values({ companyId: company, name: 'Empresa Cliente' }).returning();
     const input = createProposalSchema.parse({ customerId: c.id, createOpportunity: true, items: [item()] });
     const a = await proposals.create(ctx(), input, randomUUID()), b = await proposals.create(ctx(), input, randomUUID());
     const da = await proposals.get(ctx(), String(a.proposalId)), dbb = await proposals.get(ctx(), String(b.proposalId));
@@ -244,7 +261,7 @@ describe('propostas comerciais: HTTP e PostgreSQL', () => {
   });
   it('empresa isola consulta, PDF e replay; a visibilidade dentro dela é da empresa inteira (Spec 10)', async () => {
     const l = await lead({ assignedUserId: seller }); const key = randomUUID();
-    const input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: { kind: 'PF' }, items: [item()] });
+    const input = createProposalSchema.parse({ opportunityId: l.opportunityId, newCustomer: {}, items: [item()] });
     const p = await proposals.create(ctx(seller), input, key), id = String(p.proposalId);
     expect((await http('GET', `/crm/proposals/${id}/pdf`, undefined, other)).statusCode).toBe(200); // Spec 10
     expect((await http('GET', `/crm/proposals/${id}`, undefined, owner, companyB)).statusCode).toBe(404);
@@ -266,7 +283,7 @@ describe('permissões das propostas (D6, Spec 7.2)', () => {
   const denied = (work: Promise<unknown>) => work.then(() => null, (e: HttpException) => e.getResponse());
   const catalogItem = () => ({ ...item(), discountInput: '0.00' });
   const fresh = async () => (await lead({ email: `${randomUUID()}@example.test` })).opportunityId;
-  const input = (opportunityId: string, items: unknown[]) => createProposalSchema.parse({ opportunityId, newCustomer: { kind: 'PF' }, items });
+  const input = (opportunityId: string, items: unknown[]) => createProposalSchema.parse({ opportunityId, newCustomer: {}, items });
 
   it('sem proposals.change_price: preço do catálogo passa; desconto ou outro preço devolvem 403', async () => {
     await as(['proposals.manage', 'customers.create']);

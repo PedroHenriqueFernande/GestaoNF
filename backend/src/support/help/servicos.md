@@ -10,8 +10,8 @@ O cadastro de **Serviços** é o catálogo do que você vende. Os serviços são
 ## Passo a passo
 1. No menu da esquerda, abra **Cadastros** e clique em **Serviços**.
 2. Clique em **Novo**. O formulário "Novo serviço" abre ao lado.
-3. Em **Dados comerciais**, preencha o **Nome do serviço** (obrigatório) e a **Unidade comercial** (obrigatória, como UN ou H). Se quiser, preencha também o **Código interno**, a **Descrição** e o **Valor unitário sugerido**. O valor sugerido é só uma referência, pois o total da NFS-e é definido no pedido.
-4. Em **Classificação fiscal**, informe o **Código de tributação nacional (cTribNac)** com 6 dígitos, sem pontuação. Se souber, informe o **Código NBS** (9 dígitos). Se tiver dúvida sobre a **Categoria da atividade no Simples Nacional**, confirme com seu contador.
+3. Em **Dados comerciais**, preencha o **Nome do serviço** (obrigatório) e a **Unidade comercial** (obrigatória, como UN ou H). Se quiser, preencha também o **Código interno** e o **Valor unitário sugerido**. O valor sugerido é só uma referência, pois o total da NFS-e é definido no pedido.
+4. Informe o **Código de tributação nacional (cTribNac)** com 6 dígitos, sem pontuação. Se souber, informe o **Código NBS** (9 dígitos). Se tiver dúvida sobre a **Categoria da atividade no Simples Nacional**, confirme com seu contador. Por último, se quiser, preencha a **Descrição**.
 5. Clique em **Cadastrar serviço**.
 6. Para configurar o código do município, abra o serviço pelo botão de editar. Em **Códigos municipais**, informe o **Município (IBGE)** (7 dígitos) e o **Código municipal** (3 dígitos) e clique em **Salvar código**. Você pode ter um código para cada município.
 

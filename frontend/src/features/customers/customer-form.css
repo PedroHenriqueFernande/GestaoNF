@@ -1,0 +1,30 @@
+.customer-form__body {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  padding-top: 24px;
+}
+
+.customer-form__address > .form-grid {
+  margin-top: 0;
+}
+
+.customer-form__country-control {
+  position: relative;
+  display: block;
+}
+
+.customer-form__country-control > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 11px;
+  transform: translateY(-50%);
+  color: var(--primary);
+  pointer-events: none;
+}
+
+.customer-form__country-control > select {
+  padding-left: 36px;
+  cursor: pointer;
+}

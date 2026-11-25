@@ -6,7 +6,7 @@ import { DatabaseService } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/validate.js';
 import { requirePermission, type Actor } from '../permissions/actor.js';
 import { createCustomerSchema, listCustomersSchema, updateCustomerSchema } from './customers.schemas.js';
-import { validateCustomerTaxId } from './tax-id.js';
+import { customerKindFromTaxId } from './tax-id.js';
 
 type CreateCustomer = z.output<typeof createCustomerSchema>;
 type UpdateCustomer = z.output<typeof updateCustomerSchema>;
@@ -33,10 +33,11 @@ export class CustomersService {
   }
 
   async createInTx(db: DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0], companyId: string, userId: string, input: CreateCustomer) {
-    validateCustomerTaxId(input.kind, input.taxId, input.tradeName);
+    const kind = input.taxId ? customerKindFromTaxId(input.taxId) : null;
+    if (kind !== 'PJ' && input.tradeName) throw new BadRequestException('Nome fantasia exige CNPJ válido');
     this.validateFiscalData(input);
     try {
-      const [customer] = await db.insert(customers).values({ ...input, companyId, createdByUserId: userId }).returning();
+      const [customer] = await db.insert(customers).values({ ...input, kind, companyId, createdByUserId: userId }).returning();
       return customer;
     } catch (error) {
       // Dentro de uma transação Postgres o erro a aborta; quem chama deve relançar e não reutilizar o tx.
@@ -80,12 +81,14 @@ export class CustomersService {
     const [existing] = await db.select().from(customers).where(and(eq(customers.companyId, companyId), eq(customers.id, id))).for('update');
     if (!existing) throw new NotFoundException('Cliente não encontrado');
     requireCustomerChange(actor, existing, input, entry);
-    const merged = { ...existing, ...input };
-    if (merged.kind !== 'PF' && merged.kind !== 'PJ') throw new BadRequestException('Tipo inválido');
-    validateCustomerTaxId(merged.kind, merged.taxId, merged.tradeName);
+    const taxId = input.taxId === undefined ? existing.taxId : input.taxId;
+    const kind = taxId ? customerKindFromTaxId(taxId) : null;
+    const tradeName = kind === 'PF' ? null : input.tradeName === undefined ? existing.tradeName : input.tradeName;
+    if (kind !== 'PJ' && input.tradeName) throw new BadRequestException('Nome fantasia exige CNPJ válido');
+    const merged = { ...existing, ...input, kind, tradeName };
     this.validateFiscalData(merged);
     try {
-      const [customer] = await db.update(customers).set({ ...input, updatedAt: new Date() })
+      const [customer] = await db.update(customers).set({ ...input, kind, tradeName, updatedAt: new Date() })
         .where(and(eq(customers.companyId, companyId), eq(customers.id, id))).returning();
       return { before: existing, after: customer };
     } catch (error) {
@@ -98,8 +101,7 @@ export class CustomersService {
     return (await this.database.db.transaction((tx) => this.updateInTx(tx, actor, id, input, entry))).after;
   }
 
-  private validateFiscalData(input: { kind: string; caepfCode?: string | null; foreignTaxId?: string | null; noForeignTaxIdReason?: string | null }) {
-    if (input.caepfCode && input.kind !== 'PF') throw new BadRequestException('O registro de atividade da pessoa física só pode ser informado para cliente pessoa física.');
+  private validateFiscalData(input: { foreignTaxId?: string | null; noForeignTaxIdReason?: string | null }) {
     if (input.foreignTaxId && input.noForeignTaxIdReason) throw new BadRequestException('Informe o documento fiscal estrangeiro ou o motivo da ausência, nunca os dois ao mesmo tempo.');
   }
 

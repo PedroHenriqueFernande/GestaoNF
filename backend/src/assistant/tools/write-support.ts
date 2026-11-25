@@ -7,7 +7,7 @@ import { label } from './read-support.js';
 export const FIELD_LABELS: Record<string, string> = {
   kind: 'Tipo', name: 'Nome', tradeName: 'Nome fantasia', taxId: 'CPF/CNPJ', email: 'E-mail', phone: 'Telefone', notes: 'Observações', status: 'Situação',
   street: 'Rua', number: 'Número', complement: 'Complemento', district: 'Bairro', postalCode: 'CEP', cityName: 'Cidade', cityIbgeCode: 'Código IBGE da cidade',
-  stateCode: 'UF', countryCode: 'País', municipalRegistration: 'Inscrição municipal', caepfCode: 'CAEPF', foreignTaxId: 'Documento estrangeiro',
+  stateCode: 'UF', countryCode: 'País', foreignTaxId: 'Documento estrangeiro',
   noForeignTaxIdReason: 'Motivo sem documento estrangeiro', foreignPostalCode: 'CEP estrangeiro', foreignStateProvince: 'Estado/província estrangeiro',
   internalCode: 'Código interno', description: 'Descrição', unitLabel: 'Unidade', suggestedUnitPrice: 'Preço sugerido', nationalTaxCode: 'Código de tributação nacional',
   nbsCode: 'Código NBS', simplesActivityCode: 'Categoria da atividade no Simples Nacional',

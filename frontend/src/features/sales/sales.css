@@ -115,7 +115,7 @@
 .sale-actions{position:relative;display:inline-flex}
 .sale-actions__trigger{min-width:40px;min-height:40px;display:grid;place-items:center;border:0;background:transparent;border-radius:6px;cursor:pointer}
 .sale-actions__trigger:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
-.sale-actions__menu{right:0;left:auto;min-width:150px}
+.dropdown-panel.sale-actions__menu{position:fixed;top:0;left:0;min-width:150px;overflow-y:auto}
 .sale-delete-dialog{width:min(460px,calc(100vw - 20px));border:1px solid var(--border);border-radius:8px;padding:22px}
 .sale-delete-dialog::backdrop{background:#0c233a59}
 .sale-delete-dialog footer{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}

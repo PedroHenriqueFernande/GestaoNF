@@ -81,6 +81,6 @@ export class ProposalReadService {
       customerDraft: { kind: contact.taxIdKind, name: contact.taxIdKind === 'PJ' ? contact.organizationName ?? contact.name : contact.name, taxId: contact.taxId, email: contact.email, phone: contact.phone },
       service: service ?? null, interestDescription: entry?.description ?? null,
       suggestedItems: service ? [{ serviceId: service.id, quantity: '1.0000', unitPrice: service.suggestedUnitPrice, discountType: 'AMOUNT', discountInput: '0.00' }] : [],
-      requiresCustomerDetails: !customer && !contact.taxIdKind, requiresServiceSelection: !service };
+      requiresCustomerDetails: !customer && !contact.name.trim(), requiresServiceSelection: !service };
   }
 }

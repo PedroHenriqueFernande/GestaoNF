@@ -111,7 +111,7 @@ function ReportMetrics({definition:d,result}:{definition:ReportDefinition;result
 }
 
 function cell(value:unknown,format:ReportDefinition['columns'][number]['format'],timezone:string):ReactNode {
-  if(value==null || value==='') return <span className="reports-muted">—</span>;
+  if(value==null || value==='') return <span className="reports-muted">-</span>;
   if(format==='money') return money(value);
   if(format==='date' || format==='instant') return reportDate(value,timezone,format==='instant');
   if(format==='status') return <span className={`reports-badge ${['REVERSAL','LOST','DISQUALIFIED','CANCELED','NO_SHOW'].includes(String(value))?'is-negative':''}`}>{statusLabels[String(value)]??String(value)}</span>;

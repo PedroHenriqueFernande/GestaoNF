@@ -1,8 +1,10 @@
 import type { RoleLabel } from '@gestaonf/permissions';
-export function formatTaxId(value: string | null | undefined, kind: 'PF' | 'PJ' = 'PF'): string {
-  const clean = (value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, kind === 'PF' ? 11 : 14);
+export function formatTaxId(value: string | null | undefined, kind?: 'PF' | 'PJ' | null): string {
+  const normalized = (value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const resolvedKind = kind ?? (normalized.length > 11 || /[A-Z]/.test(normalized) ? 'PJ' : 'PF');
+  const clean = normalized.slice(0, resolvedKind === 'PF' ? 11 : 14);
   if (!clean) return '';
-  if (kind === 'PF') {
+  if (resolvedKind === 'PF') {
     return clean.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
   }
   return clean.replace(/^(.{2})(.)/, '$1.$2').replace(/^(.{2})\.(.{3})(.)/, '$1.$2.$3')

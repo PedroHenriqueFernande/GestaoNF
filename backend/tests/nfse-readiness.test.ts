@@ -80,17 +80,24 @@ describe('prontidão para emitir', () => {
     expect(byCode(await service.check(world.company, world.owner), 'ICP_BUNDLE').status).toBe('ERROR');
   });
 
-  it('cadastro incompleto da empresa: ME/EPP sem regime de apuração, sem município e sem certificado', async () => {
+  it('cadastro incompleto da empresa: sem município e sem certificado', async () => {
     const { readiness: service } = readiness();
     bundle();
-    await db.update(s.companies).set({ simplesNationalOption: '3', simplesTaxationRegime: null, cityIbgeCode: null }).where(eq(s.companies.id, world.company));
+    await db.update(s.companies).set({ simplesNationalOption: '3', cityIbgeCode: null }).where(eq(s.companies.id, world.company));
     await db.delete(s.companyFiscalCertificates).where(eq(s.companyFiscalCertificates.companyId, world.company));
     const result = await service.check(world.company, world.owner);
     expect(result.ready).toBe(false);
     expect(byCode(result, 'COMPANY').status).toBe('ERROR');
-    expect(byCode(result, 'COMPANY').message).toMatch(/município/i);
-    expect(byCode(result, 'COMPANY').message).toMatch(/apuração/i);
+    expect(byCode(result, 'COMPANY').message).toMatch(/CEP/);
     expect(byCode(result, 'CERTIFICATE').status).toBe('ERROR');
+  });
+
+  it('apuração e regime especial guardados no banco não bloqueiam: o sistema sempre usa 1 e 0', async () => {
+    const { readiness: service } = readiness();
+    bundle();
+    await db.update(s.companies).set({ simplesNationalOption: '3', simplesTaxationRegime: null, specialTaxRegime: '6' }).where(eq(s.companies.id, world.company));
+    const result = await service.check(world.company, world.owner);
+    expect(byCode(result, 'COMPANY').status).toBe('OK');
   });
 
   it('série de homologação ausente ou ambígua é erro', async () => {
