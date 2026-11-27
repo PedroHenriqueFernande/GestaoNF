@@ -59,6 +59,11 @@ function validItem(line: ItemLine) {
     Number.isFinite(discountCents(line.discountAmount)) && discountCents(line.discountAmount) <= gross;
 }
 
+function nextLookupIndex(current: number | null, count: number, direction: 1 | -1) {
+  if (current === null) return direction === 1 ? 0 : count - 1;
+  return (current + direction + count) % count;
+}
+
 export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClose, onCreated }: {
   companyId: string; companies: Company[]; draft?: SaleDetail | null; onCompanyChange: (id: string) => void; onClose: () => void; onCreated: (sale: SaleDetail) => void;
 }) {
@@ -72,14 +77,14 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [customerInput, setCustomerInput] = useState(draft?.customerNameSnapshot ?? '');
   const [customerTerm, setCustomerTerm] = useState('');
   const [customerOpen, setCustomerOpen] = useState(false);
-  const [customerHighlight, setCustomerHighlight] = useState(0);
+  const [customerHighlight, setCustomerHighlight] = useState<number | null>(null);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [serviceInput, setServiceInput] = useState('');
   const [serviceTerm, setServiceTerm] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [serviceCreateOpen, setServiceCreateOpen] = useState(false);
-  const [serviceHighlight, setServiceHighlight] = useState(0);
+  const [serviceHighlight, setServiceHighlight] = useState<number | null>(null);
   const [items, setItems] = useState<ItemLine[]>(draft?.items.map((item) => ({ key: crypto.randomUUID(), id: item.id, serviceId: item.serviceId, name: item.serviceNameSnapshot, taxProfileId: draft.status === 'DRAFT' ? item.taxSnapshot?.profileId ?? null : undefined, taxSnapshot: item.taxSnapshot, description: item.descriptionSnapshot, performedOn: item.performedOn, quantity: item.quantity, unitPrice: item.unitPrice, discountAmount: item.discountAmount, discountPercent: discountPercent(item.discountAmount, Math.round(Number(item.grossAmount) * 100)), discountBasis: 'AMOUNT', referencePrice: item.unitPrice, referenceDiscount: { amount: item.discountAmount, quantity: item.quantity } })) ?? []);
   const [selectedTaxProfileId, setSelectedTaxProfileId] = useState<string>(() => {
     const profiles = new Set(draft?.items.map(item => item.taxSnapshot?.profileId ?? '') ?? []);
@@ -100,7 +105,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [uploading, setUploading] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<SaleDetail | null>(draft ?? null);
   const createKey = useRef(crypto.randomUUID());
-  const paymentRef = useRef<HTMLElement>(null);
+  const paymentRef = useRef<HTMLDivElement>(null);
   const customerInputRef = useRef<HTMLInputElement>(null);
   const serviceInputRef = useRef<HTMLInputElement>(null);
   const serviceToggleRef = useRef<HTMLButtonElement>(null);
@@ -123,6 +128,8 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     items.length > 0 && !taxRules.isPending && !companyProfile.isPending && selectedRuleMissing;
   const serviceOptions = services.data?.items ?? [];
   const customerOptions = customers.data?.items ?? [];
+  const activeCustomer = customerHighlight === null ? undefined : customerOptions[customerHighlight];
+  const activeService = serviceHighlight === null ? undefined : serviceOptions[serviceHighlight];
   const total = items.reduce((sum, line) => sum + lineTotalCents(line), 0) / 100;
   const paymentTotal = payments.reduce((sum, line) => sum + (money(line.amount) || 0), 0);
 
@@ -143,7 +150,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     setCustomerInput(customer.name);
     setCustomerTerm('');
     setCustomerOpen(false);
-    setCustomerHighlight(0);
+    setCustomerHighlight(null);
   }
 
   const closeCustomerModal = useCallback(() => {
@@ -165,15 +172,16 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   });
 
   function handleCustomerKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'Escape') { setCustomerOpen(false); return; }
+    if (event.key === 'Escape') { setCustomerOpen(false); setCustomerHighlight(null); return; }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      if (!customerOpen) { setCustomerOpen(true); return; }
-      if (customerOptions.length) setCustomerHighlight((current) => (current + (event.key === 'ArrowDown' ? 1 : -1) + customerOptions.length) % customerOptions.length);
+      setCustomerOpen(true);
+      if (customerOptions.length) setCustomerHighlight((current) => nextLookupIndex(current, customerOptions.length, event.key === 'ArrowDown' ? 1 : -1));
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (customerOpen && customerOptions[customerHighlight]) chooseCustomer(customerOptions[customerHighlight]);
+      const customer = customerOptions[customerHighlight ?? 0];
+      if (customerOpen && customer) chooseCustomer(customer);
     }
   }
 
@@ -183,19 +191,20 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     setServiceInput(service.name);
     setServiceTerm('');
     setServiceOpen(false);
-    setServiceHighlight(0);
+    setServiceHighlight(null);
   }
 
   function handleServiceKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'Escape') { setServiceOpen(false); return; }
+    if (event.key === 'Escape') { setServiceOpen(false); setServiceHighlight(null); return; }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      if (!serviceOpen) { setServiceOpen(true); return; }
-      if (serviceOptions.length) setServiceHighlight((current) => (current + (event.key === 'ArrowDown' ? 1 : -1) + serviceOptions.length) % serviceOptions.length);
+      setServiceOpen(true);
+      if (serviceOptions.length) setServiceHighlight((current) => nextLookupIndex(current, serviceOptions.length, event.key === 'ArrowDown' ? 1 : -1));
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (serviceOpen && serviceOptions[serviceHighlight]) chooseService(serviceOptions[serviceHighlight]);
+      const service = serviceOptions[serviceHighlight ?? 0];
+      if (serviceOpen && service) chooseService(service);
     }
   }
 
@@ -204,8 +213,8 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     if (uploading) { setError('Aguarde o envio do arquivo antes de trocar a empresa.'); return; }
     setAttachments([]);
     onCompanyChange(id);
-    setCustomerId(''); setCustomerTerm(''); setCustomerInput(''); setCustomerOpen(false); setCustomerHighlight(0); setServiceTerm(''); setServiceInput('');
-    setSelectedService(null); setServiceDraft(null); setServiceOpen(false); setServiceCreateOpen(false); setServiceHighlight(0); setItems([]); setSelectedTaxProfileId(''); setRuleChanged(false); setPendingDraft(null); createKey.current = crypto.randomUUID();
+    setCustomerId(''); setCustomerTerm(''); setCustomerInput(''); setCustomerOpen(false); setCustomerHighlight(null); setServiceTerm(''); setServiceInput('');
+    setSelectedService(null); setServiceDraft(null); setServiceOpen(false); setServiceCreateOpen(false); setServiceHighlight(null); setItems([]); setSelectedTaxProfileId(''); setRuleChanged(false); setPendingDraft(null); createKey.current = crypto.randomUUID();
   }
 
   function closeServiceModal() {
@@ -283,53 +292,53 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving || uploading}><ArrowLeft size={17} /> Portal de Serviços</button><span>{confirmedEdit ? `EDITAR PEDIDO #${draft.orderCode}` : draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
     <div className="sale-editor-heading"><div><h1 className="sr-only">{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1>{confirmedEdit && nfseState.data?.lockReason && <p className="sale-field-hint" role="status">{nfseState.data.lockReason}</p>}</div></div>
     <form onSubmit={submit} className="sale-editor-form">
-      <section className="sale-editor-section sale-editor-section--identity"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2>Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div>{(canAttach || confirmedEdit) && <div className="sale-section-heading__aside">{canAttach && <SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} />}{confirmedEdit && <div className="sale-editor-fiscal-actions"><NfseSaleActions companyId={companyId} saleId={draft.id} saleVersion={draft.version} disabled={saving || uploading || fiscalDirty} /></div>}</div>}</div>
+      <div className="sale-editor-section" role="region" aria-labelledby="sale-identity-heading"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2 id="sale-identity-heading">Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div>{(canAttach || confirmedEdit) && <div className="sale-section-heading__aside">{canAttach && <SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} />}{confirmedEdit && <div className="sale-editor-fiscal-actions"><NfseSaleActions companyId={companyId} saleId={draft.id} saleVersion={draft.version} disabled={saving || uploading || fiscalDirty} /></div>}</div>}</div>
         <div className="sale-identity-grid">
           <div className="sale-field"><span><Building2 size={14} /> Empresa</span><SaleDropdown label="Empresa" value={companyId} options={companies.map((company) => ({ value: company.id, label: company.tradeName }))} onChange={changeCompany} disabled={saving || !!draft} /></div>
           <div className="sale-field sale-field--customer"><span><UsersRound size={14} /> Cliente <button type="button" className="sale-customer-new" onClick={() => { setCustomerOpen(false); customerSave.reset(); setCustomerModalOpen(true); }} disabled={saving} aria-label="Novo cliente"><Plus size={13} /> Novo</button></span>
             <div className="sale-lookup-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setCustomerOpen(false); }}>
               <div className="sale-lookup-combobox">
-                <input ref={customerInputRef} role="combobox" aria-label="Buscar cliente" aria-autocomplete="list" aria-expanded={customerOpen} aria-controls="sale-customer-options" aria-activedescendant={customerOpen && customerOptions[customerHighlight] ? `sale-customer-option-${customerOptions[customerHighlight].id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar cliente" value={customerInput} disabled={saving} onFocus={() => setCustomerOpen(true)} onChange={(event) => { setCustomerInput(event.target.value); setCustomerId(''); setCustomerOpen(true); setCustomerHighlight(0); }} onKeyDown={handleCustomerKeyDown} />
-                <button type="button" aria-label="Mostrar clientes" aria-expanded={customerOpen} disabled={saving} onClick={() => { const shouldOpen = !customerOpen; customerInputRef.current?.focus(); setCustomerOpen(shouldOpen); }}><ChevronDown size={16} /></button>
+                <input ref={customerInputRef} role="combobox" aria-label="Buscar cliente" aria-autocomplete="list" aria-expanded={customerOpen} aria-controls="sale-customer-options" aria-activedescendant={customerOpen && activeCustomer ? `sale-customer-option-${activeCustomer.id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar cliente" value={customerInput} disabled={saving} onFocus={() => { setCustomerOpen(true); setCustomerHighlight(null); }} onChange={(event) => { setCustomerInput(event.target.value); setCustomerId(''); setCustomerOpen(true); setCustomerHighlight(null); }} onKeyDown={handleCustomerKeyDown} />
+                <button type="button" aria-label="Mostrar clientes" aria-expanded={customerOpen} disabled={saving} onClick={() => { const shouldOpen = !customerOpen; customerInputRef.current?.focus(); setCustomerOpen(shouldOpen); setCustomerHighlight(null); }}><ChevronDown size={16} /></button>
               </div>
-              {customerOpen && <div id="sale-customer-options" className="sale-lookup-options" role="listbox" aria-label="Clientes cadastrados">
+              {customerOpen && <div id="sale-customer-options" className="sale-lookup-options" role="listbox" aria-label="Clientes cadastrados" onPointerMove={() => { if (customerHighlight !== null) setCustomerHighlight(null); }}>
                 {customers.isPending ? <div className="sale-lookup-message">Carregando clientes...</div> : customers.isError ? <div className="sale-lookup-message">Não foi possível carregar clientes. <button type="button" onClick={() => customers.refetch()}>Tentar novamente</button></div> : customerOptions.length ? <>
-                  {customerOptions.map((entry, index) => <button key={entry.id} id={`sale-customer-option-${entry.id}`} type="button" role="option" aria-selected={entry.id === customerId} className={`sale-lookup-option${index === customerHighlight ? ' is-highlighted' : ''}`} onMouseEnter={() => setCustomerHighlight(index)} onClick={() => chooseCustomer(entry)}><strong>{entry.name}</strong>{(entry.taxId || entry.phone) && <small>{[entry.taxId, entry.phone].filter(Boolean).join(' · ')}</small>}</button>)}
+                  {customerOptions.map((entry, index) => <button key={entry.id} id={`sale-customer-option-${entry.id}`} type="button" role="option" aria-selected={entry.id === customerId} className={`sale-lookup-option${index === customerHighlight ? ' is-highlighted' : ''}`} onClick={() => chooseCustomer(entry)}><strong>{entry.name}</strong><small>{[entry.taxId, entry.phone].filter(Boolean).join(' · ')}</small></button>)}
                   {(customers.data?.total ?? 0) > customerOptions.length && <div className="sale-lookup-message">Digite para encontrar outros clientes.</div>}
                 </> : <div className="sale-lookup-message">Nenhum cliente encontrado.</div>}
               </div>}
             </div>
           </div>
-          <label className="sale-field"><span>Regra de tributação</span><select value={selectedTaxProfileId} disabled={saving || taxRules.isPending || companyProfile.isPending}
-            onChange={event => {
-              const profileId = event.target.value;
+          <div className="sale-field"><span>Regra de tributação</span><SaleDropdown label="Regra de tributação" value={selectedTaxProfileId} disabled={saving || taxRules.isPending || companyProfile.isPending}
+            options={[
+              { value: '', label: 'Sem regra' },
+              ...(selectedTaxProfileId === '__mixed__' ? [{ value: '__mixed__', label: 'Manter regras registradas' }] : []),
+              ...(selectedRuleMissing ? [{ value: selectedTaxProfileId, label: 'Regra registrada indisponível', disabled: true }] : []),
+              ...availableRules.map(rule => ({ value: rule.id, label: rule.name })),
+            ]}
+            onChange={profileId => {
+              if (profileId === selectedTaxProfileId) return;
               setSelectedTaxProfileId(profileId);
               setRuleChanged(true);
               setItems(current => current.map(item => ({ ...item, taxProfileId: profileId || null })));
-            }}>
-            <option value="">Sem regra</option>
-            {selectedTaxProfileId === '__mixed__' && <option value="__mixed__">Manter regras registradas</option>}
-            {selectedRuleMissing && <option value={selectedTaxProfileId} disabled>Regra registrada indisponível</option>}
-            {availableRules.map(rule => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
-          </select></label>
+            }} /></div>
           <label className="sale-field"><span><CalendarDays size={14} /> Data da venda</span><input type="date" value={soldOn} onChange={(event) => setSoldOn(event.target.value)} required /></label>
           <label className="sale-field"><span>Número da OS</span><input value={workOrderNumber} onChange={(event) => setWorkOrderNumber(event.target.value)} maxLength={40} placeholder="Opcional · Ex.: OS-0021" /></label>
         </div>
         {selectedRuleUnavailable && <p className="sale-rule-warning" role="alert">A regra selecionada não atende todos os serviços. Escolha outra regra ou Sem regra.</p>}
         {taxRules.isError && <p className="sale-rule-warning" role="alert">Não foi possível carregar as regras de tributação.</p>}
-        <div className="sale-identity-continue"><span>Os demais campos já estão disponíveis para preenchimento.</span></div>
-      </section>
+      </div>
 
-      <section className="sale-editor-section"><div className="sale-section-heading"><div className="sale-section-number">02</div><div><h2>Serviços vendidos</h2><p>Adicione um ou mais serviços e ajuste os valores desta venda</p></div></div>
+      <div className="sale-editor-section" role="region" aria-labelledby="sale-services-heading"><div className="sale-section-heading"><div className="sale-section-number">02</div><div><h2 id="sale-services-heading">Serviços vendidos</h2><p>Adicione um ou mais serviços e ajuste os valores desta venda</p></div></div>
         <div className="sale-add-service">
           <div className="sale-lookup-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setServiceOpen(false); }}>
             <div className="sale-lookup-combobox">
-              <input ref={serviceInputRef} role="combobox" aria-label="Buscar serviço" aria-autocomplete="list" aria-expanded={serviceOpen} aria-controls="sale-service-options" aria-activedescendant={serviceOpen && serviceOptions[serviceHighlight] ? `sale-service-option-${serviceOptions[serviceHighlight].id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar serviço" value={serviceInput} disabled={saving} onFocus={() => setServiceOpen(true)} onChange={(event) => { setServiceInput(event.target.value); setSelectedService(null); setServiceOpen(true); setServiceHighlight(0); }} onKeyDown={handleServiceKeyDown} />
-              <button ref={serviceToggleRef} type="button" aria-label="Mostrar serviços" aria-expanded={serviceOpen} disabled={saving} onClick={() => { const shouldOpen = !serviceOpen; serviceInputRef.current?.focus(); setServiceOpen(shouldOpen); }}><ChevronDown size={16} /></button>
+              <input ref={serviceInputRef} role="combobox" aria-label="Buscar serviço" aria-autocomplete="list" aria-expanded={serviceOpen} aria-controls="sale-service-options" aria-activedescendant={serviceOpen && activeService ? `sale-service-option-${activeService.id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar serviço" value={serviceInput} disabled={saving} onFocus={() => { setServiceOpen(true); setServiceHighlight(null); }} onChange={(event) => { setServiceInput(event.target.value); setSelectedService(null); setServiceOpen(true); setServiceHighlight(null); }} onKeyDown={handleServiceKeyDown} />
+              <button ref={serviceToggleRef} type="button" aria-label="Mostrar serviços" aria-expanded={serviceOpen} disabled={saving} onClick={() => { const shouldOpen = !serviceOpen; serviceInputRef.current?.focus(); setServiceOpen(shouldOpen); setServiceHighlight(null); }}><ChevronDown size={16} /></button>
             </div>
-            {serviceOpen && <div id="sale-service-options" className="sale-lookup-options" role="listbox" aria-label="Serviços cadastrados">
+            {serviceOpen && <div id="sale-service-options" className="sale-lookup-options" role="listbox" aria-label="Serviços cadastrados" onPointerMove={() => { if (serviceHighlight !== null) setServiceHighlight(null); }}>
               {services.isPending ? <div className="sale-lookup-message">Carregando serviços...</div> : services.isError ? <div className="sale-lookup-message">Não foi possível carregar serviços. <button type="button" onClick={() => services.refetch()}>Tentar novamente</button></div> : serviceOptions.length ? <>
-                {serviceOptions.map((service, index) => <button key={service.id} id={`sale-service-option-${service.id}`} type="button" role="option" aria-selected={service.id === selectedService?.id} className={`sale-lookup-option${index === serviceHighlight ? ' is-highlighted' : ''}`} onMouseEnter={() => setServiceHighlight(index)} onClick={() => chooseService(service)}><strong>{service.name}</strong>{(service.internalCode || service.suggestedUnitPrice) && <small>{[service.internalCode, service.suggestedUnitPrice ? brl(Number(service.suggestedUnitPrice)) : null].filter(Boolean).join(' · ')}</small>}</button>)}
+                {serviceOptions.map((service, index) => <button key={service.id} id={`sale-service-option-${service.id}`} type="button" role="option" aria-selected={service.id === selectedService?.id} className={`sale-lookup-option${index === serviceHighlight ? ' is-highlighted' : ''}`} onClick={() => chooseService(service)}><strong>{service.name}</strong><small>{[service.internalCode, service.suggestedUnitPrice ? brl(Number(service.suggestedUnitPrice)) : null].filter(Boolean).join(' · ')}</small></button>)}
                 {(services.data?.total ?? 0) > serviceOptions.length && <div className="sale-lookup-message">Digite para encontrar outros serviços.</div>}
               </> : <div className="sale-lookup-message">Nenhum serviço encontrado.</div>}
             </div>}
@@ -352,9 +361,9 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
           </div>)}
         </div>}
         <div className="sale-subtotal"><span>Total dos serviços</span><strong>{brl(total)}</strong></div>
-      </section>
+      </div>
 
-      <section ref={paymentRef} id="sale-payment-section" className="sale-editor-section"><div className="sale-section-heading"><div className="sale-section-number">03</div><div><h2>Formas de pagamento</h2><p>Defina valores, vencimentos e recebimentos já realizados</p></div></div>
+      <div ref={paymentRef} id="sale-payment-section" className="sale-editor-section" role="region" aria-labelledby="sale-payment-heading"><div className="sale-section-heading"><div className="sale-section-number">03</div><div><h2 id="sale-payment-heading">Formas de pagamento</h2><p>Defina valores, vencimentos e recebimentos já realizados</p></div></div>
         <div className="sale-payment-list">{payments.map((line, index) => <div key={line.key} className="sale-payment-card"><div className="sale-payment-card__title"><strong>{index === 0 ? 'Recebimento' : `Recebimento ${index + 1}`}{line.paycode && <small> · Código {line.paycode}</small>}</strong><button type="button" aria-label={`Remover recebimento ${index + 1}`} title={line.hasHistory ? 'Recebimento com histórico de baixas não pode ser removido' : 'Remover recebimento'} disabled={line.hasHistory} onClick={() => setPayments((current) => current.filter((entry) => entry.key !== line.key))}><Trash2 size={15} /></button></div><div className="sale-payment-grid">
           <div className="sale-field"><span>Forma de pagamento</span><SaleDropdown label={`Forma de pagamento do recebimento ${index + 1}`} value={line.paymentMethod} options={methods} disabled={line.initiallyPaid && line.hasHistory} onChange={(paymentMethod) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, paymentMethod } : entry))} /></div>
           <label className="sale-field"><span>Valor</span><input type="number" min={line.paidAmount && Number(line.paidAmount) > 0 ? line.paidAmount : '0.01'} step="0.01" value={line.amount} disabled={line.initiallyPaid && line.hasHistory} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, amount: event.target.value } : entry))} placeholder="0,00" /></label>
@@ -363,12 +372,14 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
           {line.state === 'PAID' && <label className="sale-field"><span>Recebido em</span><input type="date" value={line.receivedOn} disabled={line.hasHistory || (!canReceive && needsReceivePermission(line, confirmedEdit))} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, receivedOn: event.target.value } : entry))} required /></label>}
         </div>{!canReceive && needsReceivePermission(line, confirmedEdit) && <p id={`sale-receipt-hint-${line.key}`} className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}{line.hasHistory && <p className="sale-payment-history">{brl(Number(line.paidAmount ?? '0'))} já baixados. O histórico do pagamento será preservado.</p>}</div>)}</div>
         <button type="button" className="sale-add-payment" onClick={addPayment}><Plus size={15} /> Adicionar forma de pagamento</button>
-        <div className={`sale-payment-balance${Math.round(total * 100) === Math.round(paymentTotal * 100) && total > 0 ? ' is-matched' : ''}`}><span>Distribuído nos recebimentos</span><strong>{brl(paymentTotal)} <small>de {brl(total)}</small></strong></div>
-      </section>
+        <div className="sale-payment-balance"><span>Distribuído nos recebimentos</span><strong>{brl(paymentTotal)} <small>de {brl(total)}</small></strong></div>
+      </div>
 
-      <section className="sale-editor-section sale-editor-section--notes"><label className="sale-field"><span>Observações da venda</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Informações úteis para acompanhar este serviço" rows={3} /></label></section>
-      {error && <div className="sale-form-error" role="alert">{error}{!denied && pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
-      <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>{confirmedEdit ? 'Os códigos e o histórico dos pagamentos serão preservados.' : 'Pedido e recebimentos serão registrados na empresa selecionada.'}</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving || uploading}>Cancelar</button>{draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving || uploading}>Salvar alterações</button>}<button type="submit" className="button button--primary" disabled={saving || uploading}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
+      <div className="sale-editor-bottom">
+        <div className="sale-editor-notes"><label className="sale-field"><span>Observações da venda</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Informações úteis para acompanhar este serviço" rows={3} /></label></div>
+        {error && <div className="sale-form-error" role="alert">{error}{!denied && pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
+        <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>{confirmedEdit ? 'Os códigos e o histórico dos pagamentos serão preservados.' : 'Pedido e recebimentos serão registrados na empresa selecionada.'}</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving || uploading}>Cancelar</button>{draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving || uploading}>Salvar alterações</button>}<button type="submit" className="button button--primary" disabled={saving || uploading}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
+      </div>
     </form>
     {selectedService && serviceDraft && <SaleServiceModal
       service={selectedService}
