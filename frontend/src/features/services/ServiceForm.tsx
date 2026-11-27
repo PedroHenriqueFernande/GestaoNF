@@ -127,9 +127,7 @@ export function ServiceForm({ companyId, service, canEditPrice, onClose, onSave,
           <div className="form-grid">
             <div className="form-grid service-form__name-row">
               <Field label="Nome do serviço" required error={errors.name?.message}><Controller name="name" control={form.control} render={({ field }) => <input {...field} ref={(element) => { field.ref(element); nameRef.current = element; }} placeholder="Ex.: Consultoria técnica" aria-invalid={!!errors.name} />} /></Field>
-              <Field label="Código municipal" error={errors.municipalTaxCode?.message} hint={company.isSuccess && !cityIbgeCode ? 'Informe o CEP da empresa para usar.' : undefined}>
-                <input placeholder="000" inputMode="numeric" maxLength={3} disabled={!cityIbgeCode} title={company.data?.cityName ? `Código de tributação do serviço em ${company.data.cityName}` : undefined} aria-invalid={!!errors.municipalTaxCode} {...form.register('municipalTaxCode', { onChange: (event) => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 3); } })} />
-              </Field>
+              <Field label="Código de tributação nacional (cTribNac)" error={errors.nationalTaxCode?.message} hint="6 dígitos, sem pontuação."><input placeholder="000000" inputMode="numeric" maxLength={6} aria-invalid={!!errors.nationalTaxCode} {...form.register('nationalTaxCode', { onChange: (event) => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 6); } })} /></Field>
             </div>
             <div className="form-grid form-grid--two">
               <Field label="Código interno" error={errors.internalCode?.message}><input placeholder="Ex.: SERV-001" aria-invalid={!!errors.internalCode} {...form.register('internalCode')} /></Field>
@@ -137,7 +135,9 @@ export function ServiceForm({ companyId, service, canEditPrice, onClose, onSave,
             </div>
           </div>
           <div className="form-grid form-grid--two">
-            <Field label="Código de tributação nacional (cTribNac)" error={errors.nationalTaxCode?.message} hint="6 dígitos, sem pontuação."><input placeholder="000000" inputMode="numeric" maxLength={6} aria-invalid={!!errors.nationalTaxCode} {...form.register('nationalTaxCode', { onChange: (event) => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 6); } })} /></Field>
+            <Field label="Código municipal" error={errors.municipalTaxCode?.message} hint={company.isSuccess && !cityIbgeCode ? 'Informe o CEP da empresa para usar.' : undefined}>
+              <input placeholder="000" inputMode="numeric" maxLength={3} disabled={!cityIbgeCode} title={company.data?.cityName ? `Código de tributação do serviço em ${company.data.cityName}` : undefined} aria-invalid={!!errors.municipalTaxCode} {...form.register('municipalTaxCode', { onChange: (event) => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 3); } })} />
+            </Field>
             <Field label="Código NBS" error={errors.nbsCode?.message} hint="9 dígitos, quando aplicável."><input placeholder="000000000" inputMode="numeric" maxLength={9} aria-invalid={!!errors.nbsCode} {...form.register('nbsCode', { onChange: (event) => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 9); } })} /></Field>
           </div>
           <Field label="Categoria da atividade no Simples Nacional" error={errors.simplesActivityCode?.message} hint="Opcional. Indica como este serviço se enquadra no Simples. Confirme a categoria com seu contador.">

@@ -6,7 +6,7 @@ import { canOpenScreen, PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions'
 import { api, type FiscalSeries, type TaxProfile, type TaxRevisionInput, type User } from '../../api/client';
 import { WorkspaceLayout } from '../../components/WorkspaceLayout';
 import { usePermissions } from '../permissions/usePermissions';
-import { NfseReadinessCard } from './NfseReadinessCard';
+import { SeriesEditDialog } from './SeriesEditDialog';
 import './fiscal.css';
 
 const today = () => new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -25,10 +25,7 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [seriesForm, setSeriesForm] = useState({ environment: 'HOMOLOGATION' as FiscalSeries['environment'], seriesNumber: '1', nextNumber: '1', isDefault: true });
-  const [advancing, setAdvancing] = useState<string | null>(null);
-  const [historySeriesId, setHistorySeriesId] = useState<string | null>(null);
-  const [advanceNumber, setAdvanceNumber] = useState('');
-  const [advanceReason, setAdvanceReason] = useState('');
+  const [editingSeries, setEditingSeries] = useState<FiscalSeries | null>(null);
   const [name, setName] = useState('');
   const [scope, setScope] = useState<TaxProfile['scope']>('COMPANY');
   const [serviceId, setServiceId] = useState('');
@@ -41,7 +38,7 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
   const companies = useQuery({ queryKey: ['companies'], queryFn: api.companies });
   useEffect(() => { if (companies.data && !companies.data.some(row => row.id === companyId)) setCompanyId(companies.data[0]?.id ?? ''); }, [companies.data, companyId]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
-  useEffect(() => { setError(''); setMessage(''); setEditingProfile(null); setAdvancing(null); setHistorySeriesId(null); }, [companyId, mode]);
+  useEffect(() => { setError(''); setMessage(''); setEditingProfile(null); setEditingSeries(null); }, [companyId, mode]);
   const access = usePermissions(companyId);
   /** A tela inteira já exige a chave do modo (Etapa 10); aqui ela libera as ações. */
   const canManage = access.can(mode === 'series' ? 'fiscal.series' : 'fiscal.tax');
@@ -49,8 +46,12 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
   const canListServices = access.can('services.access');
   const profile = useQuery({ queryKey: ['company', companyId], queryFn: () => api.company(companyId), enabled: !!companyId });
   const series = useQuery({ queryKey: ['fiscal-series', companyId], queryFn: () => api.fiscalSeries(companyId), enabled: !!companyId && mode === 'series' });
-  const adjustments = useQuery({ queryKey: ['fiscal-series-adjustments', companyId, historySeriesId],
-    queryFn: () => api.fiscalSeriesAdjustments(companyId, historySeriesId!), enabled: !!companyId && !!historySeriesId && mode === 'series' });
+  const isAvailableSeries = (row: FiscalSeries) => row.status === 'ACTIVE'
+    && row.issuerTaxIdSnapshot === profile.data?.taxId && row.municipalityIbgeCode === profile.data.cityIbgeCode;
+  const availableSeries = series.data?.filter(isAvailableSeries) ?? [];
+  const canChooseSeries = availableSeries.length > 1;
+  const defaults = availableSeries.filter(row => row.isDefault);
+  const selectedSeriesId = availableSeries.length === 1 ? availableSeries[0].id : defaults.length === 1 ? defaults[0].id : null;
   const rules = useQuery({ queryKey: ['fiscal-tax', companyId], queryFn: () => api.taxProfiles(companyId), enabled: !!companyId && mode === 'tax' });
   const services = useQuery({ queryKey: ['fiscal-services', companyId, serviceSearch], queryFn: () => api.services(companyId, { status: 'ACTIVE', search: serviceSearch, page: 0, limit: 100 }), enabled: !!companyId && mode === 'tax' && canListServices });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => { sessionStorage.removeItem('gestaonf.companyId'); queryClient.clear(); window.location.assign('/Clientes'); } });
@@ -60,7 +61,6 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
     try {
       await action();
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['fiscal-series', companyId] }),
-        queryClient.invalidateQueries({ queryKey: ['fiscal-series-adjustments', companyId] }),
         queryClient.invalidateQueries({ queryKey: ['fiscal-tax', companyId] })]);
       setMessage(success);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível salvar. Tente novamente.'); }
@@ -70,9 +70,21 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
   function createSeries(event: FormEvent) {
     event.preventDefault();
     void run(async () => {
-      await api.createFiscalSeries(companyId, { ...seriesForm, seriesNumber: Number(seriesForm.seriesNumber) });
+      await api.createFiscalSeries(companyId, {
+        ...seriesForm,
+        seriesNumber: Number(seriesForm.seriesNumber),
+        isDefault: availableSeries.length === 0 || (canChooseSeries && seriesForm.isDefault),
+      });
       setSeriesForm(previous => ({ ...previous, seriesNumber: String(Number(previous.seriesNumber) + 1) }));
     }, 'Série cadastrada. A numeração será consumida somente ao confirmar a emissão.');
+  }
+
+  function deleteSeries(row: FiscalSeries) {
+    const number = String(row.seriesNumber).padStart(5, '0');
+    const environment = row.environment === 'PRODUCTION' ? 'Produção' : 'Homologação';
+    if (!window.confirm(`Excluir definitivamente a série ${number} de ${environment}?`)) return;
+
+    void run(() => api.deleteFiscalSeries(companyId, row.id), 'Série excluída.');
   }
 
   function saveRule(event: FormEvent) {
@@ -114,41 +126,38 @@ export function FiscalPage({ user, mode }: { user: User; mode: 'series' | 'tax' 
       {error && <p className="fiscal-alert fiscal-alert--error" role="alert"><AlertCircle size={17} />{error}</p>}
       {message && <p className="fiscal-alert fiscal-alert--success" role="status"><ShieldCheck size={17} />{message}</p>}
       {mode === 'series' ? <>
-        <div className="fiscal-note"><strong>O ambiente da emissão é definido pela série padrão.</strong> Use homologação para testar. A pré-visualização não consome numeração; a reserva ocorre somente na confirmação de Emitir NFS-e. O envio em produção ainda não está disponível.</div>
-        {canManage && companyId && <NfseReadinessCard companyId={companyId} />}
         {canManage && <section className="fiscal-card"><h2><Plus size={18} /> Nova série</h2>
           <p>A empresa precisa ter CPF/CNPJ e município preenchidos. Use uma série exclusiva deste sistema.</p>
           <form className="fiscal-form" onSubmit={createSeries}>
             <label>Ambiente<select value={seriesForm.environment} onChange={event => setSeriesForm(value => ({ ...value, environment: event.target.value as FiscalSeries['environment'] }))}><option value="HOMOLOGATION">Homologação</option><option value="PRODUCTION">Produção</option></select></label>
             <label>Série<input type="number" min="1" max="49999" required value={seriesForm.seriesNumber} onChange={event => setSeriesForm(value => ({ ...value, seriesNumber: event.target.value }))} /></label>
             <label>Próximo número da DPS<input type="text" inputMode="numeric" pattern="[1-9][0-9]{0,14}" required value={seriesForm.nextNumber} onChange={event => setSeriesForm(value => ({ ...value, nextNumber: event.target.value }))} /></label>
-            <label className="fiscal-check"><input type="checkbox" checked={seriesForm.isDefault} onChange={event => setSeriesForm(value => ({ ...value, isDefault: event.target.checked }))} />Usar como série padrão da empresa</label>
-            <button className="button button--primary" disabled={busy || !profile.data?.taxId || !profile.data.cityIbgeCode}>Cadastrar série</button>
+            {canChooseSeries && <label className="fiscal-check"><input type="checkbox" checked={seriesForm.isDefault} onChange={event => setSeriesForm(value => ({ ...value, isDefault: event.target.checked }))} />Usar como série padrão da empresa</label>}
+            <button className="button button--primary" disabled={busy || !series.isSuccess || !profile.data?.taxId || !profile.data.cityIbgeCode}>Cadastrar série</button>
           </form>
           {profile.data && (!profile.data.taxId || !profile.data.cityIbgeCode) && <p className="fiscal-hint">Complete CPF/CNPJ e município em <Link to="/empresa">Empresa</Link> para cadastrar uma série.</p>}
         </section>}
         <section className="fiscal-card"><div className="fiscal-card__head"><h2>Séries cadastradas</h2><button type="button" onClick={() => series.refetch()} aria-label="Atualizar séries"><RefreshCw size={16} /></button></div>
-          {series.isPending ? <p>Carregando séries...</p> : series.isError ? <p role="alert">Não foi possível carregar as séries.</p> : !series.data?.length ? <p>Nenhuma série cadastrada.</p> : <div className="fiscal-list">{series.data.map(row => <article className="fiscal-row" key={row.id}>
-            <div><strong>Série {String(row.seriesNumber).padStart(5, '0')}</strong><span>{row.environment === 'PRODUCTION' ? 'Produção' : 'Homologação'} · {row.isDefault ? 'Padrão' : 'Opcional'} · {row.status === 'ACTIVE' ? 'Ativa' : 'Inativa'}</span><small>Próximo número: {row.nextNumber} · Início: {row.initialNumber} · Município {row.municipalityIbgeCode}</small></div>
+          {series.isPending ? <p>Carregando séries...</p> : series.isError ? <p role="alert">Não foi possível carregar as séries.</p> : !series.data?.length ? <p>Nenhuma série cadastrada.</p> : <div className="fiscal-list">{series.data.map(row => <article className="fiscal-row fiscal-series-row" key={row.id}>
+            <button type="button" className="fiscal-series-row__edit" disabled={!canManage || busy} onClick={() => setEditingSeries(row)}
+              aria-label={`Editar série ${String(row.seriesNumber).padStart(5, '0')}`}>
+              <strong>Série {String(row.seriesNumber).padStart(5, '0')}</strong>
+              <span>{row.environment === 'PRODUCTION' ? 'Produção' : 'Homologação'} · {row.id === selectedSeriesId ? 'Padrão' : 'Opcional'} · {row.status === 'ACTIVE' ? 'Ativa' : 'Inativa'}</span>
+              <small>Próximo número: {row.nextNumber} · Início: {row.initialNumber} · Município {row.municipalityIbgeCode}</small>
+            </button>
             {canManage && <div className="fiscal-row__actions">
-              {row.status === 'ACTIVE' && <button type="button" disabled={busy} onClick={() => void run(() => api.updateFiscalSeries(companyId, row.id, { expectedVersion: row.version, isDefault: true }), 'Série padrão da empresa atualizada. O ambiente da emissão seguirá esta série.')}>{row.isDefault ? 'Usar esta série na emissão' : 'Tornar padrão'}</button>}
-              <button type="button" disabled={busy} onClick={() => void run(() => api.updateFiscalSeries(companyId, row.id, { expectedVersion: row.version, status: row.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }), 'Situação da série atualizada.')}>{row.status === 'ACTIVE' ? 'Inativar' : 'Ativar'}</button>
-              <button type="button" disabled={busy} onClick={() => { setAdvancing(advancing === row.id ? null : row.id); setAdvanceNumber(''); setAdvanceReason(''); }}>Avançar número</button>
+              {canChooseSeries && isAvailableSeries(row) && row.id !== selectedSeriesId && <button type="button" disabled={busy} onClick={() => void run(() => api.selectFiscalSeries(companyId, row.id, row.version), 'Série padrão da empresa atualizada.')}>Usar esta série na emissão</button>}
+              <button type="button" className="fiscal-row__delete" disabled={busy} onClick={() => deleteSeries(row)}>Excluir</button>
             </div>}
-            <button type="button" className="fiscal-history-toggle" onClick={() => setHistorySeriesId(current => current === row.id ? null : row.id)}
-              aria-expanded={historySeriesId === row.id}>Histórico da numeração</button>
-            {historySeriesId === row.id && <div className="fiscal-history">
-              {adjustments.isPending ? <p>Carregando histórico...</p> : adjustments.isError ? <p role="alert">Não foi possível carregar o histórico.</p> :
-                !adjustments.data?.length ? <p>Nenhum avanço manual registrado.</p> : adjustments.data.map(entry =>
-                  <p key={entry.id}><strong>{entry.oldNextNumber} → {entry.newNextNumber}</strong> · {entry.reason} · {entry.actorName} · {new Date(entry.createdAt).toLocaleString('pt-BR')}</p>)}
-            </div>}
-            {advancing === row.id && <form className="fiscal-advance" onSubmit={event => { event.preventDefault(); void run(async () => { await api.advanceFiscalSeries(companyId, row.id, { expectedVersion: row.version, nextNumber: advanceNumber, reason: advanceReason }); setAdvancing(null); }, 'Próximo número avançado com registro do motivo.'); }}>
-              <label>Novo próximo número<input required inputMode="numeric" pattern="[1-9][0-9]{0,14}" value={advanceNumber} onChange={event => setAdvanceNumber(event.target.value)} /></label>
-              <label>Motivo<input required minLength={5} maxLength={500} value={advanceReason} onChange={event => setAdvanceReason(event.target.value)} placeholder="Ex.: números usados em outro sistema" /></label>
-              <button className="button button--primary" disabled={busy}>Confirmar avanço</button>
-            </form>}
           </article>)}</div>}
         </section>
+        {canManage && editingSeries?.companyId === companyId && <SeriesEditDialog companyId={companyId} seriesId={editingSeries.id}
+          onClose={() => setEditingSeries(null)} onSaved={() => {
+            setEditingSeries(null);
+            setError('');
+            setMessage('Série atualizada.');
+            void queryClient.invalidateQueries({ queryKey: ['fiscal-series', companyId] });
+          }} />}
       </> : <>
         <div className="fiscal-note"><strong>Preenchimento sugerido.</strong> Os percentuais aplicados à venda ficam registrados nela. Na emissão, município, regime, retenções e dados oficiais precisarão ser conferidos.</div>
         {canManage && <section className="fiscal-card" id="fiscal-rule-form"><h2>{editingProfile ? `Nova revisão de ${editingProfile.name}` : 'Nova regra tributária'}</h2>

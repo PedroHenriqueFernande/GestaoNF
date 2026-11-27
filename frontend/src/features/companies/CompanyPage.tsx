@@ -234,14 +234,14 @@ export function CompanyPage({ user }: { user: User }) {
             {select('simplesNationalOption', 'Opção pelo Simples Nacional', [['1', '1 - Não optante'], ['2', '2 - MEI'], ['3', '3 - ME/EPP'], ['4', '4 - Optante pendente']])}
             {field('email', 'E-mail', { type: 'email', placeholder: 'contato@empresa.com.br', wide: true })}
             {field('phone', 'Telefone / WhatsApp', { placeholder: '(00) 00000-0000' })}
+            {field('municipalRegistration', 'Inscrição municipal', { placeholder: 'Número da inscrição', hint: form.simplesNationalOption === '2' ? 'O MEI não precisa informar a inscrição na nota.' : undefined })}
+            {select('simplesIbsCbsRegime', <>Como apura os novos impostos (IBS e CBS)<small className="field-optional">Opcional para emissão</small></>, [['1', 'Ambos pelo Simples Nacional'], ['2', 'CBS pelo Simples; IBS pelo regime regular'], ['3', 'Ambos pelo regime regular']], undefined, true)}
             {field('postalCode', 'CEP', { placeholder: '00000-000' })}
             {field('street', 'Logradouro', { placeholder: 'Rua, avenida...', wide: true })}
             {field('number', 'Número')}{field('complement', 'Complemento')}{field('district', 'Bairro')}
             {field('cityName', 'Cidade')}
             <label className="field"><span>UF</span><select aria-label="UF" value={form.stateCode} onChange={(event) => set('stateCode', event.target.value)} disabled={!editable || save.isPending}><StateOptions value={form.stateCode} /></select></label>
             <label className="field"><span>País</span><select value={form.countryCode} onChange={(event) => set('countryCode', event.target.value)} disabled={!editable || save.isPending}><CountryOptions value={form.countryCode} /></select></label>
-            {field('municipalRegistration', 'Inscrição municipal', { placeholder: 'Número da inscrição', hint: form.simplesNationalOption === '2' ? 'O MEI não precisa informar a inscrição na nota.' : undefined })}
-            {select('simplesIbsCbsRegime', <>Como apura os novos impostos (IBS e CBS)<small className="field-optional">Opcional para emissão</small></>, [['1', 'Ambos pelo Simples Nacional'], ['2', 'CBS pelo Simples; IBS pelo regime regular'], ['3', 'Ambos pelo regime regular']], undefined, true)}
           </div>
         </section>
         {save.isError && <div className="inline-error" role="alert">{save.error instanceof Error ? save.error.message : 'Não foi possível salvar a empresa.'}</div>}

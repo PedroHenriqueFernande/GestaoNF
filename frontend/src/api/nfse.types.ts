@@ -18,6 +18,3 @@ export type NfseSaleState = { inProgress: boolean; canEditSale: boolean; canCanc
   activeDocuments: Array<{ id: string; number: string; canSubstitute: boolean; canCancel: boolean }> };
 export type NfseCancelInput = { reasonCode: '1' | '2' | '9'; reasonText: string };
 export type NfseSubstitutionInput = { reasonCode: '01' | '02' | '03' | '04' | '05' | '99'; reasonText?: string };
-export type NfseReadinessCheck = { code: string; label: string; status: 'OK' | 'WARNING' | 'ERROR'; message: string };
-export type NfseReadiness = { environment: 'HOMOLOGATION'; ready: boolean; checks: NfseReadinessCheck[] };
-export type NfseConnectionResult = { ok: boolean; outcome: 'ACCEPTED' | 'REFUSED' | 'UNEXPECTED' | 'UNREACHABLE'; httpStatus: number | null; probe: string; message: string };

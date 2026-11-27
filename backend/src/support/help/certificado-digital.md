@@ -19,7 +19,7 @@ Ele fica no cadastro da empresa: menu **Cadastros › Empresa**, ao abrir a empr
 7. Clique em **Validar e salvar certificado**.
 8. Pronto: aparece "Certificado validado localmente", com o CPF/CNPJ, o emissor e a data de validade.
 
-A conexão com o ambiente nacional só é conferida na etapa de emissão. Para testar a conexão sem emitir nota, use **Testar conexão com o ambiente nacional** em **Fiscal › Séries e numeração**.
+Você pode conferir a validade do certificado na seção **Certificado digital** do cadastro da empresa.
 
 Para trocar o certificado, escolha o novo arquivo e a senha e clique em **Substituir certificado**. Para remover, clique em **Desativar**.
 

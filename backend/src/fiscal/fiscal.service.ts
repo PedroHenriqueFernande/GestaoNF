@@ -1,14 +1,13 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { companies, nfseSeries, nfseSeriesAdjustments, nfseTaxProfiles, nfseTaxProfileRevisions, services, users } from '@gestaonf/database/schema';
-import { and, desc, eq, lte, or, sql } from 'drizzle-orm';
-import { isUniqueViolation } from '../common/validate.js';
+import { companies, nfseDps, nfseSeries, nfseSeriesAdjustments, nfseTaxProfiles, nfseTaxProfileRevisions, sales, services, users } from '@gestaonf/database/schema';
+import { and, desc, eq, exists, lte, ne, or, sql } from 'drizzle-orm';
+import { isForeignKeyViolation, isUniqueViolation } from '../common/validate.js';
 import { DatabaseService } from '../database/database.module.js';
-import type { AddTaxRevisionInput, AdvanceSeriesInput, CreateSeriesInput, CreateTaxProfileInput, UpdateSeriesInput, UpdateTaxProfileInput } from './fiscal.schemas.js';
+import type { AddTaxRevisionInput, CreateSeriesInput, CreateTaxProfileInput, EditSeriesInput, SelectSeriesInput, UpdateTaxProfileInput } from './fiscal.schemas.js';
 import { requireMembershipPermission } from '../permissions/permission-resolver.js';
 
 type Db = DatabaseService['db'] | Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0];
 type TaxSnapshot = NonNullable<typeof import('@gestaonf/database/schema').saleItems.$inferInsert.taxSnapshot>;
-const MAX_NEXT = 1000000000000000n;
 
 function publicSeries(row: typeof nfseSeries.$inferSelect) {
   return { ...row, initialNumber: row.initialNumber.toString(), nextNumber: row.nextNumber.toString() };
@@ -34,16 +33,20 @@ export class FiscalService {
     return rows.map(publicSeries);
   }
 
-  async listSeriesAdjustments(companyId: string, id: string) {
-    const [series] = await this.database.db.select({ id: nfseSeries.id }).from(nfseSeries)
+  async getSeries(companyId: string, id: string) {
+    const [series] = await this.database.db.select().from(nfseSeries)
       .where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id))).limit(1);
     if (!series) throw new NotFoundException('Série não encontrada');
-    const rows = await this.database.db.select({ adjustment: nfseSeriesAdjustments, actorName: users.name })
-      .from(nfseSeriesAdjustments).innerJoin(users, eq(users.id, nfseSeriesAdjustments.actorUserId))
-      .where(and(eq(nfseSeriesAdjustments.companyId, companyId), eq(nfseSeriesAdjustments.seriesId, id)))
-      .orderBy(desc(nfseSeriesAdjustments.createdAt)).limit(100);
-    return rows.map(({ adjustment, actorName }) => ({ ...adjustment, actorName,
+    const [locked, rows] = await Promise.all([
+      this.seriesConfigurationLocked(series, this.database.db),
+      this.database.db.select({ adjustment: nfseSeriesAdjustments, actorName: users.name })
+        .from(nfseSeriesAdjustments).innerJoin(users, eq(users.id, nfseSeriesAdjustments.actorUserId))
+        .where(and(eq(nfseSeriesAdjustments.companyId, companyId), eq(nfseSeriesAdjustments.seriesId, id)))
+        .orderBy(desc(nfseSeriesAdjustments.createdAt)).limit(100),
+    ]);
+    const adjustments = rows.map(({ adjustment, actorName }) => ({ ...adjustment, actorName,
       oldNextNumber: adjustment.oldNextNumber.toString(), newNextNumber: adjustment.newNextNumber.toString() }));
+    return { ...publicSeries(series), locked, adjustments };
   }
 
   async createSeries(companyId: string, userId: string, input: CreateSeriesInput) {
@@ -71,7 +74,7 @@ export class FiscalService {
     }
   }
 
-  async updateSeries(companyId: string, userId: string, id: string, input: UpdateSeriesInput) {
+  async selectSeries(companyId: string, userId: string, id: string, input: SelectSeriesInput) {
     await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'PATCH /fiscal/series/:id');
     try {
       const row = await this.database.db.transaction(async tx => {
@@ -79,12 +82,11 @@ export class FiscalService {
         const [current] = await tx.select().from(nfseSeries).where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id))).for('update').limit(1);
         if (!current) throw new NotFoundException('Série não encontrada');
         if (current.version !== input.expectedVersion) throw new ConflictException('Série alterada por outra pessoa; atualize a página');
-        const status = input.status ?? current.status;
-        const isDefault = status === 'ACTIVE' ? input.isDefault ?? current.isDefault : false;
-        if (isDefault) await tx.update(nfseSeries).set({ isDefault: false, updatedAt: new Date(), version: sql`${nfseSeries.version} + 1` })
-          .where(and(eq(nfseSeries.companyId, companyId),
+        if (current.status !== 'ACTIVE') throw new ConflictException('Série indisponível para emissão.');
+        await tx.update(nfseSeries).set({ isDefault: false, updatedAt: new Date(), version: sql`${nfseSeries.version} + 1` })
+          .where(and(eq(nfseSeries.companyId, companyId), ne(nfseSeries.id, id),
             eq(nfseSeries.issuerTaxIdSnapshot, current.issuerTaxIdSnapshot), eq(nfseSeries.municipalityIbgeCode, current.municipalityIbgeCode), eq(nfseSeries.isDefault, true)));
-        const [updated] = await tx.update(nfseSeries).set({ status, isDefault, version: current.version + 1, updatedAt: new Date() })
+        const [updated] = await tx.update(nfseSeries).set({ isDefault: true, version: current.version + 1, updatedAt: new Date() })
           .where(eq(nfseSeries.id, id)).returning();
         return updated;
       });
@@ -95,21 +97,67 @@ export class FiscalService {
     }
   }
 
-  async advanceSeries(companyId: string, userId: string, id: string, input: AdvanceSeriesInput) {
-    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'POST /fiscal/series/:id/advance');
-    const row = await this.database.db.transaction(async tx => {
-      const [current] = await tx.select().from(nfseSeries).where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id))).for('update').limit(1);
-      if (!current) throw new NotFoundException('Série não encontrada');
-      if (current.version !== input.expectedVersion) throw new ConflictException('Série alterada por outra pessoa; atualize a página');
-      const next = BigInt(input.nextNumber);
-      if (next <= current.nextNumber || next >= MAX_NEXT) throw new BadRequestException('O próximo número deve ser maior que o atual e estar na faixa permitida');
-      await tx.insert(nfseSeriesAdjustments).values({ companyId, seriesId: id, oldNextNumber: current.nextNumber,
-        newNextNumber: next, reason: input.reason, actorUserId: userId });
-      const [updated] = await tx.update(nfseSeries).set({ nextNumber: next, version: current.version + 1, updatedAt: new Date() })
-        .where(eq(nfseSeries.id, id)).returning();
-      return updated;
-    });
-    return publicSeries(row);
+  async deleteSeries(companyId: string, userId: string, id: string) {
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'DELETE /fiscal/series/:id');
+    try {
+      const [deleted] = await this.database.db.delete(nfseSeries)
+        .where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id)))
+        .returning({ id: nfseSeries.id });
+      if (!deleted) throw new NotFoundException('Série não encontrada');
+    } catch (error) {
+      if (isForeignKeyViolation(error)) {
+        throw new ConflictException('Esta série está vinculada a vendas, reservas de DPS ou ao histórico de numeração e precisa ser preservada.');
+      }
+      throw error;
+    }
+  }
+
+  private async seriesConfigurationLocked(series: typeof nfseSeries.$inferSelect, db: Db) {
+    if (series.nextNumber !== series.initialNumber) return true;
+
+    const { companyId, id } = series;
+    const [linked] = await db.select({ id: nfseSeries.id }).from(nfseSeries)
+      .where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id), or(
+        exists(db.select({ id: sales.id }).from(sales).where(and(eq(sales.companyId, companyId), eq(sales.fiscalSeriesId, id)))),
+        exists(db.select({ id: nfseDps.id }).from(nfseDps).where(and(eq(nfseDps.companyId, companyId), eq(nfseDps.seriesId, id)))),
+        exists(db.select({ id: nfseSeriesAdjustments.id }).from(nfseSeriesAdjustments).where(and(eq(nfseSeriesAdjustments.companyId, companyId), eq(nfseSeriesAdjustments.seriesId, id)))),
+      ))).limit(1);
+    return !!linked;
+  }
+
+  async editSeries(companyId: string, userId: string, id: string, input: EditSeriesInput) {
+    await requireMembershipPermission(this.database.db, userId, companyId, 'fiscal.series', 'PATCH /fiscal/series/:id');
+    try {
+      const row = await this.database.db.transaction(async tx => {
+        const [current] = await tx.select().from(nfseSeries).where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id))).for('update').limit(1);
+        if (!current) throw new NotFoundException('Série não encontrada');
+        if (current.version !== input.expectedVersion) throw new ConflictException('A série mudou. Feche o modal e abra novamente para editar.');
+        const seriesNumber = input.seriesNumber ?? current.seriesNumber;
+        const nextNumber = input.nextNumber === undefined ? current.nextNumber : BigInt(input.nextNumber);
+        if (seriesNumber === current.seriesNumber && nextNumber === current.nextNumber) return current;
+
+        const locked = await this.seriesConfigurationLocked(current, tx);
+        if (locked && seriesNumber !== current.seriesNumber) {
+          throw new ConflictException('O número de uma série com vínculos ou histórico fiscal precisa ser preservado.');
+        }
+        if (locked && nextNumber < current.nextNumber) {
+          throw new ConflictException('O próximo número da DPS só pode aumentar em uma série com vínculos ou histórico fiscal.');
+        }
+        if (locked && nextNumber > current.nextNumber) {
+          await tx.insert(nfseSeriesAdjustments).values({ companyId, seriesId: id, oldNextNumber: current.nextNumber,
+            newNextNumber: nextNumber, reason: 'Alteração do próximo número da DPS na edição da série.', actorUserId: userId });
+        }
+        const [updated] = await tx.update(nfseSeries).set({
+          seriesNumber, nextNumber, initialNumber: locked ? current.initialNumber : nextNumber,
+          version: current.version + 1, updatedAt: new Date(),
+        }).where(and(eq(nfseSeries.companyId, companyId), eq(nfseSeries.id, id))).returning();
+        return updated;
+      });
+      return publicSeries(row);
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new ConflictException('Já existe uma série com esse número para o mesmo emissor, município e ambiente.');
+      throw error;
+    }
   }
 
   async listTaxProfiles(companyId: string) {

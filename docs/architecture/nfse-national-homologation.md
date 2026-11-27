@@ -389,7 +389,7 @@ A autorização é gravada mesmo que o XML devolvido difira do XSD local; nesse 
 
 ### 10.3 Prontidão e teste de conexão
 
-`GET /fiscal/nfse/readiness` confere, sem rede: flags do servidor, URL, perfil de assinatura, cadeia ICP-Brasil, certificado, cadastro da empresa, série de homologação e lembra do convênio do município (ME/EPP). `POST /fiscal/nfse/readiness/connection` faz uma consulta somente leitura `GET /dps/{id}` de um número ainda não usado: um erro de negócio em JSON (por exemplo, DPS não encontrada) prova que URL, TLS, certificado e permissão estão aceitos; 401/403 indicam certificado ou permissão recusados; 404 sem erro de negócio indica caminho base errado. A sondagem não exige `NFSE_CONTRACT_CONFIRMED`, porque é por ela que a URL é verificada. O convênio do município **não** é consultado automaticamente.
+`GET /fiscal/nfse/readiness` confere o cadastro e a validade do certificado A1, os dados fiscais da empresa e a série de homologação. Para ME/EPP, a resposta orienta a conferência do convênio do município no Portal Nacional da NFS-e. As validações de infraestrutura fazem parte da emissão. O diagnóstico técnico via `POST /fiscal/nfse/readiness/connection` consulta `GET /dps/{id}` sem consumir numeração. A sondagem funciona antes de configurar `NFSE_CONTRACT_CONFIRMED` para permitir a verificação da URL.
 
 ## 11. API do GestãoNF
 

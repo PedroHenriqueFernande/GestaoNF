@@ -15,8 +15,6 @@ A NFS-e é emitida a partir de um pedido confirmado no **Portal de Serviços**, 
 - O cliente (tomador) deve ter o cadastro completo, com documento e endereço quando a nota exigir.
 - A regra em **Fiscal › Controle de tributação** é opcional: ela só sugere os percentuais de impostos na venda.
 
-Para conferir tudo de uma vez, abra **Fiscal › Séries e numeração**. O quadro "Prontidão para emitir em homologação" mostra o que ainda está pendente (visível para quem tem a permissão **Séries e numeração**).
-
 ## Passo a passo
 1. Abra o **Portal de Serviços** e localize o pedido na lista **Lançamentos**.
 2. Se o pedido estiver como **Rascunho**, clique nele, depois em **Confirmar pedido**. Para uma venda nova, **Registrar venda de serviço** já registra e confirma o pedido.

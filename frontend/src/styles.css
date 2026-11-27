@@ -148,5 +148,5 @@
 .service-form__body{display:grid;gap:14px;align-content:start;padding-top:24px}
 .field textarea.service-form__description{resize:none}
 /* Nome do serviço largo e código municipal (3 dígitos) estreito, lado a lado. */
-.service-form__name-row{grid-template-columns:minmax(0,1fr) 140px}
+.service-form__name-row{grid-template-columns:minmax(0,1fr) 240px}
 @media(max-width:480px){.service-form__name-row{grid-template-columns:minmax(0,1fr)}}

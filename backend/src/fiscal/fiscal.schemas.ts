@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 const date = z.iso.date();
 const rate = (max: number) => z.string().regex(/^(?:0|[1-9]\d{0,2})(?:\.\d{1,4})?$/).refine(value => Number(value) <= max).nullable();
-const numberString = z.string().regex(/^[1-9]\d{0,14}$/).refine(value => BigInt(value) <= 999999999999999n);
+const numberString = z.string().regex(/^[1-9]\d{0,14}$/);
+const seriesNumber = z.number().int().min(1).max(49999);
 const taxFields = {
   issRatePercent: rate(5),
   pisRatePercent: rate(100),
@@ -21,19 +22,22 @@ export const fiscalIdSchema = z.uuid();
 export const seriesQuerySchema = z.strictObject({ environment: z.enum(['HOMOLOGATION', 'PRODUCTION']).optional() });
 export const createSeriesSchema = z.strictObject({
   environment: z.enum(['HOMOLOGATION', 'PRODUCTION']),
-  seriesNumber: z.number().int().min(1).max(49999),
+  seriesNumber,
   nextNumber: numberString,
   isDefault: z.boolean().default(false),
 });
-export const updateSeriesSchema = z.strictObject({
+export const selectSeriesSchema = z.strictObject({
   expectedVersion: z.number().int().positive(),
-  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
-  isDefault: z.boolean().optional(),
+  isDefault: z.literal(true),
 });
-export const advanceSeriesSchema = z.strictObject({
-  expectedVersion: z.number().int().positive(), nextNumber: numberString,
-  reason: z.string().trim().min(5).max(500),
+const editSeriesSchema = z.strictObject({
+  expectedVersion: z.number().int().positive(),
+  seriesNumber: seriesNumber.optional(),
+  nextNumber: numberString.optional(),
+}).refine(input => input.seriesNumber !== undefined || input.nextNumber !== undefined, {
+  message: 'Informe o número da série ou o próximo número da DPS',
 });
+export const updateSeriesSchema = z.union([selectSeriesSchema, editSeriesSchema]);
 export const createTaxProfileSchema = z.strictObject({
   name: z.string().trim().min(1).max(160),
   scope: z.enum(['COMPANY', 'SERVICE', 'SERVICE_MUNICIPALITY']),
@@ -62,8 +66,8 @@ export const previewTaxSchema = z.strictObject({
 });
 
 export type CreateSeriesInput = z.output<typeof createSeriesSchema>;
-export type UpdateSeriesInput = z.output<typeof updateSeriesSchema>;
-export type AdvanceSeriesInput = z.output<typeof advanceSeriesSchema>;
+export type SelectSeriesInput = z.output<typeof selectSeriesSchema>;
+export type EditSeriesInput = z.output<typeof editSeriesSchema>;
 export type CreateTaxProfileInput = z.output<typeof createTaxProfileSchema>;
 export type UpdateTaxProfileInput = z.output<typeof updateTaxProfileSchema>;
 export type AddTaxRevisionInput = z.output<typeof addTaxRevisionSchema>;

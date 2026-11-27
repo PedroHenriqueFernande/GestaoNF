@@ -1,25 +1,19 @@
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { readFile } from 'node:fs/promises';
 import { companies, companyFiscalCertificates, nfseSeries } from '@gestaonf/database/schema';
 import { isValidCnpj } from '../customers/tax-id.js';
 import { DatabaseService } from '../database/database.module.js';
 import { CertificateService } from './certificate.service.js';
 import { dpsIdentifier } from './nfse-contract.js';
 import { NationalNfseClient, nationalErrors } from './nfse-national.client.js';
-import { NfsePreviewService } from './nfse-preview.service.js';
 import { requireMembershipPermission, requireMembershipPolicy } from '../permissions/permission-resolver.js';
 
 export type ReadinessCheck = { code: string; label: string; status: 'OK' | 'WARNING' | 'ERROR'; message: string };
 export type ConnectionResult = { ok: boolean; outcome: 'ACCEPTED' | 'REFUSED' | 'UNEXPECTED' | 'UNREACHABLE'; httpStatus: number | null; probe: string; message: string };
 
-/**
- * Tells, before any DPS number is consumed, whether homologation emission can work: server configuration, certificate,
- * company data, series, and a read-only probe of the national environment.
- */
 @Injectable()
 export class NfseReadinessService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService, @Inject(NfsePreviewService) private readonly previews: NfsePreviewService,
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CertificateService) private readonly certificates: CertificateService, @Inject(NationalNfseClient) private readonly client: NationalNfseClient) {}
 
   async check(companyId: string, userId: string) {
@@ -27,37 +21,22 @@ export class NfseReadinessService {
     const checks: ReadinessCheck[] = [];
     const add = (code: string, label: string, status: ReadinessCheck['status'], message: string) => checks.push({ code, label, status, message });
 
-    process.env.NFSE_HOMOLOGATION_ENABLED === 'true' ? add('ENV_ENABLED', 'Envio em homologação habilitado', 'OK', 'Habilitado no servidor.')
-      : add('ENV_ENABLED', 'Envio em homologação habilitado', 'ERROR', 'Defina NFSE_HOMOLOGATION_ENABLED=true no servidor.');
-    process.env.NFSE_CONTRACT_CONFIRMED === 'true' ? add('ENV_CONTRACT', 'Contrato da API confirmado', 'OK', 'Confirmado no servidor.')
-      : add('ENV_CONTRACT', 'Contrato da API confirmado', 'ERROR', 'Confira no Swagger do ambiente a URL, os campos JSON e o algoritmo de assinatura; depois defina NFSE_CONTRACT_CONFIRMED=true.');
-    const profile = process.env.NFSE_SIGNATURE_PROFILE;
-    profile === 'RSA_SHA1' || profile === 'RSA_SHA256' ? add('ENV_PROFILE', 'Perfil de assinatura', 'OK', `Perfil ${profile}.`)
-      : add('ENV_PROFILE', 'Perfil de assinatura', 'ERROR', 'Defina NFSE_SIGNATURE_PROFILE como RSA_SHA256 ou RSA_SHA1, conforme o Swagger do ambiente.');
-    try {
-      const url = new URL(this.client.configuration());
-      url.pathname.toLowerCase().includes('/sefinnacional') ? add('ENV_URL', 'URL da SEFIN de homologação', 'OK', url.href)
-        : add('ENV_URL', 'URL da SEFIN de homologação', 'WARNING', `${url.href} não contém o caminho base /SefinNacional. Confirme a URL completa no Swagger; o teste de conexão mostra se o caminho está certo.`);
-    } catch (error) { add('ENV_URL', 'URL da SEFIN de homologação', 'ERROR', error instanceof Error ? error.message : 'URL inválida.'); }
-
-    const bundlePath = process.env.NFSE_ICP_BRASIL_CA_BUNDLE;
-    if (!bundlePath) add('ICP_BUNDLE', 'Cadeia de confiança ICP-Brasil', 'ERROR', 'Defina NFSE_ICP_BRASIL_CA_BUNDLE com o caminho absoluto de config/fiscal/icp-brasil-ca.pem.');
-    else {
-      const count = (await readFile(bundlePath, 'utf8').catch(() => null))?.match(/-----BEGIN CERTIFICATE-----/g)?.length ?? null;
-      count === null ? add('ICP_BUNDLE', 'Cadeia de confiança ICP-Brasil', 'ERROR', `Não foi possível ler ${bundlePath}.`)
-        : count === 0 ? add('ICP_BUNDLE', 'Cadeia de confiança ICP-Brasil', 'ERROR', 'O arquivo não contém nenhum certificado PEM.')
-        : add('ICP_BUNDLE', 'Cadeia de confiança ICP-Brasil', 'OK', `${count} certificado(s) raiz carregado(s).`);
-    }
-
-    const [certificate] = await this.database.db.select({ notAfter: companyFiscalCertificates.notAfter }).from(companyFiscalCertificates)
-      .where(and(eq(companyFiscalCertificates.companyId, companyId), eq(companyFiscalCertificates.status, 'ACTIVE'))).limit(1);
-    if (!certificate) add('CERTIFICATE', 'Certificado A1 da empresa', 'ERROR', 'Cadastre o certificado A1 da empresa em Empresa → Certificado digital.');
-    else {
-      try { await this.certificates.withSigningCredential(companyId, async () => undefined); add('CERTIFICATE', 'Certificado A1 da empresa', 'OK', `Válido e confiável até ${certificate.notAfter.toLocaleDateString('pt-BR')}.`); }
-      catch (error) { add('CERTIFICATE', 'Certificado A1 da empresa', 'ERROR', error instanceof Error ? error.message : 'Não foi possível validar o certificado.'); }
-    }
-
     const [company] = await this.database.db.select().from(companies).where(eq(companies.id, companyId)).limit(1);
+    const [certificate] = await this.database.db.select({
+      notAfter: companyFiscalCertificates.notAfter,
+      subjectTaxId: companyFiscalCertificates.subjectTaxId,
+    }).from(companyFiscalCertificates)
+      .where(and(eq(companyFiscalCertificates.companyId, companyId), eq(companyFiscalCertificates.status, 'ACTIVE'))).limit(1);
+    if (!certificate) {
+      add('CERTIFICATE', 'Certificado A1 da empresa', 'ERROR', 'Cadastre o certificado A1 da empresa em Empresa → Certificado digital.');
+    } else if (certificate.notAfter <= new Date()) {
+      add('CERTIFICATE', 'Certificado A1 da empresa', 'ERROR', 'O certificado venceu. Cadastre um certificado A1 válido em Empresa → Certificado digital.');
+    } else if (certificate.subjectTaxId !== company.taxId) {
+      add('CERTIFICATE', 'Certificado A1 da empresa', 'ERROR', 'Cadastre um certificado A1 vinculado ao CNPJ da empresa.');
+    } else {
+      add('CERTIFICATE', 'Certificado A1 da empresa', 'OK', `Cadastrado, com validade até ${certificate.notAfter.toLocaleDateString('pt-BR')}.`);
+    }
+
     const problems: string[] = [];
     if (company.kind !== 'PJ' || company.countryCode !== 'BR' || !company.taxId || !isValidCnpj(company.taxId)) problems.push('Informe um CNPJ válido de empresa brasileira.');
     if (!company.cityIbgeCode) problems.push('Informe o CEP da empresa no cadastro para identificarmos o município.');
@@ -65,7 +44,7 @@ export class NfseReadinessService {
     problems.length ? add('COMPANY', 'Cadastro da empresa', 'ERROR', problems.join(' ')) : add('COMPANY', 'Cadastro da empresa', 'OK', 'Dados fiscais completos.');
     if (company.simplesNationalOption === '3') {
       company.municipalRegistration ? add('COMPANY_IM', 'Inscrição municipal', 'OK', `Informada (${company.municipalRegistration}).`)
-        : add('COMPANY_IM', 'Inscrição municipal', 'WARNING', 'Se a empresa tem inscrição municipal cadastrada no município, ela precisa constar na nota (regra E0116). Sem ela, a nota pode ser rejeitada.');
+        : add('COMPANY_IM', 'Inscrição municipal', 'WARNING', 'Se a empresa possui inscrição municipal, informe o número no cadastro da empresa.');
     }
 
     const compatible = await this.compatibleSeries(companyId, company.taxId, company.cityIbgeCode);
@@ -74,7 +53,7 @@ export class NfseReadinessService {
       : add('SERIES', 'Série de homologação', 'ERROR', compatible.length ? 'Defina uma única série padrão de homologação em Fiscal → Séries e numeração.' : 'Cadastre uma série de homologação compatível com o CNPJ e o município da empresa (número de 1 a 49999).');
 
     company.simplesNationalOption === '2' ? add('CONVENIO', 'Convênio do município', 'OK', 'O MEI é dispensado da verificação de convênio do município.')
-      : add('CONVENIO', 'Convênio do município', 'WARNING', 'O município precisa ter convênio ativo com o Sistema Nacional NFS-e (regras E0037, E0038 e E1270). Este sistema ainda não consulta o convênio; confirme em gov.br/nfse antes de emitir.');
+      : add('CONVENIO', 'Convênio do município', 'WARNING', 'Confirme no Portal Nacional da NFS-e se o município da empresa está habilitado para a emissão.');
     return { environment: 'HOMOLOGATION' as const, ready: !checks.some(check => check.status === 'ERROR'), checks };
   }
 

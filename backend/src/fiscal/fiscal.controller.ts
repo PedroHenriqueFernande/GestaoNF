@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import { AccessGuard, CompanyGuard, type RequestContext } from '../auth/access.guard.js';
 import { RequireAnyPermission, RequirePermission } from '../permissions/permission.decorators.js';
 import { parseInput } from '../common/validate.js';
 import { FiscalService } from './fiscal.service.js';
-import { addTaxRevisionSchema, advanceSeriesSchema, createSeriesSchema, createTaxProfileSchema, fiscalIdSchema, previewTaxSchema, seriesQuerySchema, updateSeriesSchema, updateTaxProfileSchema } from './fiscal.schemas.js';
+import { addTaxRevisionSchema, createSeriesSchema, createTaxProfileSchema, fiscalIdSchema, previewTaxSchema, seriesQuerySchema, updateSeriesSchema, updateTaxProfileSchema } from './fiscal.schemas.js';
 
 @ApiTags('Fiscal')
 @ApiBearerAuth()
@@ -20,10 +20,10 @@ export class FiscalController {
     return this.fiscal.listSeries(req.companyId!, parseInput(seriesQuerySchema, query).environment);
   }
 
-  @Get('series/:id/adjustments')
+  @Get('series/:id')
   @RequirePermission('fiscal.series')
-  listSeriesAdjustments(@Req() req: RequestContext, @Param('id') id: string) {
-    return this.fiscal.listSeriesAdjustments(req.companyId!, parseInput(fiscalIdSchema, id));
+  getSeries(@Req() req: RequestContext, @Param('id') id: string) {
+    return this.fiscal.getSeries(req.companyId!, parseInput(fiscalIdSchema, id));
   }
 
   @Post('series')
@@ -35,13 +35,18 @@ export class FiscalController {
   @Patch('series/:id')
   @RequirePermission('fiscal.series')
   updateSeries(@Req() req: RequestContext, @Param('id') id: string, @Body() body: unknown) {
-    return this.fiscal.updateSeries(req.companyId!, req.userId!, parseInput(fiscalIdSchema, id), parseInput(updateSeriesSchema, body));
+    const seriesId = parseInput(fiscalIdSchema, id);
+    const input = parseInput(updateSeriesSchema, body);
+    return 'isDefault' in input
+      ? this.fiscal.selectSeries(req.companyId!, req.userId!, seriesId, input)
+      : this.fiscal.editSeries(req.companyId!, req.userId!, seriesId, input);
   }
 
-  @Post('series/:id/advance')
+  @Delete('series/:id')
   @RequirePermission('fiscal.series')
-  advanceSeries(@Req() req: RequestContext, @Param('id') id: string, @Body() body: unknown) {
-    return this.fiscal.advanceSeries(req.companyId!, req.userId!, parseInput(fiscalIdSchema, id), parseInput(advanceSeriesSchema, body));
+  @HttpCode(204)
+  deleteSeries(@Req() req: RequestContext, @Param('id') id: string) {
+    return this.fiscal.deleteSeries(req.companyId!, req.userId!, parseInput(fiscalIdSchema, id));
   }
 
   @Get('tax-profiles')

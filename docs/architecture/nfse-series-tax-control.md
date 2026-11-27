@@ -72,8 +72,9 @@ Criar módulo NestJS `backend/src/fiscal/` (`FiscalModule`) com controller, sche
 | --- | --- |
 | `GET /fiscal/series?environment=...` | Listar séries e próximo número, sem segredos |
 | `POST /fiscal/series` | Criar série, ambiente, município e número inicial |
-| `PATCH /fiscal/series/:id` | Mudar padrão/status; avançar próximo número só em comando próprio |
-| `POST /fiscal/series/:id/advance` | Avançar contador com `expectedVersion`, novo valor e justificativa, mantendo trilha de auditoria |
+| `GET /fiscal/series/:id` | Consultar a série, sua disponibilidade para edição e o histórico de numeração |
+| `PATCH /fiscal/series/:id` | Selecionar a série padrão ou editar o número da série e o próximo número da DPS com `expectedVersion`. Séries com vínculos ou histórico só aceitam aumento do próximo número. |
+| `DELETE /fiscal/series/:id` | Excluir uma série sem vínculos com vendas, reservas de DPS ou histórico de numeração |
 | `GET /fiscal/tax-profiles` e `GET /fiscal/tax-profiles/:id` | Listar perfis e revisões |
 | `POST /fiscal/tax-profiles` | Criar escopo e primeira revisão |
 | `POST /fiscal/tax-profiles/:id/revisions` | Criar nova revisão vigente a partir da data informada; requer `expectedVersion` |
