@@ -55,7 +55,14 @@
 .sale-editor-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:19px}
 
 .sale-editor-form{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
-.sale-editor-section,.sale-editor-bottom{border:1px solid var(--sale-border);border-radius:7px;background:var(--surface);box-shadow:0 3px 13px #104e640b}
+.sale-editor-section,.sale-editor-bottom{
+  border:1px solid var(--sale-border);
+  border-top-color:#e7edf0;
+  border-bottom-color:#c6d3da;
+  border-radius:7px;
+  background:var(--surface);
+  box-shadow:0 2px 3px rgb(24 39 51 / 7%),0 9px 19px -8px rgb(24 39 51 / 18%);
+}
 .sale-editor-section{padding:23px 26px}
 .sale-section-heading{display:flex;align-items:flex-start;gap:12px;margin-bottom:19px}.sale-section-number{width:29px;height:29px;display:grid;place-items:center;flex:none;border:1px solid var(--primary);border-radius:4px;color:var(--sale-ink);font-family:var(--display-font);font-size:12px;font-weight:800}.sale-section-heading h2{margin:0 0 2px;color:var(--sale-ink);font-family:var(--display-font);font-size:15px}.sale-section-heading p{margin:0;color:var(--sale-muted);font-size:11px}
 .sale-identity-grid{display:grid;grid-template-columns:minmax(150px,1fr) minmax(220px,1.4fr) minmax(170px,.85fr) 170px 180px;align-items:start;gap:14px}.sale-field{display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--sale-ink);font-size:10px;font-weight:650}.sale-field>span{display:flex;align-items:center;gap:5px}.sale-field>span svg{color:var(--primary)}
@@ -84,6 +91,11 @@
 .sale-payment-list{display:grid;gap:10px}.sale-payment-card{border:1px solid var(--sale-border);border-radius:5px;background:#fcfefe;padding:13px 14px 15px}.sale-payment-card__title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;color:var(--sale-ink);font-family:var(--display-font);font-size:12px}.sale-payment-card__title button{display:grid;place-items:center;width:25px;height:25px;border:0;border-radius:3px;background:transparent;color:#ac5a54}.sale-payment-card__title button:hover{background:#fbeeed}
 .sale-payment-card__title small{color:var(--sale-muted);font-family:inherit;font-size:10px;font-weight:500}.sale-payment-card__title button:disabled{color:#aebbc3;cursor:not-allowed}.sale-payment-card__title button:disabled:hover{background:transparent}.sale-payment-history{margin:10px 0 0;color:var(--sale-muted);font-size:10px}
 .sale-payment-grid{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(110px,1fr) minmax(130px,.8fr) minmax(150px,.8fr);gap:10px;align-items:end}.sale-payment-grid .sale-field input,.sale-payment-grid .sale-select__trigger{min-height:34px}
+.sale-empty-lines,.sale-payment-card{
+  border-top-color:#c5d3db;
+  border-bottom-color:#e7edf0;
+  box-shadow:inset 0 2px 4px rgb(24 39 51 / 6%);
+}
 .sale-add-payment{display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:0;border:0;background:transparent;color:var(--primary-dark);font-size:11px;font-weight:750}.sale-add-payment:hover{text-decoration:underline}
 .sale-payment-balance{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:17px;padding:12px 15px;border-left:3px solid var(--primary);color:var(--primary);font-size:11px}.sale-payment-balance strong{font-family:var(--display-font);font-size:14px;font-variant-numeric:tabular-nums}.sale-payment-balance small{font-family:'IBM Plex Sans Variable',sans-serif;font-size:10px;font-weight:500}
 .sale-editor-notes{padding:19px 26px;border-bottom:1px solid var(--sale-border)}.sale-form-error{margin:16px 26px 0;padding:11px 13px;border-left:3px solid var(--danger);background:#fff3f1;color:#ad3933;font-size:11px;line-height:1.5}.sale-editor-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 26px}.sale-editor-footer>div{display:flex;align-items:center;gap:9px}.sale-editor-footer>div:first-child{color:var(--sale-muted);font-size:10.5px}.sale-editor-footer>div:first-child svg{color:var(--primary)}.sale-editor-footer .button{min-height:38px;font-size:11px}
