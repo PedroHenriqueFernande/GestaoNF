@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, CalendarClock, Clock3, History, Link2, Plus, RotateCcw, X } from 'lucide-react';
+import { AlertCircle, CalendarClock, Clock3, Flag, History, Link2, Plus, RotateCcw, X } from 'lucide-react';
 import { api, ApiError, type MeetingConflict, type MeetingParticipant, type MeetingStatus } from '../../api/client';
 import { RegistrationDialog } from '../../components/RegistrationDialog';
 import { PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions';
 import { usePermissions } from '../permissions/usePermissions';
 import { CompanyField, type CompanyChoice } from './CompanyField';
 import { formatMeetingTime, instantInZone, localInZone } from './meeting-time';
+import { MeetingStatusDialog, type MeetingStatusAction } from './MeetingStatusDialog';
 
 type Form = { contactId: string; opportunityId: string; assignedUserId: string; startsAt: string; endsAt: string; meetingUrl: string; reminderMinutes: number[]; participants: MeetingParticipant[] };
 const empty = (): Form => ({ contactId: '', opportunityId: '', assignedUserId: '', startsAt: '', endsAt: '', meetingUrl: '', reminderMinutes: [30], participants: [] });
@@ -49,7 +50,7 @@ export function MeetingDialog({ companyId, timezone, userId, meetingId, preset, 
   const [result, setResult] = useState('');
   const [nextSteps, setNextSteps] = useState('');
   const [cancelReason, setCancelReason] = useState('');
-  const [statusAction, setStatusAction] = useState<MeetingStatus | 'REOPEN' | null>(null);
+  const [statusAction, setStatusAction] = useState<MeetingStatusAction | null>(null);
   const current = detail.data;
   const selected = current;
   const activeTimezone = current?.timezone ?? timezone;
@@ -130,6 +131,13 @@ export function MeetingDialog({ companyId, timezone, userId, meetingId, preset, 
     dismissDisabled={busy}
     closeOnSuccess={save.isSuccess}
     onClose={onClose}
+    overlay={statusAction && meetingId && selected ? <MeetingStatusDialog
+      action={statusAction} busy={changeStatus.isPending} error={error} conflicts={conflicts} confirmedConflict={confirmedConflict} timezone={displayTimezone}
+      result={result} nextSteps={nextSteps} cancelReason={cancelReason} onResult={setResult} onNextSteps={setNextSteps} onCancelReason={setCancelReason}
+      onConfirmConflict={() => { setConfirmedConflict(true); setError(''); }}
+      onConfirm={() => changeStatus.mutate()}
+      onBack={() => { setStatusAction(null); setConflicts([]); setError(''); }}
+    /> : undefined}
   >
     {(requestClose) => <>
       {meetingId && <div className="crm-detail-tabs" role="tablist"><button type="button" role="tab" aria-selected={tab === 'DETAIL'} className={tab === 'DETAIL' ? 'is-active' : ''} onClick={() => setTab('DETAIL')}>Dados da reunião</button><button type="button" role="tab" aria-selected={tab === 'HISTORY'} className={tab === 'HISTORY' ? 'is-active' : ''} onClick={() => setTab('HISTORY')}>Histórico</button></div>}
@@ -219,18 +227,24 @@ export function MeetingDialog({ companyId, timezone, userId, meetingId, preset, 
                   <input type="url" value={form.meetingUrl} onChange={(event) => set('meetingUrl', event.target.value)} placeholder="https://..." maxLength={2000} disabled={!canEdit} />
                 </label>
               </div>
+            </fieldset>
+            <div className={`agenda-split${meetingId && selected ? ' agenda-split--with-status' : ''}`}>
+            <fieldset className="crm-fieldset" disabled={busy || !companyId || !activeTimezone}>
               <div className="form-section-heading"><Clock3 size={18} /><h3>Notificação de aviso</h3></div>
               <div className="agenda-reminders">{[[0, 'Na hora'], [15, '15 min'], [30, '30 min'], [60, '1 hora'], [1440, '1 dia']] .map(([minutes, label]) => <button type="button" key={minutes} className={form.reminderMinutes.includes(Number(minutes)) ? 'is-active' : ''} aria-pressed={form.reminderMinutes.includes(Number(minutes))} onClick={() => toggleReminder(Number(minutes))} disabled={!canEdit}>{label}</button>)}</div>
+            </fieldset>
+            {meetingId && selected && <section className="agenda-status-section"><div className="form-section-heading"><Flag size={18} /><h3>Situação <span className={`agenda-status agenda-status--${selected.status.toLowerCase()}`}>{statusText[selected.status]}</span></h3></div>{selected.status === 'SCHEDULED' ? (manage && <div className="agenda-status-actions"><button type="button" onClick={() => { setStatusAction('COMPLETED'); setError(''); }}>Concluir</button><button type="button" onClick={() => { setStatusAction('NO_SHOW'); setError(''); }}>Não compareceu</button><button type="button" onClick={() => { setStatusAction('CANCELED'); setError(''); }}>Cancelar</button></div>) : <><p>{selected.outcomeNotes || selected.cancellationReason || 'Compromisso encerrado.'}</p>{manage && <button type="button" className="agenda-reopen" onClick={() => { setStatusAction('REOPEN'); setError(''); }}><RotateCcw size={15} /> Reabrir reunião</button>}</>}</section>}
+            </div>
+            <fieldset className="crm-fieldset" disabled={busy || !companyId || !activeTimezone}>
               <div className="form-section-heading"><Plus size={18} /><h3>Participantes externos</h3></div>
               <div className="agenda-participants">{form.participants.map((participant, index) => participant.kind === 'EXTERNAL' ? <div key={index}><input aria-label={`Nome do participante ${index + 1}`} value={participant.name ?? ''} onChange={(event) => set('participants', form.participants.map((item, i) => i === index && item.kind === 'EXTERNAL' ? { ...item, name: event.target.value || null } : item))} placeholder="Nome" disabled={!canEdit} /><input aria-label={`E-mail do participante ${index + 1}`} type="email" value={participant.email ?? ''} onChange={(event) => set('participants', form.participants.map((item, i) => i === index && item.kind === 'EXTERNAL' ? { ...item, email: event.target.value || null } : item))} placeholder="E-mail" disabled={!canEdit} /><button type="button" aria-label={`Remover participante ${index + 1}`} onClick={() => set('participants', form.participants.filter((_, i) => i !== index))} disabled={!canEdit}><X size={16} /></button></div> : <p key={index}>{participant.kind === 'USER' ? 'Usuário interno' : 'Contato'} vinculado</p>)}</div>{canEdit && <button type="button" className="agenda-add-participant" onClick={() => set('participants', [...form.participants, { kind: 'EXTERNAL', name: null, email: null, phone: null }])}><Plus size={14} /> Adicionar participante</button>}
             </fieldset>
-            {meetingId && selected && <section className="agenda-status-section"><h3>Situação <span className={`agenda-status agenda-status--${selected.status.toLowerCase()}`}>{statusText[selected.status]}</span></h3>{selected.status === 'SCHEDULED' ? (manage && <div className="agenda-status-actions"><button type="button" onClick={() => { setStatusAction('COMPLETED'); setError(''); }}>Concluir</button><button type="button" onClick={() => { setStatusAction('NO_SHOW'); setError(''); }}>Não compareceu</button><button type="button" onClick={() => { setStatusAction('CANCELED'); setError(''); }}>Cancelar</button></div>) : <><p>{selected.outcomeNotes || selected.cancellationReason || 'Compromisso encerrado.'}</p>{manage && <button type="button" className="agenda-reopen" onClick={() => { setStatusAction('REOPEN'); setError(''); }}><RotateCcw size={15} /> Reabrir reunião</button>}</>}{statusAction && <div className="agenda-status-confirm"><strong>{statusAction === 'REOPEN' ? 'Reabrir este compromisso?' : `Marcar como ${statusText[statusAction].toLowerCase()}?`}</strong>{statusAction === 'COMPLETED' && <><textarea value={result} onChange={(event) => setResult(event.target.value)} placeholder="Resultado da reunião" rows={2} maxLength={10000} /><textarea value={nextSteps} onChange={(event) => setNextSteps(event.target.value)} placeholder="Próximos passos" rows={2} maxLength={10000} /></>}{statusAction === 'CANCELED' && <textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="Motivo do cancelamento" rows={2} maxLength={1000} />}<div><button type="button" className="button button--secondary" onClick={() => { setStatusAction(null); setConflicts([]); setError(''); }}>Voltar</button><button type="button" className="button button--primary" disabled={busy} onClick={() => changeStatus.mutate()}>Confirmar</button></div></div>}</section>}
-            {conflicts.length > 0 && <div className="agenda-conflicts" role="alert"><AlertCircle size={17} /><div><strong>Horário ocupado para este responsável</strong>{conflicts.map((item) => <p key={item.id}>{formatMeetingTime(item.startsAt, displayTimezone)}–{formatMeetingTime(item.endsAt, displayTimezone, { hour: '2-digit', minute: '2-digit' })}</p>)}<button type="button" onClick={() => { creationKey.current = crypto.randomUUID(); setConfirmedConflict(true); setError(''); }}>Confirmar sobreposição</button></div></div>}
-            {confirmedConflict && <p className="agenda-conflict-accepted">Sobreposição confirmada para o próximo envio.</p>}
+            {!statusAction && conflicts.length > 0 && <div className="agenda-conflicts" role="alert"><AlertCircle size={17} /><div><strong>Horário ocupado para este responsável</strong>{conflicts.map((item) => <p key={item.id}>{formatMeetingTime(item.startsAt, displayTimezone)}–{formatMeetingTime(item.endsAt, displayTimezone, { hour: '2-digit', minute: '2-digit' })}</p>)}<button type="button" onClick={() => { creationKey.current = crypto.randomUUID(); setConfirmedConflict(true); setError(''); }}>Confirmar sobreposição</button></div></div>}
+            {!statusAction && confirmedConflict && <p className="agenda-conflict-accepted">Sobreposição confirmada para o próximo envio.</p>}
             {meetingId && current?.meetingUrl && <a className="agenda-open-link" href={current.meetingUrl} target="_blank" rel="noopener noreferrer"><Link2 size={14} /> Abrir reunião online</a>}
           </>}
         </div>
-        {tab === 'DETAIL' && error && <div className="drawer__save-feedback" role="alert">{error}</div>}
+        {tab === 'DETAIL' && !statusAction && error && <div className="drawer__save-feedback" role="alert">{error}</div>}
         <footer className="drawer__footer">
           <button type="button" className="button button--secondary" onClick={requestClose} disabled={busy}>{meetingId ? 'Fechar' : 'Cancelar'}</button>
           {tab === 'DETAIL' && canEdit && (

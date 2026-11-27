@@ -23,7 +23,7 @@ Ao trocar de empresa no seletor do alto, o menu e os botões se ajustam à empre
 - Registrar e estornar recebimentos exige **Dar baixa** e **Cancelar baixa**, respectivamente. Para emitir, cancelar ou substituir uma nota, as permissões são **Emitir NFS-e**, **Cancelar NFS-e** e **Corrigir NFS-e (substituição)**.
 - No **Financeiro**, a permissão **Alterar data e vencimento** permite alterar a data de lançamento ou o vencimento de um recebimento. Pelo Portal de Serviços, essas datas são alteradas no fluxo **Editar venda**.
 - No menu **⋯** da venda, **Excluir** aparece para quem tem a permissão **Excluir venda**. A venda excluída continua no histórico, com a situação **Excluída**.
-- Sem a permissão **Alterar preço e desconto na venda**, os itens já lançados usam o preço gravado e o desconto ajustado à quantidade. Itens novos seguem o preço do catálogo e começam sem desconto. Para serviços sem preço no catálogo, você pode informar os valores ao incluir o item. A mesma regra vale nas propostas com **Alterar preço e desconto em propostas**.
+- Sem a permissão **Alterar preço e desconto**, os itens já lançados usam o preço gravado e o desconto ajustado à quantidade. Itens novos seguem o preço do catálogo e começam sem desconto. Para serviços sem preço no catálogo, você pode informar os valores ao incluir o item. A mesma regra vale nas propostas com **Alterar preço e desconto em propostas**.
 - Para criar uma proposta a partir de um cliente cadastrado, é preciso ter **Gerenciar propostas** e também **Cadastrar leads**.
 
 ## Como pedir acesso

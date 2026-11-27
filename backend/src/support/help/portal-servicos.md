@@ -18,7 +18,7 @@ O **Portal de Serviços** é onde você registra cada serviço vendido e acompan
 
 Para acompanhar, use as abas **Todos**, **Confirmados**, **Rascunhos** e **Excluídas** e o campo de busca (pedido, OS ou cliente). Clique em um pedido para abrir e editar. Se o pedido for um **Rascunho**, o botão final se chama **Confirmar pedido**, e **Salvar alterações** guarda sem confirmar. Para ver os detalhes, as baixas e o histórico de um pedido já aberto, clique em **Ver detalhes, baixas e histórico**. Para excluir um pedido, use o menu **⋯** da linha e clique em **Excluir**: o sistema pede o motivo, e o pedido fica no histórico como **Excluída**. Recebimentos ou NFS-e ativos impedem a exclusão.
 
-O que aparece depende das suas permissões. Rascunhos são alterados por quem tem **Criar vendas**. Para editar um pedido confirmado, use **Editar venda**. **Excluir** exige **Excluir venda**. Sem **Alterar preço e desconto na venda**, você pode preencher esses valores ao adicionar um serviço sem preço no catálogo. Para alterar apenas a data de lançamento ou o vencimento, use **Alterar data e vencimento** no **Financeiro**. Veja o tópico "Permissões e acesso".
+O que aparece depende das suas permissões. Rascunhos são alterados por quem tem **Criar vendas**. Para editar um pedido confirmado, use **Editar venda**. **Excluir** exige **Excluir venda**. Sem **Alterar preço e desconto**, você pode preencher esses valores ao adicionar um serviço sem preço no catálogo. Para alterar apenas a data de lançamento ou o vencimento, use **Alterar data e vencimento** no **Financeiro**. Veja o tópico "Permissões e acesso".
 
 ## Problemas comuns
 - "Selecione a empresa e o cliente e adicione ao menos um serviço.": falta o cliente ou o serviço.

@@ -28,7 +28,7 @@ export const PERMISSIONS: Readonly<Record<PermissionKey, PermissionDefinition>> 
   'sales.create': { label: 'Criar vendas', requires: ['sales.access', 'customers.access', 'services.access'] },
   'sales.edit': { label: 'Editar venda', requires: ['sales.create'] },
   'sales.delete': { label: 'Excluir venda', requires: ['sales.access'] },
-  'sales.change_price': { label: 'Alterar preço e desconto na venda', requires: ['sales.create'] },
+  'sales.change_price': { label: 'Alterar preço e desconto', requires: ['sales.create'] },
   'sales.nfse_issue': { label: 'Emitir NFS-e', requires: ['sales.access'] },
   'sales.nfse_cancel': { label: 'Cancelar NFS-e', requires: ['sales.access'] },
   'sales.nfse_edit': { label: 'Corrigir NFS-e (substituição)', requires: ['sales.edit'] },
