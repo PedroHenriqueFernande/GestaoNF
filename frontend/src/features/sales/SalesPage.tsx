@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useSearchParams } from 'react-router';
@@ -22,6 +22,7 @@ const currency = (value: string) => new Intl.NumberFormat('pt-BR', { style: 'cur
 const date = (value: string | null) => value ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${value}T12:00:00Z`)) : 'A definir';
 const statusLabel = (value: SaleStatus) => value === 'CONFIRMED' ? 'Confirmado' : value === 'DRAFT' ? 'Rascunho' : 'Excluída';
 const sumLabel: Record<SaleStatus | 'ALL', string> = { ALL: 'Total sem excluídas', CONFIRMED: 'Total confirmado', DRAFT: 'Total em rascunho', CANCELED: 'Total excluído' };
+type EditorSession = { key: number; companyId: string; draft: SaleDetail | null };
 
 /** Identifica a empresa do pedido na visão consolidada: foto ou iniciais (decorativas) + nome para leitor de tela. */
 function SaleCompany({ company }: { company: Company | undefined }) {
@@ -39,11 +40,10 @@ export function SalesPage({ user }: { user: User }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<SaleStatus | 'ALL'>('ALL');
   const [page, setPage] = useState(0);
-  const [editing, setEditing] = useState(false);
-  const [editingDraft, setEditingDraft] = useState<SaleDetail | null>(null);
+  const [editor, setEditor] = useState<EditorSession | null>(null);
+  const editorSequence = useRef(0);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ id: string; companyId: string } | null>(null);
-  const [editorCompanyId, setEditorCompanyId] = useState('');
   const [toast, setToast] = useState('');
   const [deleting, setDeleting] = useState<{ sale: Sale; trigger: HTMLButtonElement | null } | null>(null);
   const scope = useCompanyScope(user, companies.data, 'sales', 'sales.access');
@@ -77,13 +77,13 @@ export function SalesPage({ user }: { user: User }) {
   useEffect(() => { if (companies.data && !companies.data.some((company) => company.id === companyId)) setCompanyId(companies.data[0]?.id ?? ''); }, [companies.data, companyId]);
   useEffect(() => {
     if (params.get('novo') !== '1' || !companyId || !companies.data?.some((company) => company.id === companyId)) return;
-    if (!editing && canCreate) openEditor(null);
+    if (canCreate) openEditor(null);
     setParams((previous) => { const next = new URLSearchParams(previous); next.delete('novo'); return next; }, { replace: true });
-  }, [params, setParams, companyId, companies.data, editing, canCreate]);
+  }, [params, setParams, companyId, companies.data, canCreate]);
   useEffect(() => {
     // Clique em "Portal de Serviços" no menu lateral volta para a lista, como o botão de voltar do editor.
     if ((location.state as { workspaceNav?: boolean } | null)?.workspaceNav !== true) return;
-    setEditing(false); setEditingDraft(null); setSelected(null);
+    closeEditor(); setSelected(null);
   }, [location.key, location.state]);
   useEffect(() => { if (companyId) sessionStorage.setItem('gestaonf.companyId', companyId); }, [companyId]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 5000); return () => clearTimeout(timer); }, [toast]);
@@ -99,19 +99,22 @@ export function SalesPage({ user }: { user: User }) {
   useOverviewFallback(multiple, scope.clear, list.error, setToast);
   const maxPage = Math.max(0, Math.ceil((list.data?.total ?? 0) / PAGE_SIZE) - 1);
 
-  function changeCompany(next: string) { setCompanyId(next); setPage(0); setSelected(null); setEditing(false); setEditingDraft(null); setSearch(''); setSearchInput(''); setToast(''); }
+  function changeCompany(next: string) { setCompanyId(next); setPage(0); setSelected(null); closeEditor(); setSearch(''); setSearchInput(''); setToast(''); }
   /** Seleção única no Portal: encerra a visão múltipla e usa a empresa escolhida. */
   function chooseSingle(next: string) { scope.clear(); changeCompany(next); }
   /** Editor sempre ligado a UMA empresa: a do pedido; na Nova venda, vazia com várias empresas ou a ativa com uma. */
   function openEditor(draft: SaleDetail | null) {
-    setEditingDraft(draft);
-    setEditorCompanyId(draft ? draft.companyId : multiple ? '' : companyId);
+    setEditor({ key: ++editorSequence.current, companyId: draft?.companyId ?? (multiple ? '' : companyId), draft });
     setSelected(null);
-    setEditing(true);
+    if (!draft) window.scrollTo(0, 0);
+  }
+  function closeEditor() {
+    editorSequence.current += 1;
+    setEditor(null);
   }
   function openDetail(id: string, saleCompanyId: string) { setSelected({ id, companyId: saleCompanyId }); }
   function changeEditorCompany(next: string) {
-    setEditorCompanyId(next);
+    setEditor(current => current && { ...current, companyId: next });
     if (multiple) return; // com várias empresas, a escolha do editor não muda a visão nem a empresa ativa
     setCompanyId(next); setPage(0); setSearch(''); setSearchInput(''); setToast('');
   }
@@ -121,19 +124,33 @@ export function SalesPage({ user }: { user: User }) {
     void queryClient.invalidateQueries({ queryKey: ['sales'] }); // lista por empresa e consolidada
     for (const key of ['sale-detail', 'finance-receivables', 'finance-summary', 'finance-detail']) void queryClient.invalidateQueries({ queryKey: [key, saleCompanyId] });
   }
-  function created(sale: Sale) { const existing = editingDraft; setEditing(false); setEditingDraft(null); const action = existing?.status === 'DRAFT' && sale.status === 'CONFIRMED' ? 'confirmado' : existing ? 'atualizado' : 'registrado'; changed(`Pedido #${sale.orderCode} ${action} com sucesso.`, sale.companyId); if (!existing) openDetail(sale.id, sale.companyId); setPage(0); setStatus('ALL'); setSearch(''); setSearchInput(''); }
+  function created(sale: Sale) {
+    const existing = editor?.draft;
+    const action = existing?.status === 'DRAFT' && sale.status === 'CONFIRMED' ? 'confirmado' : existing ? 'atualizado' : 'registrado';
+    changed(`Pedido #${sale.orderCode} ${action} com sucesso.`, sale.companyId);
+    // Uma gravação já enviada pode terminar depois que o usuário abriu outro formulário.
+    if (editor?.key !== editorSequence.current) return;
+    closeEditor();
+    if (!existing) openDetail(sale.id, sale.companyId);
+    setPage(0); setStatus('ALL'); setSearch(''); setSearchInput('');
+  }
   function resume(draft: SaleDetail) { openEditor(draft); }
   async function openSale(sale: Sale) {
     if (openingId) return;
     if (sale.status === 'CANCELED' || !saleActions(sale.status, accessFor(sale.companyId)).edit) { openDetail(sale.id, sale.companyId); return; }
+    const sequence = editorSequence.current;
     setOpeningId(sale.id);
-    try { const detail = await api.sale(sale.companyId, sale.id); openEditor(detail); }
-    catch { setToast('Não foi possível abrir o pedido. Tente novamente.'); }
+    try {
+      const detail = await api.sale(sale.companyId, sale.id);
+      if (sequence === editorSequence.current) openEditor(detail);
+    } catch {
+      if (sequence === editorSequence.current) setToast('Não foi possível abrir o pedido. Tente novamente.');
+    }
     finally { setOpeningId(null); }
   }
 
   return <WorkspaceLayout user={user} companies={companies.data} companyId={companyId} onCompanyChange={chooseSingle} allowMultiple scope={{ ...scope, multiple }} onLogout={() => logout.mutate()} loggingOut={logout.isPending} className="sales-workspace">
-    {editing && companies.data ? <SaleEditor companyId={editorCompanyId} companies={companies.data.filter((c) => accessFor(c.id).can('sales.create') || c.id === editingDraft?.companyId)} draft={editingDraft} onCompanyChange={changeEditorCompany} onClose={() => { setEditing(false); setEditingDraft(null); }} onCreated={created} /> : <main id="workspace-main" className="sales-main" tabIndex={-1}>
+    {editor && companies.data ? <SaleEditor key={editor.key} companyId={editor.companyId} companies={companies.data.filter((c) => accessFor(c.id).can('sales.create') || c.id === editor.draft?.companyId)} draft={editor.draft} onCompanyChange={changeEditorCompany} onClose={closeEditor} onCreated={created} /> : <main id="workspace-main" className="sales-main" tabIndex={-1}>
       <div className="sales-page-head"><div><span className="sale-eyebrow">VENDAS / SERVIÇOS</span><h1>Portal de Serviços</h1><p>Acompanhe cada lançamento, do serviço vendido aos valores recebidos.</p></div>{canCreate && <button type="button" className="button button--primary sales-create-button" onClick={() => openEditor(null)} disabled={!multiple && !companyId}><Plus size={17} /> Nova venda de serviço</button>}</div>
       {companies.isError && <div className="sales-error" role="alert">Não foi possível carregar suas empresas. <button onClick={() => companies.refetch()}>Tentar novamente</button></div>}
       <section className="sales-ledger" aria-labelledby="sales-ledger-title"><div className="sales-ledger__header"><div><span className="sales-ledger__line" /><h2 id="sales-ledger-title" tabIndex={-1}>Lançamentos</h2><span className="sales-ledger__count">{list.data?.total ?? '-'} pedidos</span>{multiple && <span className="sales-ledger__sum">{sumLabel[status]}: {summary ? currency(summary.amount) : '-'}</span>}</div><button type="button" onClick={() => list.refetch()} aria-label="Atualizar vendas" title="Atualizar vendas" disabled={list.isFetching}><RefreshCw size={16} /></button></div>

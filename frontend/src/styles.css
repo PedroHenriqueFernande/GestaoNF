@@ -145,6 +145,7 @@
 @media(max-width:480px){.company-list__head,.company-list__item{grid-template-columns:minmax(0,1fr) 28px}.company-list__head span:nth-child(2),.company-list__role{display:none}.company-form__footer{flex-direction:column}.company-form__footer-actions{width:100%}.company-form__footer-actions .button{flex:1}}
 .company-onboarding{padding-top:39px;padding-bottom:43px}.company-onboarding>span{max-width:390px;line-height:1.5}.company-onboarding .button{min-height:39px;margin-top:13px}
 /* Cadastro de serviço começa direto nos campos (sem título de seção): mesmo respiro do topo do cadastro de clientes. */
+:root.service-form-scroll-gutter{background-color:color-mix(in srgb,#11232d 44%,var(--workspace-bg))}
 .service-form__body{display:grid;gap:14px;align-content:start;padding-top:24px}
 .field textarea.service-form__description{resize:none}
 /* Nome do serviço largo e código municipal (3 dígitos) estreito, lado a lado. */

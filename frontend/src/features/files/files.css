@@ -16,14 +16,8 @@
 .sale-attachments__error button { color: inherit; background: transparent; border: 0; padding: 0; text-decoration: underline; }
 .sale-attachments .is-spinning { animation: file-spin 1s linear infinite; }
 @keyframes file-spin { to { transform: rotate(360deg); } }
-/* "Anexar arquivo" e as ações de NFS-e no cabeçalho "01 Dados do lançamento", à direita do título. */
-.sale-section-heading:has(.sale-section-heading__aside) { flex-wrap: wrap; }
-.sale-section-heading__aside { margin-left: auto; display: flex; align-items: flex-start; justify-content: flex-end; flex-wrap: wrap; gap: 8px; max-width: 100%; }
-.sale-section-heading__aside .sale-attachments { width: auto; min-width: 0; max-width: 310px; }
-.sale-section-heading__aside .sale-attachments__add { min-height: 40px; padding: 0 13px; font-size: 13px; }
-@media (max-width: 1100px) {
-  .sale-editor-heading { flex-wrap: wrap; }
-}
+.sale-editor-attachments .sale-attachments { flex: none; width: max-content; min-width: 0; max-width: min(310px, 100%); }
+.sale-editor-attachments .sale-attachments__add { min-height: 40px; padding: 0 11px; font-size: 12px; }
 @media (max-width: 500px) {
   .sale-attachments { flex: 1; }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Plus, Trash2, UsersRound, X } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarDays, ChevronDown, Plus, Trash2, UsersRound, X } from 'lucide-react';
 import { PERMISSION_DENIED_MESSAGE } from '@gestaonf/permissions';
 import { followedDiscountCents } from '../../utils/reference-discount';
 import { api, ApiError, type Company, type ConfirmedSaleInput, type Customer, type CustomerInput, type PaymentMethod, type SaleDetail, type SaleInput, type Service, type StoredFile, type TaxSnapshot } from '../../api/client';
@@ -19,6 +19,12 @@ const methods: { value: PaymentMethod; label: string }[] = [
   { value: 'DEBIT_CARD', label: 'Cartão de débito' }, { value: 'BOLETO', label: 'Boleto' }, { value: 'TRANSFER', label: 'Transferência' }, { value: 'OTHER', label: 'Outra' },
 ];
 const paymentStates: { value: PaymentLine['state']; label: string }[] = [{ value: 'PENDING', label: 'Pendente' }, { value: 'PAID', label: 'Já recebida' }];
+const saleSections = {
+  'sale-identity-section': 'Dados do lançamento',
+  'sale-services-section': 'Serviços vendidos',
+  'sale-payment-section': 'Formas de pagamento',
+};
+type SaleEditorError = { message: string; section?: keyof typeof saleSections };
 const today = () => new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const money = (value: string) => Number(value.replace(',', '.'));
@@ -97,7 +103,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [soldOn, setSoldOn] = useState(draft?.soldOn ?? today());
   const [workOrderNumber, setWorkOrderNumber] = useState(draft?.workOrderNumber ?? '');
   const [notes, setNotes] = useState(draft?.notes ?? '');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<SaleEditorError | null>(null);
   /** Negação de permissão: o aviso fica só com o texto padrão, sem o complemento do rascunho. */
   const [denied, setDenied] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -105,7 +111,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const [uploading, setUploading] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<SaleDetail | null>(draft ?? null);
   const createKey = useRef(crypto.randomUUID());
-  const paymentRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const customerInputRef = useRef<HTMLInputElement>(null);
   const serviceInputRef = useRef<HTMLInputElement>(null);
   const serviceToggleRef = useRef<HTMLButtonElement>(null);
@@ -132,6 +138,11 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   const activeService = serviceHighlight === null ? undefined : serviceOptions[serviceHighlight];
   const total = items.reduce((sum, line) => sum + lineTotalCents(line), 0) / 100;
   const paymentTotal = payments.reduce((sum, line) => sum + (money(line.amount) || 0), 0);
+  const unallocatedCents = Math.round(total * 100) - Math.round(paymentTotal * 100);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
 
   useEffect(() => {
     if (customerId) return;
@@ -210,7 +221,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   function changeCompany(id: string) {
     if (id === companyId) return;
-    if (uploading) { setError('Aguarde o envio do arquivo antes de trocar a empresa.'); return; }
+    if (uploading) { setError({ message: 'Aguarde o envio do arquivo antes de trocar a empresa.' }); return; }
     setAttachments([]);
     onCompanyChange(id);
     setCustomerId(''); setCustomerTerm(''); setCustomerInput(''); setCustomerOpen(false); setCustomerHighlight(null); setServiceTerm(''); setServiceInput('');
@@ -227,7 +238,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
 
   function saveService() {
     if (!serviceDraft || !validItem(serviceDraft)) return;
-    setError('');
+    setError(null);
     setItems((current) => [...current, serviceDraft]);
     closeServiceModal();
   }
@@ -237,20 +248,35 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
+    if (event.target !== event.currentTarget) return;
     event.preventDefault();
     setDenied(false);
-    if (uploading) { setError('Aguarde o envio e a validação dos anexos antes de salvar.'); return; }
+    if (uploading) { setError({ message: 'Aguarde o envio e a validação dos anexos antes de salvar.' }); return; }
     const saveDraftOnly = draft?.status === 'DRAFT' && (event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-action') === 'save-draft';
-    setError('');
-    if (!companyId || !customerId || !items.length || !soldOn) { setError('Selecione a empresa e o cliente e adicione ao menos um serviço.'); return; }
-    if (selectedRuleUnavailable) { setError('A regra tributária selecionada não atende todos os serviços desta venda. Escolha outra regra ou Sem regra.'); return; }
-    if (!payments.length || items.some((line) => !validItem(line)) ||
-      payments.some((line) => !fixed(line.amount, 2) || money(line.amount) <= 0 || (line.state === 'PENDING' ? !line.dueOn : !line.receivedOn))) {
-      setError('Revise quantidade, valores e datas dos serviços e dos recebimentos.'); return;
+    setError(null);
+    if (!companyId || !customerId || !soldOn) {
+      setError({ message: 'Informe a empresa, o cliente e a data da venda.', section: 'sale-identity-section' }); return;
     }
-    if (receiptBlocked) { setError(PERMISSION_DENIED_MESSAGE); setDenied(true); paymentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-    if (Math.abs(Math.round(total * 100) - Math.round(paymentTotal * 100)) > 0 || total <= 0) {
-      setError('A soma das formas de pagamento precisa ser igual ao total dos serviços.'); paymentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+    if (!items.length) {
+      setError({ message: 'Adicione pelo menos um serviço à venda.', section: 'sale-services-section' }); return;
+    }
+    if (selectedRuleUnavailable) {
+      setError({ message: 'A regra tributária selecionada não atende todos os serviços desta venda. Escolha outra regra ou Sem regra.', section: 'sale-identity-section' }); return;
+    }
+    if (items.some((line) => !validItem(line))) {
+      setError({ message: 'Revise as quantidades, os valores e os descontos dos serviços.', section: 'sale-services-section' }); return;
+    }
+    if (!payments.length) {
+      setError({ message: 'Adicione pelo menos uma forma de pagamento.', section: 'sale-payment-section' }); return;
+    }
+    if (payments.some((line) => !fixed(line.amount, 2) || money(line.amount) <= 0 || (line.state === 'PENDING' ? !line.dueOn : !line.receivedOn))) {
+      setError({ message: 'Informe o valor e a data de cada recebimento.', section: 'sale-payment-section' }); return;
+    }
+    if (receiptBlocked) {
+      setError({ message: PERMISSION_DENIED_MESSAGE, section: 'sale-payment-section' }); setDenied(true); return;
+    }
+    if (unallocatedCents !== 0 || total <= 0) {
+      setError({ message: 'A soma das formas de pagamento precisa ser igual ao total dos serviços.', section: 'sale-payment-section' }); return;
     }
     const payload: SaleInput = {
       customerId, soldOn, workOrderNumber: workOrderNumber.trim() || null, notes: notes.trim() || null, ...(canAttach ? { attachmentIds: attachments.map((file) => file.id) } : {}),
@@ -280,7 +306,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
         if (latest?.status === 'CONFIRMED') { onCreated(latest); return; }
       }
       setDenied(cause instanceof ApiError && cause.code === 'PERMISSION_DENIED');
-      setError(cause instanceof Error ? cause.message : 'Não foi possível registrar a venda. Tente novamente.');
+      setError({ message: cause instanceof Error ? cause.message : 'Não foi possível registrar a venda. Tente novamente.' });
     } finally { setSaving(false); }
   }
 
@@ -289,97 +315,120 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
       fixed(line.quantity, 4) !== fixed(original.quantity, 4) || fixed(line.unitPrice, 2) !== fixed(original.unitPrice, 2) || fixed(line.discountAmount || '0', 2) !== fixed(original.discountAmount, 2) ||
       (line.description ?? null) !== original.descriptionSnapshot || (line.performedOn ?? null) !== original.performedOn; }));
   return <main ref={mainRef} id="workspace-main" className="sale-editor-page" tabIndex={-1}>
-    <div className="sale-editor-topline"><button type="button" className="sale-back" onClick={onClose} disabled={saving || uploading}><ArrowLeft size={17} /> Portal de Serviços</button><span>{confirmedEdit ? `EDITAR PEDIDO #${draft.orderCode}` : draft ? `RASCUNHO #${draft.orderCode}` : 'NOVO LANÇAMENTO'}</span></div>
-    <div className="sale-editor-heading"><div><h1 className="sr-only">{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Continuar pedido #${draft.orderCode}` : 'Nova venda de serviço'}</h1>{confirmedEdit && nfseState.data?.lockReason && <p className="sale-field-hint" role="status">{nfseState.data.lockReason}</p>}</div></div>
+    <header className="sale-editor-header">
+      <h1 className="sr-only">{confirmedEdit ? `Editar venda #${draft.orderCode}` : draft ? `Rascunho #${draft.orderCode}` : 'Nova venda de serviço'}</h1>
+      <button type="button" className="sale-back" onClick={onClose} disabled={saving || uploading}><ArrowLeft size={16} aria-hidden="true" /> Portal de Serviços</button>
+      {confirmedEdit && nfseState.data?.lockReason && <p className="sale-field-hint" role="status">{nfseState.data.lockReason}</p>}
+    </header>
     <form onSubmit={submit} className="sale-editor-form">
-      <div className="sale-editor-section" role="region" aria-labelledby="sale-identity-heading"><div className="sale-section-heading"><div className="sale-section-number">01</div><div><h2 id="sale-identity-heading">Dados do lançamento</h2><p>Empresa, cliente e referências da venda</p></div>{(canAttach || confirmedEdit) && <div className="sale-section-heading__aside">{canAttach && <SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} />}{confirmedEdit && <div className="sale-editor-fiscal-actions"><NfseSaleActions companyId={companyId} saleId={draft.id} saleVersion={draft.version} disabled={saving || uploading || fiscalDirty} /></div>}</div>}</div>
-        <div className="sale-identity-grid">
-          <div className="sale-field"><span><Building2 size={14} /> Empresa</span><SaleDropdown label="Empresa" value={companyId} options={companies.map((company) => ({ value: company.id, label: company.tradeName }))} onChange={changeCompany} disabled={saving || !!draft} /></div>
-          <div className="sale-field sale-field--customer"><span><UsersRound size={14} /> Cliente <button type="button" className="sale-customer-new" onClick={() => { setCustomerOpen(false); customerSave.reset(); setCustomerModalOpen(true); }} disabled={saving} aria-label="Novo cliente"><Plus size={13} /> Novo</button></span>
-            <div className="sale-lookup-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setCustomerOpen(false); }}>
-              <div className="sale-lookup-combobox">
-                <input ref={customerInputRef} role="combobox" aria-label="Buscar cliente" aria-autocomplete="list" aria-expanded={customerOpen} aria-controls="sale-customer-options" aria-activedescendant={customerOpen && activeCustomer ? `sale-customer-option-${activeCustomer.id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar cliente" value={customerInput} disabled={saving} onFocus={() => { setCustomerOpen(true); setCustomerHighlight(null); }} onChange={(event) => { setCustomerInput(event.target.value); setCustomerId(''); setCustomerOpen(true); setCustomerHighlight(null); }} onKeyDown={handleCustomerKeyDown} />
-                <button type="button" aria-label="Mostrar clientes" aria-expanded={customerOpen} disabled={saving} onClick={() => { const shouldOpen = !customerOpen; customerInputRef.current?.focus(); setCustomerOpen(shouldOpen); setCustomerHighlight(null); }}><ChevronDown size={16} /></button>
+      <div className="sale-editor-fields">
+        <div id="sale-identity-section" className="sale-editor-section" role="region" aria-labelledby="sale-identity-heading" tabIndex={-1}>
+          <header className="sale-section-heading">
+            <div className="sale-section-number" aria-hidden="true">01</div><h2 id="sale-identity-heading">Dados do lançamento</h2>
+          </header>
+          <div className="sale-identity-grid">
+            <div className="sale-field"><span><Building2 size={14} /> Empresa</span><SaleDropdown label="Empresa" value={companyId} options={companies.map((company) => ({ value: company.id, label: company.tradeName }))} onChange={changeCompany} disabled={saving || !!draft} /></div>
+            <div className="sale-field sale-field--customer"><span><UsersRound size={14} /> Cliente <button type="button" className="sale-customer-new" onClick={() => { setCustomerOpen(false); customerSave.reset(); setCustomerModalOpen(true); }} disabled={saving} aria-label="Novo cliente"><Plus size={13} /> Novo</button></span>
+              <div className="sale-lookup-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setCustomerOpen(false); }}>
+                <div className="sale-lookup-combobox">
+                  <input ref={customerInputRef} role="combobox" aria-label="Buscar cliente" aria-autocomplete="list" aria-expanded={customerOpen} aria-controls="sale-customer-options" aria-activedescendant={customerOpen && activeCustomer ? `sale-customer-option-${activeCustomer.id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar cliente" value={customerInput} disabled={saving} onFocus={() => { setCustomerOpen(true); setCustomerHighlight(null); }} onChange={(event) => { setCustomerInput(event.target.value); setCustomerId(''); setCustomerOpen(true); setCustomerHighlight(null); }} onKeyDown={handleCustomerKeyDown} />
+                  <button type="button" aria-label="Mostrar clientes" aria-expanded={customerOpen} disabled={saving} onClick={() => { const shouldOpen = !customerOpen; customerInputRef.current?.focus(); setCustomerOpen(shouldOpen); setCustomerHighlight(null); }}><ChevronDown size={16} /></button>
+                </div>
+                {customerOpen && <div id="sale-customer-options" className="sale-lookup-options" role="listbox" aria-label="Clientes cadastrados" onPointerMove={() => { if (customerHighlight !== null) setCustomerHighlight(null); }}>
+                  {customers.isPending ? <div className="sale-lookup-message">Carregando clientes...</div> : customers.isError ? <div className="sale-lookup-message">Não foi possível carregar clientes. <button type="button" onClick={() => customers.refetch()}>Tentar novamente</button></div> : customerOptions.length ? <>
+                    {customerOptions.map((entry, index) => <button key={entry.id} id={`sale-customer-option-${entry.id}`} type="button" role="option" aria-selected={entry.id === customerId} className={`sale-lookup-option${index === customerHighlight ? ' is-highlighted' : ''}`} onClick={() => chooseCustomer(entry)}><strong>{entry.name}</strong><small>{[entry.taxId, entry.phone].filter(Boolean).join(' · ')}</small></button>)}
+                    {(customers.data?.total ?? 0) > customerOptions.length && <div className="sale-lookup-message">Digite para encontrar outros clientes.</div>}
+                  </> : <div className="sale-lookup-message">Nenhum cliente encontrado.</div>}
+                </div>}
               </div>
-              {customerOpen && <div id="sale-customer-options" className="sale-lookup-options" role="listbox" aria-label="Clientes cadastrados" onPointerMove={() => { if (customerHighlight !== null) setCustomerHighlight(null); }}>
-                {customers.isPending ? <div className="sale-lookup-message">Carregando clientes...</div> : customers.isError ? <div className="sale-lookup-message">Não foi possível carregar clientes. <button type="button" onClick={() => customers.refetch()}>Tentar novamente</button></div> : customerOptions.length ? <>
-                  {customerOptions.map((entry, index) => <button key={entry.id} id={`sale-customer-option-${entry.id}`} type="button" role="option" aria-selected={entry.id === customerId} className={`sale-lookup-option${index === customerHighlight ? ' is-highlighted' : ''}`} onClick={() => chooseCustomer(entry)}><strong>{entry.name}</strong><small>{[entry.taxId, entry.phone].filter(Boolean).join(' · ')}</small></button>)}
-                  {(customers.data?.total ?? 0) > customerOptions.length && <div className="sale-lookup-message">Digite para encontrar outros clientes.</div>}
-                </> : <div className="sale-lookup-message">Nenhum cliente encontrado.</div>}
+            </div>
+            <div className="sale-field sale-field--tax"><span>Regra de tributação</span><SaleDropdown label="Regra de tributação" value={selectedTaxProfileId} disabled={saving || taxRules.isPending || companyProfile.isPending}
+              options={[
+                { value: '', label: 'Sem regra' },
+                ...(selectedTaxProfileId === '__mixed__' ? [{ value: '__mixed__', label: 'Manter regras registradas' }] : []),
+                ...(selectedRuleMissing ? [{ value: selectedTaxProfileId, label: 'Regra registrada indisponível', disabled: true }] : []),
+                ...availableRules.map(rule => ({ value: rule.id, label: rule.name })),
+              ]}
+              onChange={profileId => {
+                if (profileId === selectedTaxProfileId) return;
+                setSelectedTaxProfileId(profileId);
+                setRuleChanged(true);
+                setItems(current => current.map(item => ({ ...item, taxProfileId: profileId || null })));
+              }} /></div>
+            <label className="sale-field"><span><CalendarDays size={14} /> Data da venda</span><input type="date" value={soldOn} onChange={(event) => setSoldOn(event.target.value)} required /></label>
+            <label className="sale-field"><span>Número da OS <small className="sale-optional">Opcional</small></span><input value={workOrderNumber} onChange={(event) => setWorkOrderNumber(event.target.value)} maxLength={40} placeholder="Ex.: OS-0021" /></label>
+          </div>
+          {selectedRuleUnavailable && <p className="sale-rule-warning" role="alert">A regra selecionada não atende todos os serviços. Escolha outra regra ou Sem regra.</p>}
+          {taxRules.isError && <p className="sale-rule-warning" role="alert">Não foi possível carregar as regras de tributação.</p>}
+          {(canAttach || confirmedEdit) && <div className="sale-editor-attachments">
+            <div className="sale-editor-document-actions">
+              {canAttach && <SaleAttachments key={companyId} companyId={companyId} files={attachments} onChange={setAttachments} onBusyChange={setUploading} disabled={saving} />}
+              {confirmedEdit && <div className="sale-editor-fiscal-actions"><NfseSaleActions companyId={companyId} saleId={draft.id} saleVersion={draft.version} disabled={saving || uploading || fiscalDirty} /></div>}
+            </div>
+            {confirmedEdit && <small className="sale-editor-order-code">Pedido #{draft.orderCode}</small>}
+          </div>}
+        </div>
+
+        <div id="sale-services-section" className="sale-editor-section" role="region" aria-labelledby="sale-services-heading" tabIndex={-1}>
+          <header className="sale-section-heading"><div className="sale-section-number" aria-hidden="true">02</div><h2 id="sale-services-heading">Serviços vendidos</h2></header>
+          <div className="sale-add-service">
+            <div className="sale-lookup-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setServiceOpen(false); }}>
+              <div className="sale-lookup-combobox">
+                <input ref={serviceInputRef} role="combobox" aria-label="Buscar serviço" aria-autocomplete="list" aria-expanded={serviceOpen} aria-controls="sale-service-options" aria-activedescendant={serviceOpen && activeService ? `sale-service-option-${activeService.id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar serviço" value={serviceInput} disabled={saving} onFocus={() => { setServiceOpen(true); setServiceHighlight(null); }} onChange={(event) => { setServiceInput(event.target.value); setSelectedService(null); setServiceOpen(true); setServiceHighlight(null); }} onKeyDown={handleServiceKeyDown} />
+                <button ref={serviceToggleRef} type="button" aria-label="Mostrar serviços" aria-expanded={serviceOpen} disabled={saving} onClick={() => { const shouldOpen = !serviceOpen; serviceInputRef.current?.focus(); setServiceOpen(shouldOpen); setServiceHighlight(null); }}><ChevronDown size={16} /></button>
+              </div>
+              {serviceOpen && <div id="sale-service-options" className="sale-lookup-options" role="listbox" aria-label="Serviços cadastrados" onPointerMove={() => { if (serviceHighlight !== null) setServiceHighlight(null); }}>
+                {services.isPending ? <div className="sale-lookup-message">Carregando serviços...</div> : services.isError ? <div className="sale-lookup-message">Não foi possível carregar serviços. <button type="button" onClick={() => services.refetch()}>Tentar novamente</button></div> : serviceOptions.length ? <>
+                  {serviceOptions.map((service, index) => <button key={service.id} id={`sale-service-option-${service.id}`} type="button" role="option" aria-selected={service.id === selectedService?.id} className={`sale-lookup-option${index === serviceHighlight ? ' is-highlighted' : ''}`} onClick={() => chooseService(service)}><strong>{service.name}</strong><small>{[service.internalCode, service.suggestedUnitPrice ? brl(Number(service.suggestedUnitPrice)) : null].filter(Boolean).join(' · ')}</small></button>)}
+                  {(services.data?.total ?? 0) > serviceOptions.length && <div className="sale-lookup-message">Digite para encontrar outros serviços.</div>}
+                </> : <div className="sale-lookup-message">Nenhum serviço encontrado.</div>}
               </div>}
             </div>
+            {access.can('services.create') && <button type="button" className="sale-service-new" disabled={saving} onClick={() => { setServiceOpen(false); setServiceCreateOpen(true); }}><Plus size={15} aria-hidden="true" /> Cadastrar serviço</button>}
           </div>
-          <div className="sale-field"><span>Regra de tributação</span><SaleDropdown label="Regra de tributação" value={selectedTaxProfileId} disabled={saving || taxRules.isPending || companyProfile.isPending}
-            options={[
-              { value: '', label: 'Sem regra' },
-              ...(selectedTaxProfileId === '__mixed__' ? [{ value: '__mixed__', label: 'Manter regras registradas' }] : []),
-              ...(selectedRuleMissing ? [{ value: selectedTaxProfileId, label: 'Regra registrada indisponível', disabled: true }] : []),
-              ...availableRules.map(rule => ({ value: rule.id, label: rule.name })),
-            ]}
-            onChange={profileId => {
-              if (profileId === selectedTaxProfileId) return;
-              setSelectedTaxProfileId(profileId);
-              setRuleChanged(true);
-              setItems(current => current.map(item => ({ ...item, taxProfileId: profileId || null })));
-            }} /></div>
-          <label className="sale-field"><span><CalendarDays size={14} /> Data da venda</span><input type="date" value={soldOn} onChange={(event) => setSoldOn(event.target.value)} required /></label>
-          <label className="sale-field"><span>Número da OS</span><input value={workOrderNumber} onChange={(event) => setWorkOrderNumber(event.target.value)} maxLength={40} placeholder="Opcional · Ex.: OS-0021" /></label>
+          {!canChangePrice && <p id="sale-price-hint" className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}
+          {!items.length ? <div className="sale-empty-lines">Nenhum serviço adicionado.</div> : <div className="sale-lines-scroll">
+            <div className="sale-lines-head"><span>Serviço</span><span>Quantidade</span><span>Valor unitário</span><span>Desconto R$</span><span>Desconto %</span><span>Total</span><span /></div>
+            {items.map((line) => <div key={line.key} className="sale-item-line">
+              <strong title={line.name}>{line.name}</strong>
+              <label className="sale-item-input"><span>Quantidade</span><input type="number" min="0.0001" step="any" aria-label={`Quantidade de ${line.name}`} value={line.quantity} onChange={(event) => setItems((current) => current.map((entry) => { if (entry.key !== line.key) return entry; const next = changeItem(entry, 'quantity', event.target.value); return priceLocked(entry, canChangePrice) ? followReferenceDiscount(next) : next; }))} /></label>
+              <label className="sale-item-input"><span>Valor unitário</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" step="0.01" aria-label={`Valor unitário de ${line.name}`} value={line.unitPrice} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'unitPrice', event.target.value) : entry))} /></label>
+              <label className="sale-item-input"><span>Desconto R$</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" step="0.01" aria-label={`Desconto em reais de ${line.name}`} value={line.discountAmount} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountAmount', event.target.value) : entry))} /></label>
+              <label className="sale-item-input"><span>Desconto %</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" max="100" step="0.01" aria-label={`Desconto percentual de ${line.name}`} value={line.discountPercent} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountPercent', event.target.value) : entry))} /></label>
+              <span className="sale-line-total">{brl(lineTotalCents(line) / 100)}</span>
+              <button type="button" className="sale-remove-line" onClick={() => setItems((current) => current.filter((entry) => entry.key !== line.key))} aria-label={`Remover ${line.name}`}><Trash2 size={16} /></button>
+            </div>)}
+          </div>}
+          {!!items.length && <div className="sale-subtotal"><span>Total dos serviços</span><strong>{brl(total)}</strong></div>}
         </div>
-        {selectedRuleUnavailable && <p className="sale-rule-warning" role="alert">A regra selecionada não atende todos os serviços. Escolha outra regra ou Sem regra.</p>}
-        {taxRules.isError && <p className="sale-rule-warning" role="alert">Não foi possível carregar as regras de tributação.</p>}
-      </div>
 
-      <div className="sale-editor-section" role="region" aria-labelledby="sale-services-heading"><div className="sale-section-heading"><div className="sale-section-number">02</div><div><h2 id="sale-services-heading">Serviços vendidos</h2><p>Adicione um ou mais serviços e ajuste os valores desta venda</p></div></div>
-        <div className="sale-add-service">
-          <div className="sale-lookup-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setServiceOpen(false); }}>
-            <div className="sale-lookup-combobox">
-              <input ref={serviceInputRef} role="combobox" aria-label="Buscar serviço" aria-autocomplete="list" aria-expanded={serviceOpen} aria-controls="sale-service-options" aria-activedescendant={serviceOpen && activeService ? `sale-service-option-${activeService.id}` : undefined} autoComplete="off" placeholder="Buscar ou selecionar serviço" value={serviceInput} disabled={saving} onFocus={() => { setServiceOpen(true); setServiceHighlight(null); }} onChange={(event) => { setServiceInput(event.target.value); setSelectedService(null); setServiceOpen(true); setServiceHighlight(null); }} onKeyDown={handleServiceKeyDown} />
-              <button ref={serviceToggleRef} type="button" aria-label="Mostrar serviços" aria-expanded={serviceOpen} disabled={saving} onClick={() => { const shouldOpen = !serviceOpen; serviceInputRef.current?.focus(); setServiceOpen(shouldOpen); setServiceHighlight(null); }}><ChevronDown size={16} /></button>
-            </div>
-            {serviceOpen && <div id="sale-service-options" className="sale-lookup-options" role="listbox" aria-label="Serviços cadastrados" onPointerMove={() => { if (serviceHighlight !== null) setServiceHighlight(null); }}>
-              {services.isPending ? <div className="sale-lookup-message">Carregando serviços...</div> : services.isError ? <div className="sale-lookup-message">Não foi possível carregar serviços. <button type="button" onClick={() => services.refetch()}>Tentar novamente</button></div> : serviceOptions.length ? <>
-                {serviceOptions.map((service, index) => <button key={service.id} id={`sale-service-option-${service.id}`} type="button" role="option" aria-selected={service.id === selectedService?.id} className={`sale-lookup-option${index === serviceHighlight ? ' is-highlighted' : ''}`} onClick={() => chooseService(service)}><strong>{service.name}</strong><small>{[service.internalCode, service.suggestedUnitPrice ? brl(Number(service.suggestedUnitPrice)) : null].filter(Boolean).join(' · ')}</small></button>)}
-                {(services.data?.total ?? 0) > serviceOptions.length && <div className="sale-lookup-message">Digite para encontrar outros serviços.</div>}
-              </> : <div className="sale-lookup-message">Nenhum serviço encontrado.</div>}
-            </div>}
-          </div>
-          {access.can('services.create') && <button type="button" className="sale-service-new" disabled={saving} onClick={() => { setServiceOpen(false); setServiceCreateOpen(true); }}><Plus size={14} /> Novo</button>}
+        <div id="sale-payment-section" className="sale-editor-section" role="region" aria-labelledby="sale-payment-heading" tabIndex={-1}>
+          <header className="sale-section-heading"><div className="sale-section-number" aria-hidden="true">03</div><h2 id="sale-payment-heading">Formas de pagamento</h2></header>
+          <div className="sale-payment-list">{payments.map((line, index) => <div key={line.key} className="sale-payment-card"><div className="sale-payment-card__title"><strong>{index === 0 ? 'Recebimento' : `Recebimento ${index + 1}`}{line.paycode && <small> · Código {line.paycode}</small>}</strong><button type="button" aria-label={`Remover recebimento ${index + 1}`} title={line.hasHistory ? 'Recebimento com histórico de baixas não pode ser removido' : 'Remover recebimento'} disabled={line.hasHistory} onClick={() => setPayments((current) => current.filter((entry) => entry.key !== line.key))}><Trash2 size={15} /></button></div><div className="sale-payment-grid">
+            <div className="sale-field"><span>Forma de pagamento</span><SaleDropdown label={`Forma de pagamento do recebimento ${index + 1}`} value={line.paymentMethod} options={methods} disabled={line.initiallyPaid && line.hasHistory} onChange={(paymentMethod) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, paymentMethod } : entry))} /></div>
+            <label className="sale-field"><span>Valor</span><input type="number" min={line.paidAmount && Number(line.paidAmount) > 0 ? line.paidAmount : '0.01'} step="0.01" value={line.amount} disabled={line.initiallyPaid && line.hasHistory} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, amount: event.target.value } : entry))} placeholder="0,00" /></label>
+            <div className="sale-field"><span>Situação</span><SaleDropdown label={`Situação do recebimento ${index + 1}`} value={line.state} options={canReceive || line.state === 'PAID' ? paymentStates : paymentStates.filter((option) => option.value === 'PENDING')} disabled={line.hasHistory} describedBy={!canReceive && needsReceivePermission(line, confirmedEdit) ? `sale-receipt-hint-${line.key}` : undefined} onChange={(state) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, state } : entry))} /></div>
+            {line.state === 'PENDING' && <label className="sale-field"><span>Vencimento</span><input type="date" value={line.dueOn} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, dueOn: event.target.value } : entry))} required /></label>}
+            {line.state === 'PAID' && <label className="sale-field"><span>Recebido em</span><input type="date" value={line.receivedOn} disabled={line.hasHistory || (!canReceive && needsReceivePermission(line, confirmedEdit))} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, receivedOn: event.target.value } : entry))} required /></label>}
+          </div>{!canReceive && needsReceivePermission(line, confirmedEdit) && <p id={`sale-receipt-hint-${line.key}`} className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}{line.hasHistory && <p className="sale-payment-history">{brl(Number(line.paidAmount ?? '0'))} já baixados. O histórico do pagamento será preservado.</p>}</div>)}</div>
+          <button type="button" className="sale-add-payment" onClick={addPayment}><Plus size={15} /> Adicionar forma de pagamento</button>
+          <div className="sale-payment-balance"><span>Distribuído nos recebimentos</span><strong>{brl(paymentTotal)} <small>de {brl(total)}</small></strong></div>
         </div>
-        {!canChangePrice && <p id="sale-price-hint" className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}
-        {!items.length ? <div className="sale-empty-lines">Nenhum serviço adicionado. Selecione um serviço acima para começar.</div> : <div className="sale-lines-scroll">
-          <div className="sale-lines-head"><span>Serviço</span><span>Quantidade</span><span>Valor unitário</span><span>Desconto</span><span>Total</span><span /></div>
-          {items.map((line) => <div key={line.key} className="sale-item-line">
-            <strong title={line.name}>{line.name}</strong>
-            <label className="sale-item-input"><span>Quantidade</span><input type="number" min="0.0001" step="any" aria-label={`Quantidade de ${line.name}`} value={line.quantity} onChange={(event) => setItems((current) => current.map((entry) => { if (entry.key !== line.key) return entry; const next = changeItem(entry, 'quantity', event.target.value); return priceLocked(entry, canChangePrice) ? followReferenceDiscount(next) : next; }))} /></label>
-            <label className="sale-item-input"><span>Valor unitário</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" step="0.01" aria-label={`Valor unitário de ${line.name}`} value={line.unitPrice} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'unitPrice', event.target.value) : entry))} /></label>
-            <div className="sale-line-discounts">
-              <label className="sale-item-input"><span>Desconto em R$</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" step="0.01" aria-label={`Desconto em reais de ${line.name}`} value={line.discountAmount} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountAmount', event.target.value) : entry))} /></label>
-              <label className="sale-item-input"><span>Desconto em %</span><input type="number" readOnly={priceLocked(line, canChangePrice)} aria-describedby={priceLocked(line, canChangePrice) ? 'sale-price-hint' : undefined} min="0" max="100" step="0.01" aria-label={`Desconto percentual de ${line.name}`} value={line.discountPercent} onChange={(event) => setItems((current) => current.map((entry) => entry.key === line.key ? changeItem(entry, 'discountPercent', event.target.value) : entry))} /></label>
-            </div>
-            <span className="sale-line-total">{brl(lineTotalCents(line) / 100)}</span>
-            <button type="button" className="sale-remove-line" onClick={() => setItems((current) => current.filter((entry) => entry.key !== line.key))} aria-label={`Remover ${line.name}`}><Trash2 size={16} /></button>
-          </div>)}
-        </div>}
-        <div className="sale-subtotal"><span>Total dos serviços</span><strong>{brl(total)}</strong></div>
-      </div>
 
-      <div ref={paymentRef} id="sale-payment-section" className="sale-editor-section" role="region" aria-labelledby="sale-payment-heading"><div className="sale-section-heading"><div className="sale-section-number">03</div><div><h2 id="sale-payment-heading">Formas de pagamento</h2><p>Defina valores, vencimentos e recebimentos já realizados</p></div></div>
-        <div className="sale-payment-list">{payments.map((line, index) => <div key={line.key} className="sale-payment-card"><div className="sale-payment-card__title"><strong>{index === 0 ? 'Recebimento' : `Recebimento ${index + 1}`}{line.paycode && <small> · Código {line.paycode}</small>}</strong><button type="button" aria-label={`Remover recebimento ${index + 1}`} title={line.hasHistory ? 'Recebimento com histórico de baixas não pode ser removido' : 'Remover recebimento'} disabled={line.hasHistory} onClick={() => setPayments((current) => current.filter((entry) => entry.key !== line.key))}><Trash2 size={15} /></button></div><div className="sale-payment-grid">
-          <div className="sale-field"><span>Forma de pagamento</span><SaleDropdown label={`Forma de pagamento do recebimento ${index + 1}`} value={line.paymentMethod} options={methods} disabled={line.initiallyPaid && line.hasHistory} onChange={(paymentMethod) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, paymentMethod } : entry))} /></div>
-          <label className="sale-field"><span>Valor</span><input type="number" min={line.paidAmount && Number(line.paidAmount) > 0 ? line.paidAmount : '0.01'} step="0.01" value={line.amount} disabled={line.initiallyPaid && line.hasHistory} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, amount: event.target.value } : entry))} placeholder="0,00" /></label>
-          <div className="sale-field"><span>Situação</span><SaleDropdown label={`Situação do recebimento ${index + 1}`} value={line.state} options={canReceive || line.state === 'PAID' ? paymentStates : paymentStates.filter((option) => option.value === 'PENDING')} disabled={line.hasHistory} describedBy={!canReceive && needsReceivePermission(line, confirmedEdit) ? `sale-receipt-hint-${line.key}` : undefined} onChange={(state) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, state } : entry))} /></div>
-          {line.state === 'PENDING' && <label className="sale-field"><span>Vencimento</span><input type="date" value={line.dueOn} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, dueOn: event.target.value } : entry))} required /></label>}
-          {line.state === 'PAID' && <label className="sale-field"><span>Recebido em</span><input type="date" value={line.receivedOn} disabled={line.hasHistory || (!canReceive && needsReceivePermission(line, confirmedEdit))} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === line.key ? { ...entry, receivedOn: event.target.value } : entry))} required /></label>}
-        </div>{!canReceive && needsReceivePermission(line, confirmedEdit) && <p id={`sale-receipt-hint-${line.key}`} className="sale-field-hint">{PERMISSION_DENIED_MESSAGE}</p>}{line.hasHistory && <p className="sale-payment-history">{brl(Number(line.paidAmount ?? '0'))} já baixados. O histórico do pagamento será preservado.</p>}</div>)}</div>
-        <button type="button" className="sale-add-payment" onClick={addPayment}><Plus size={15} /> Adicionar forma de pagamento</button>
-        <div className="sale-payment-balance"><span>Distribuído nos recebimentos</span><strong>{brl(paymentTotal)} <small>de {brl(total)}</small></strong></div>
+        <div className="sale-editor-notes"><label className="sale-field"><span>Observações da venda <small className="sale-optional">Opcional</small></span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} rows={3} /></label></div>
       </div>
-
-      <div className="sale-editor-bottom">
-        <div className="sale-editor-notes"><label className="sale-field"><span>Observações da venda</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Informações úteis para acompanhar este serviço" rows={3} /></label></div>
-        {error && <div className="sale-form-error" role="alert">{error}{!denied && pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado; tente confirmar novamente.</span>}</div>}
-        <footer className="sale-editor-footer"><div><CreditCard size={18} /><span>{confirmedEdit ? 'Os códigos e o histórico dos pagamentos serão preservados.' : 'Pedido e recebimentos serão registrados na empresa selecionada.'}</span></div><div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving || uploading}>Cancelar</button>{draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving || uploading}>Salvar alterações</button>}<button type="submit" className="button button--primary" disabled={saving || uploading}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div></footer>
-      </div>
+      {error && <div ref={errorRef} className="sale-form-error" role="alert" tabIndex={-1}>
+        <p>{error.message}{!denied && !error.section && pendingDraft?.status === 'DRAFT' && <span> Rascunho #{pendingDraft.orderCode} preservado. Tente confirmar novamente.</span>}</p>
+        {error.section && <a href={`#${error.section}`} onClick={(event) => {
+          event.preventDefault();
+          document.getElementById(event.currentTarget.hash.slice(1))?.focus();
+        }}>Revisar {saleSections[error.section].toLocaleLowerCase('pt-BR')}</a>}
+      </div>}
+      <footer className="sale-editor-footer">
+        {draft?.status === 'DRAFT' && <button type="submit" data-action="save-draft" className="button button--secondary" disabled={saving || uploading}>Salvar rascunho</button>}
+        <div><button type="button" className="button button--secondary" onClick={onClose} disabled={saving || uploading}>Cancelar</button></div>
+        <div><button type="submit" className="button button--primary" disabled={saving || uploading}>{saving ? 'Salvando...' : confirmedEdit ? 'Salvar alterações' : draft ? 'Confirmar pedido' : pendingDraft ? 'Tentar confirmar' : 'Registrar venda de serviço'}</button></div>
+      </footer>
     </form>
     {selectedService && serviceDraft && <SaleServiceModal
       service={selectedService}
@@ -394,7 +443,7 @@ export function SaleEditor({ companyId, companies, draft, onCompanyChange, onClo
     {serviceCreateOpen && <ServiceCreateModal companyId={companyId} onClose={() => setServiceCreateOpen(false)} onCreated={(service, municipalCodeSaved) => {
       setServiceCreateOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['sales-services', companyId] });
-      if (!municipalCodeSaved) setError('Serviço cadastrado, mas o código municipal não foi salvo. Ajuste-o no cadastro de Serviços.');
+      if (!municipalCodeSaved) setError({ message: 'Serviço cadastrado, mas o código municipal não foi salvo. Ajuste-o no cadastro de Serviços.' });
       chooseService(service);
     }} />}
   </main>;

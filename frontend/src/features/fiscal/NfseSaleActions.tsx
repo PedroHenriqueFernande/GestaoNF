@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { AlertCircle, Download, Eye, LoaderCircle, RefreshCw, Replace, Send, ShieldCheck, Undo2, X } from 'lucide-react';
@@ -36,10 +37,10 @@ export function NfseSaleActions({ companyId, saleId, saleVersion, disabled = fal
     {substitution && <div className="nfse-banner" role="status"><Replace size={17} /><p><strong>Substituição da NFS-e nº {substitution.number} em andamento.</strong><span>Corrija a venda e clique em “Emitir substituta”. A nota atual só é substituída quando a nova for autorizada.</span></p>
       {nfse.correct && <button type="button" className="button button--secondary" disabled={discard.isPending} onClick={() => discard.mutate()}>{discard.isPending ? <LoaderCircle size={14} className="is-spinning" /> : <Undo2 size={14} />} Desistir</button>}</div>}
     {error && <p role="alert" className="nfse-alert">{error}</p>}
-    <div>{canPreview && <button type="button" className="button button--secondary" onClick={() => setMode('preview')} disabled={disabled}><Eye size={15} /> Pré-visualizar NFS-e</button>}
-      {(canEmit || hasHistory) && <button type="button" className="button button--primary" onClick={() => setMode(canPreview ? 'emit' : 'history')} disabled={disabled}><Send size={15} /> {emitLabel}</button>}</div>
+    <div className="nfse-sale-actions__buttons">{canPreview && <button type="button" className="button button--secondary" onClick={() => setMode('preview')} disabled={disabled}><Eye size={15} /> Pré-visualizar NFS-e</button>}
+      {(canEmit || hasHistory) && <button type="button" className={`button button--primary${canEmit ? '' : ' nfse-sale-actions__history'}`} onClick={() => setMode(canPreview ? 'emit' : 'history')} disabled={disabled}><Send size={15} /> {emitLabel}</button>}</div>
     {disabled && <small>Salve as alterações para usar os dados atualizados na nota.</small>}
-    {mode && <NfseDialog key={`${companyId}:${saleId}`} companyId={companyId} saleId={saleId} saleVersion={saleVersion} mode={mode} nfse={nfse} onClose={() => setMode(null)} />}
+    {mode && createPortal(<NfseDialog key={`${companyId}:${saleId}`} companyId={companyId} saleId={saleId} saleVersion={saleVersion} mode={mode} nfse={nfse} onClose={() => setMode(null)} />, document.body)}
   </div>;
 }
 

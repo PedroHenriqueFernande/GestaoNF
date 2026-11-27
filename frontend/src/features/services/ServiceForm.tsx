@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
@@ -72,6 +72,8 @@ export function ServiceForm({ companyId, service, canEditPrice, onClose, onSave,
 }) {
   const priceLocked = !!service && !canEditPrice;
   const nameRef = useRef<HTMLInputElement | null>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   const form = useForm<Values>({ resolver: zodResolver(serviceSchema), defaultValues: defaults(service) });
   const descriptionLength = form.watch('description')?.length ?? 0;
   const company = useQuery({ queryKey: ['company', companyId], queryFn: () => api.company(companyId) });
@@ -87,20 +89,35 @@ export function ServiceForm({ companyId, service, canEditPrice, onClose, onSave,
       ? 'Corrija os campos indicados. Serviço não foi salvo.'
       : null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const lockPageScroll = !nameRef.current?.closest('dialog:modal');
+    const root = document.documentElement;
+    const hasScrollbarSpace = lockPageScroll && window.innerWidth > root.clientWidth;
     const originalOverflow = document.body.style.overflow;
-    if (lockPageScroll) document.body.style.overflow = 'hidden';
-    nameRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const originalGutter = root.style.scrollbarGutter;
+    if (hasScrollbarSpace) {
+      if (getComputedStyle(root).scrollbarGutter === 'auto') root.style.scrollbarGutter = 'stable';
+      root.classList.add('service-form-scroll-gutter');
+    }
+    if (lockPageScroll) {
+      document.body.style.overflow = 'hidden';
+    }
+    nameRef.current?.focus({ preventScroll: true });
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeRef.current(); };
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      if (lockPageScroll) document.body.style.overflow = originalOverflow;
+      if (lockPageScroll) {
+        document.body.style.overflow = originalOverflow;
+      }
+      if (hasScrollbarSpace) {
+        root.style.scrollbarGutter = originalGutter;
+        root.classList.remove('service-form-scroll-gutter');
+      }
       document.removeEventListener('keydown', onKeyDown);
-      previous?.focus();
+      previous?.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   async function submit(values: Values) {
     const code = values.municipalTaxCode || null;
