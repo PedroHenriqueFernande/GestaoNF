@@ -117,7 +117,7 @@
 .sale-editor-fields .sale-field>input,.sale-editor-fields .sale-select__trigger,.sale-editor-fields .sale-lookup-combobox{min-height:40px}
 .sale-editor-fields .sale-lookup-combobox input{min-height:38px}
 .sale-editor-fields .sale-customer-new{min-height:24px}
-.sale-editor-fields :is(.sale-field>input,.sale-field>textarea,.sale-item-line input,.sale-select__trigger,.sale-lookup-combobox){border-color:#84939d}
+.sale-editor-fields :is(.sale-field>input,.sale-field>textarea,.sale-item-line input,.sale-select__trigger,.sale-lookup-combobox){border-color:#b3c0c8}
 .sale-editor-fields :is(.sale-field>input,.sale-field>textarea,.sale-item-line input,.sale-select__trigger):focus,.sale-editor-fields .sale-lookup-combobox:focus-within{border-color:var(--primary);outline:none;box-shadow:none}
 .sale-editor-fields .sale-lookup-combobox button:focus-visible{outline-offset:-2px}
 .sale-editor-fields .sale-field input,.sale-editor-fields .sale-field textarea,.sale-editor-fields .sale-select__trigger,.sale-editor-fields .sale-lookup-combobox input{font-size:13px}
